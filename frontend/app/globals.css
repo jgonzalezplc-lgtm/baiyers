@@ -1,0 +1,183 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --palette-black:    #0d0d0d;
+  --palette-gray-900: #1a1a1a;
+  --palette-gray-800: #2e2e2e;
+  --palette-gray-700: #484848;
+  --palette-gray-600: #606060;
+  --palette-gray-500: #7a7a7a;
+  --palette-gray-400: #9a9a9a;
+  --palette-gray-300: #c0c0c0;
+  --palette-gray-200: #d8d8d8;
+  --palette-gray-100: #ebebeb;
+  --palette-gray-50:  #f5f5f5;
+  --palette-white:    #ffffff;
+  --palette-red-700: #7a1e14;
+  --palette-red-600: #9e2618;
+  --palette-red-500: #c0392b;
+  --palette-red-400: #d4503f;
+  --palette-red-100: #fce8e6;
+  --palette-green-600: #1a6e45;
+  --palette-green-500: #21894f;
+  --palette-green-100: #e6f4ec;
+  --palette-amber-600: #92400e;
+  --palette-amber-500: #b45309;
+  --palette-amber-100: #fef3c7;
+  --palette-blue-600:  #1e40af;
+  --palette-blue-500:  #2563eb;
+  --palette-blue-100:  #dbeafe;
+
+  --bg-base:     #ffffff;
+  --bg-surface:  #f5f5f5;
+  --bg-elevated: #ffffff;
+  --bg-inverse:  #0d0d0d;
+
+  --text-primary:   #0d0d0d;
+  --text-secondary: #606060;
+  --text-muted:     #9a9a9a;
+  --text-inverse:   #ffffff;
+  --text-accent:    #c0392b;
+  --text-success:   #1a6e45;
+  --text-warning:   #92400e;
+  --text-error:     #c0392b;
+
+  --border-subtle:  #ebebeb;
+  --border-default: #d8d8d8;
+  --border-strong:  #2e2e2e;
+  --border-accent:  #c0392b;
+
+  --accent:        #c0392b;
+  --accent-hover:  #9e2618;
+  --accent-muted:  #fce8e6;
+  --accent-text:   #ffffff;
+
+  --fill-success: #e6f4ec;
+  --fill-warning: #fef3c7;
+  --fill-error:   #fce8e6;
+  --fill-info:    #dbeafe;
+
+  --radius-default: 0px;
+  --radius-sm:      2px;
+  --radius-md:      4px;
+  --radius-pill:    100px;
+
+  --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  --sidebar-width: 220px;
+}
+
+.theme-warm {
+  --bg-base:        #f4f0e8;
+  --bg-surface:     #ece8df;
+  --bg-elevated:    #faf7f2;
+  --bg-inverse:     #1a1410;
+  --text-primary:   #1a1410;
+  --text-secondary: #4a4540;
+  --text-muted:     #8a8480;
+  --text-inverse:   #faf7f2;
+  --border-subtle:  #e0dcd4;
+  --border-default: #ccc8c0;
+  --border-strong:  #1a1410;
+  --accent-muted:   #f5e8e6;
+  --radius-default: 2px;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@layer utilities {
+  .label {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+  }
+  .section-rule {
+    width: 32px;
+    height: 3px;
+    background: var(--accent);
+  }
+  .card-swiss {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-default);
+  }
+  .card-selected {
+    border-left: 3px solid var(--accent);
+    border-color: var(--border-strong);
+    background: var(--bg-base);
+  }
+  .btn-swiss-primary {
+    background: var(--accent);
+    color: var(--accent-text);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-default);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    padding: 9px 18px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .btn-swiss-primary:hover {
+    background: var(--accent-hover);
+  }
+  .btn-swiss-secondary {
+    background: transparent;
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-default);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    padding: 9px 18px;
+    cursor: pointer;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
