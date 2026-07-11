@@ -19,13 +19,6 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",
 ]
 
-CREDENTIALS_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "..",
-    "credentials.json",
-)
-
-
 # ─── OAuth ────────────────────────────────────────────────────────────────────
 
 def _make_code_verifier() -> str:
@@ -49,13 +42,12 @@ def _decode_state(state: str) -> tuple[str, str]:
 async def gmail_auth(user_id: str):
     """Redirige al usuario a Google OAuth con PKCE."""
     from app.config import settings
+    from app.services.gmail_service import load_client_secrets
 
-    if not os.path.exists(CREDENTIALS_PATH):
-        raise HTTPException(status_code=500, detail="credentials.json no encontrado en backend/app/")
-
-    with open(CREDENTIALS_PATH) as f:
-        creds_data = json.load(f)
-    client_info = creds_data.get("web") or creds_data.get("installed") or {}
+    try:
+        client_info = load_client_secrets()
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     client_id = client_info["client_id"]
 
     verifier = _make_code_verifier()
@@ -90,9 +82,8 @@ async def gmail_callback(code: str, state: str):
     except Exception:
         raise HTTPException(status_code=400, detail="State inválido")
 
-    with open(CREDENTIALS_PATH) as f:
-        creds_data = json.load(f)
-    client_info = creds_data.get("web") or creds_data.get("installed") or {}
+    from app.services.gmail_service import load_client_secrets
+    client_info = load_client_secrets()
     client_id = client_info["client_id"]
     client_secret = client_info["client_secret"]
 

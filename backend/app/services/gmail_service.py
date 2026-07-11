@@ -21,10 +21,30 @@ CREDENTIALS_PATH = os.path.join(
 )
 
 
-def _load_client_secrets() -> dict:
-    with open(CREDENTIALS_PATH) as f:
-        data = json.load(f)
-    return data.get("web") or data.get("installed") or {}
+def load_client_secrets() -> dict:
+    """Credenciales OAuth de Google: primero variables de entorno
+    (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET, ideal para producción), y si no
+    están, el archivo credentials.json (cómodo en local). Único punto de carga
+    usado por el router de Gmail y por este servicio."""
+    from app.config import settings
+
+    if settings.google_client_id and settings.google_client_secret:
+        return {
+            "client_id": settings.google_client_id,
+            "client_secret": settings.google_client_secret,
+        }
+    if os.path.exists(CREDENTIALS_PATH):
+        with open(CREDENTIALS_PATH) as f:
+            data = json.load(f)
+        return data.get("web") or data.get("installed") or {}
+    raise RuntimeError(
+        "Credenciales de Google no configuradas: define GOOGLE_CLIENT_ID y "
+        "GOOGLE_CLIENT_SECRET, o coloca credentials.json en backend/app/."
+    )
+
+
+# Alias interno para retrocompatibilidad
+_load_client_secrets = load_client_secrets
 
 
 def get_gmail_service(access_token: str, refresh_token: str):

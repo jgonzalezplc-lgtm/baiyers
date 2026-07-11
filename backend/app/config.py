@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     environment: str = "development"
     google_redirect_uri: str = "http://localhost:8000/api/gmail/callback"
     frontend_url: str = "http://localhost:3000"
+    # OAuth de Google (Gmail). En producción se definen por variable de entorno;
+    # en local, si están vacías, se cae al archivo backend/app/credentials.json.
+    google_client_id: str = ""
+    google_client_secret: str = ""
     # Etapa 9 — nuevas fuentes
     mouser_api_key: str = ""
     digikey_client_id: str = ""
