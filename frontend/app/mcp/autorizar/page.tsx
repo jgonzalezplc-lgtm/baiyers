@@ -1,10 +1,19 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// useSearchParams requiere un límite de Suspense para el prerender de Next 16.
 export default function MCPAutorizarPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: "100vh", background: "#060610" }} />}>
+      <MCPAutorizarContent />
+    </Suspense>
+  );
+}
+
+function MCPAutorizarContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [clientName, setClientName] = useState("");
