@@ -63,7 +63,7 @@ async def buscar_clcsa(query: str, max_results: int = 8) -> list[dict]:
         return []
     try:
         url = "https://clcsa.cl/wp-json/wc/store/v1/products"
-        async with httpx.AsyncClient(timeout=10.0, headers=HEADERS) as client:
+        async with httpx.AsyncClient(timeout=8.0, headers=HEADERS) as client:
             resp = await client.get(url, params={"search": query, "per_page": max_results})
             data = resp.json() if resp.status_code == 200 else []
             # WooCommerce busca con AND estricto: "madera pino" → 0. Reintentar
@@ -119,7 +119,7 @@ async def buscar_wmaderas(query: str, max_results: int = 8) -> list[dict]:
             "resources[type]": "product",
             "resources[limit]": str(max_results),
         }
-        async with httpx.AsyncClient(timeout=10.0, headers=HEADERS) as client:
+        async with httpx.AsyncClient(timeout=8.0, headers=HEADERS) as client:
             resp = await client.get(url, params=params)
             if resp.status_code != 200:
                 return []

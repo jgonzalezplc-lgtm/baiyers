@@ -35,6 +35,7 @@ const CONFIANZA_FILL: Record<string, string> = {
 export const CATEGORIAS: { key: string; label: string }[] = [
   { key: "industrial", label: "Industrial" },
   { key: "construccion", label: "Construcción" },
+  { key: "carpinteria", label: "Carpintería / Madera" },
   { key: "electrico", label: "Eléctrico" },
   { key: "electronica", label: "Electrónica" },
   { key: "mecanico", label: "Mecánico" },

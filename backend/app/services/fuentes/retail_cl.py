@@ -44,7 +44,7 @@ def _parse_precio_cl(s: str) -> float | None:
 async def buscar_sodimac(query: str, max_results: int = 8) -> list[dict]:
     try:
         url = f"https://www.sodimac.cl/sodimac-cl/search?Ntt={urllib.parse.quote(query)}"
-        async with httpx.AsyncClient(timeout=10.0, headers=HEADERS, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=8.0, headers=HEADERS, follow_redirects=True) as client:
             resp = await client.get(url)
             if resp.status_code != 200:
                 return []
@@ -98,7 +98,7 @@ async def buscar_sodimac(query: str, max_results: int = 8) -> list[dict]:
 async def buscar_easy(query: str, max_results: int = 8) -> list[dict]:
     try:
         url = "https://easycl.vtexcommercestable.com.br/api/catalog_system/pub/products/search"
-        async with httpx.AsyncClient(timeout=10.0, headers=HEADERS) as client:
+        async with httpx.AsyncClient(timeout=8.0, headers=HEADERS) as client:
             resp = await client.get(url, params={"ft": query})
             if resp.status_code not in (200, 206):
                 return []
@@ -149,7 +149,7 @@ async def buscar_lasierra(query: str, max_results: int = 8) -> list[dict]:
             "resources[type]": "product",
             "resources[limit]": str(max_results),
         }
-        async with httpx.AsyncClient(timeout=10.0, headers=HEADERS) as client:
+        async with httpx.AsyncClient(timeout=8.0, headers=HEADERS) as client:
             resp = await client.get(url, params=params)
             if resp.status_code != 200:
                 return []
@@ -193,7 +193,7 @@ async def buscar_construmart(query: str, max_results: int = 8) -> list[dict]:
                 "}}}" % (query.replace('"', ""), max_results)
             )
         }
-        async with httpx.AsyncClient(timeout=10.0, headers={**HEADERS, "Content-Type": "application/json"}) as client:
+        async with httpx.AsyncClient(timeout=8.0, headers={**HEADERS, "Content-Type": "application/json"}) as client:
             resp = await client.post("https://www.construmart.cl/graphql", json=gql)
             if resp.status_code != 200:
                 return []
@@ -240,7 +240,7 @@ async def _buscar_magento_graphql(
                 "}}}" % (query.replace('"', ""), max_results)
             )
         }
-        async with httpx.AsyncClient(timeout=10.0, headers={**HEADERS, "Content-Type": "application/json"}) as client:
+        async with httpx.AsyncClient(timeout=8.0, headers={**HEADERS, "Content-Type": "application/json"}) as client:
             resp = await client.post(graphql_url, json=gql)
             if resp.status_code != 200:
                 return []
@@ -290,7 +290,7 @@ async def buscar_vitel(query: str, max_results: int = 8) -> list[dict]:
 async def buscar_dartel(query: str, max_results: int = 8) -> list[dict]:
     try:
         url = "https://dartelcl.vtexcommercestable.com.br/api/catalog_system/pub/products/search"
-        async with httpx.AsyncClient(timeout=10.0, headers=HEADERS) as client:
+        async with httpx.AsyncClient(timeout=8.0, headers=HEADERS) as client:
             resp = await client.get(url, params={"ft": query})
             if resp.status_code not in (200, 206):
                 return []
@@ -336,7 +336,7 @@ async def buscar_dartel(query: str, max_results: int = 8) -> list[dict]:
 async def buscar_ferrelectrica(query: str, max_results: int = 8) -> list[dict]:
     try:
         url = f"https://www.ferrelectrica.cl/search?search_text={urllib.parse.quote(query)}"
-        async with httpx.AsyncClient(timeout=10.0, headers=HEADERS, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=8.0, headers=HEADERS, follow_redirects=True) as client:
             resp = await client.get(url)
             if resp.status_code != 200:
                 return []
@@ -389,7 +389,7 @@ async def buscar_ferrelectrica(query: str, max_results: int = 8) -> list[dict]:
 async def buscar_gobantes(query: str, max_results: int = 8) -> list[dict]:
     try:
         url = f"https://gobantes.cl/busqueda?s={urllib.parse.quote(query)}"
-        async with httpx.AsyncClient(timeout=10.0, headers=HEADERS, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=8.0, headers=HEADERS, follow_redirects=True) as client:
             resp = await client.get(url)
             if resp.status_code != 200:
                 return []
@@ -433,7 +433,7 @@ async def buscar_gobantes(query: str, max_results: int = 8) -> list[dict]:
 
 async def buscar_rhona(query: str, max_results: int = 8) -> list[dict]:
     try:
-        async with httpx.AsyncClient(timeout=10.0, headers=HEADERS) as client:
+        async with httpx.AsyncClient(timeout=8.0, headers=HEADERS) as client:
             resp = await client.post(
                 "https://rhona.cl/global/gl-ajax.php",
                 data={"accion": "algo", "dato": query},

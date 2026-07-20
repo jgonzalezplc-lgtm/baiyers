@@ -22,21 +22,25 @@ ELECTRICO_CL = {"vitel", "dartel", "ferrelectrica", "gobantes", "rhona"}
 # Maderas CL: tienen gate interno de keywords (si la consulta no es de madera
 # devuelven [] sin salir a la red), por eso es barato incluirlas en categorías amplias.
 MADERAS_CL = {"clcsa", "wmaderas", "ferramenta", "maderas_dir"}
+# Carpintería/madera: barracas + retail de construcción que vende madera.
+# NO incluye eléctrico (una tabla de pino no se cotiza en Vitel).
+CARPINTERIA = MADERAS_CL | {"sodimac", "easy", "construmart", "lasierra"}
 
 TODAS_ESPECIFICAS = ELECTRONICA | CONSTRUCCION | ELECTRICO_CL | MADERAS_CL
 
 CATEGORIA_FUENTES: dict[str, set[str]] = {
     # Categorías nuevas (v2)
+    "carpinteria":       CARPINTERIA,                 # madera/maderas → sin eléctrico
     "electronica":       ELECTRONICA | ELECTRICO_CL,
-    "construccion":      CONSTRUCCION | ELECTRICO_CL | MADERAS_CL,
+    "construccion":      CONSTRUCCION | MADERAS_CL,   # construcción general (sin eléctrico)
     "insumos_medicos":   set(),                       # solo genéricas + proveedores custom
     "industrial":        TODAS_ESPECIFICAS,
     "tuberias_valvulas": CONSTRUCCION,
     # Categorías legacy (v1) — mapeo conservador
-    "mecanico":          CONSTRUCCION | ELECTRICO_CL | MADERAS_CL,
-    "electrico":         ELECTRONICA | ELECTRICO_CL | CONSTRUCCION,
+    "mecanico":          CONSTRUCCION,
+    "electrico":         ELECTRONICA | ELECTRICO_CL,  # eléctrico → sin retail construcción
     "hidraulico":        CONSTRUCCION | ELECTRICO_CL,
-    "neumatico":         CONSTRUCCION | ELECTRICO_CL,
+    "neumatico":         CONSTRUCCION,
     "consumible":        CONSTRUCCION | MADERAS_CL,
     "servicio":          set(),
     "otro":              TODAS_ESPECIFICAS,

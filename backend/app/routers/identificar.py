@@ -26,7 +26,7 @@ Interpreta la intencion, extrae CADA item por separado, y responde SOLO en JSON 
   "nombre_tecnico": "nombre tecnico del item principal (el primero si hay varios)",
   "marca": "marca si es visible o mencionada, sino null",
   "numero_parte": "numero de parte si es visible o mencionado, sino null",
-  "categoria": "electronica|construccion|insumos_medicos|industrial|tuberias_valvulas|mecanico|electrico|hidraulico|neumatico|servicio|consumible|otro",
+  "categoria": "electronica|construccion|carpinteria|insumos_medicos|industrial|tuberias_valvulas|mecanico|electrico|hidraulico|neumatico|servicio|consumible|otro",
   "terminos_busqueda_es": ["termino1", "termino2", "termino3", "termino4", "termino5"],
   "terminos_busqueda_en": ["term1", "term2", "term3", "term4", "term5"],
   "confianza": "alto|medio|bajo",
@@ -48,6 +48,10 @@ Interpreta la intencion, extrae CADA item por separado, y responde SOLO en JSON 
 }
 
 Reglas:
+- categoria: elige la MAS ESPECIFICA. "carpinteria" para madera/tablas/tablones/molduras/terciado/OSB
+  (NO uses "construccion" ni "electrico" para madera). "electrico" solo para cables/interruptores/
+  tableros/motores. "construccion" para cemento/fierro/áridos/herramientas generales. Cada item de una
+  lista lleva SU propia categoria (una tabla de pino=carpinteria, un cable=electrico, cemento=construccion).
 - lista_items SIEMPRE presente, con al menos 1 elemento. Si el usuario pidio varios items, un elemento por item.
 - Si el usuario indica cantidad ("50 tornillos"), reflejala en "cantidad".
 - n_cotizaciones_solicitadas: cuantas cotizaciones/proveedores pidio el usuario (default 3 si no lo dice).

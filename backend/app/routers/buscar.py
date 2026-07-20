@@ -251,7 +251,9 @@ async def _filtrar_gemini(resultados: list[dict], nombre_item: str, gemini_key: 
         TIPOS_VALIDOS = {"distribuidor", "fabricante", "retail", "desconocido"}
         for r in resultados:
             meta = url_map.get(r.get("url", ""), {})
-            r["relevante"] = meta.get("relevante", True)
+            # Combinar con la heurística: si _marcar_relevancia ya lo marcó basura,
+            # Gemini no lo resucita (ambos deben coincidir en "relevante").
+            r["relevante"] = r.get("relevante", True) and meta.get("relevante", True)
             tipo = meta.get("tipo", "desconocido")
             r["tipo_proveedor"] = tipo if tipo in TIPOS_VALIDOS else "desconocido"
 
@@ -413,7 +415,20 @@ async def _buscar_fuentes(req: BuscarRequest) -> list[dict]:
     for lst in all_results:
         if isinstance(lst, list):
             todos.extend(lst)
+    cat = (req.categorias[0] if req.categorias else None) or req.categoria
+    _marcar_relevancia(todos, req.nombre_item, cat)
     return _deduplicar(todos)
+
+
+def _marcar_relevancia(resultados: list[dict], nombre_item: str, categoria: str | None) -> None:
+    """Marca relevante=False en los resultados basura (derivados/accesorios).
+    No pisa un relevante=False ya existente. Rápido (heurístico, sin LLM)."""
+    from app.services.relevancia import es_relevante
+    for r in resultados:
+        if r.get("relevante") is False:
+            continue
+        titulo = r.get("titulo") or r.get("proveedor") or ""
+        r["relevante"] = es_relevante(titulo, nombre_item, categoria)
 
 
 @router.post("/buscar")
@@ -526,10 +541,14 @@ async def buscar_stream(req: BuscarRequest):
         all_results: list[dict] = []
         seen_urls: set[str] = set()
 
+        cat_rel = (req.categorias[0] if req.categorias else None) or req.categoria
+
         async def run_source(name: str, coro):
             try:
                 results = await coro
                 if isinstance(results, list):
+                    # Matching: descartar basura (barniz para "madera", etc.) al vuelo
+                    _marcar_relevancia(results, req.nombre_item, cat_rel)
                     await queue.put((name, results))
                 else:
                     await queue.put((name, []))
