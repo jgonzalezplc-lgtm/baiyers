@@ -900,6 +900,15 @@ export default function ResultadosPage() {
             {/* Cantidad a comprar del ítem actual */}
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "1px solid var(--border-default)", padding: "4px 8px", background: "var(--bg-surface)" }}>
               <span className="label" style={{ color: "var(--text-muted)" }}>CANTIDAD</span>
+              <span
+                title="Cantidad a comprar de este ítem. La usamos para calcular el total (precio × cantidad), los informes PDF y el mensaje de cotización a los proveedores. Cada ítem de la lista tiene su propia cantidad; puedes editarla."
+                style={{
+                  cursor: "help", fontSize: 10, fontWeight: 700, color: "var(--text-muted)",
+                  border: "1px solid var(--border-default)", borderRadius: "50%",
+                  width: 14, height: 14, display: "inline-flex", alignItems: "center",
+                  justifyContent: "center", lineHeight: 1,
+                }}
+              >?</span>
               <input
                 type="number"
                 min={1}
