@@ -1114,6 +1114,8 @@ export default function ResultadosPage() {
                     onSeleccionar={() => toggleSeleccionado(r.url)}
                     tasas={tasas}
                     ofertas={grupo.ofertas.length > 1 ? grupo.ofertas : undefined}
+                    nombreItem={nombreItem}
+                    cantidad={cantidad}
                   />
 
                   {/* Badges fila inferior */}

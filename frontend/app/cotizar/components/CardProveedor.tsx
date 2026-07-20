@@ -51,6 +51,18 @@ interface Props {
   tasas?: Record<string, number>;
   /** Mismo producto visto en otras fuentes (incluye la oferta actual), ordenado por precio asc. */
   ofertas?: Resultado[];
+  /** Para armar el mensaje de cotización (WhatsApp/email) */
+  nombreItem?: string;
+  cantidad?: number;
+}
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+interface Contacto {
+  email: string | null;
+  telefono: string | null;
+  whatsapp: { numero: string; link: string } | null;
+  mensaje: string;
 }
 
 const PAIS_LABEL: Record<string, string> = {
@@ -80,9 +92,43 @@ function StarRating({ rating }: { rating: number }) {
   );
 }
 
-export default function CardProveedor({ resultado, seleccionado, onSeleccionar, ofertas }: Props) {
+export default function CardProveedor({ resultado, seleccionado, onSeleccionar, ofertas, nombreItem, cantidad }: Props) {
   const [imgError, setImgError] = useState(false);
   const [showSpecs, setShowSpecs] = useState(false);
+
+  // Contacto para cotizar (scrape de email + WhatsApp con mensaje pre-hecho)
+  const [contacto, setContacto] = useState<Contacto | null>(null);
+  const [cargandoContacto, setCargandoContacto] = useState(false);
+  const [copiado, setCopiado] = useState<"" | "email" | "mensaje">("");
+
+  const cargarContacto = async () => {
+    if (contacto || cargandoContacto || !resultado.url) return;
+    setCargandoContacto(true);
+    try {
+      const res = await fetch(`${API_URL}/api/contacto`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: resultado.url,
+          proveedor: resultado.proveedor,
+          nombre_item: nombreItem || resultado.titulo,
+          cantidad: cantidad || 1,
+          email_existente: (resultado as unknown as { contacto?: string }).contacto,
+        }),
+      });
+      if (res.ok) setContacto(await res.json());
+    } catch { /* silencioso */ } finally {
+      setCargandoContacto(false);
+    }
+  };
+
+  const copiar = async (texto: string, cual: "email" | "mensaje") => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      setCopiado(cual);
+      setTimeout(() => setCopiado(""), 1800);
+    } catch { /* clipboard no disponible */ }
+  };
 
   const paisLabel = PAIS_LABEL[resultado.pais] ?? resultado.pais ?? "Internacional";
   const fuenteLabel = resultado.fuente_label || FUENTE_LABEL[resultado.fuente] || resultado.fuente;
@@ -328,6 +374,12 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
               Ver
             </a>
           )}
+          {resultado.url && (
+            <button onClick={cargarContacto} disabled={cargandoContacto}
+              className="btn-swiss-secondary" style={{ fontSize: 10, padding: "4px 8px" }}>
+              {cargandoContacto ? "Buscando…" : contacto ? "Contacto ▾" : "Cotizar"}
+            </button>
+          )}
           <button onClick={onSeleccionar}
             className={seleccionado ? "btn-swiss-secondary" : "btn-swiss-primary"}
             style={{ fontSize: 10, padding: "4px 8px" }}>
@@ -335,6 +387,42 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
           </button>
         </div>
       </div>
+
+      {/* Panel de contacto: email + WhatsApp con mensaje pre-hecho */}
+      {contacto && (
+        <div style={{
+          marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-subtle)",
+          display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center",
+        }}>
+          {contacto.whatsapp ? (
+            <>
+              <a href={contacto.whatsapp.link} target="_blank" rel="noopener noreferrer"
+                style={{
+                  fontSize: 11, fontWeight: 700, textDecoration: "none",
+                  color: "#fff", background: "#25D366", padding: "6px 12px",
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                }}>
+                WhatsApp con mensaje listo ↗
+              </a>
+              <button onClick={() => copiar(contacto.mensaje, "mensaje")}
+                className="btn-swiss-secondary" style={{ fontSize: 10, padding: "5px 10px" }}>
+                {copiado === "mensaje" ? "¡Copiado!" : "Copiar mensaje"}
+              </button>
+            </>
+          ) : (
+            <span className="label" style={{ color: "var(--text-muted)" }}>Sin WhatsApp en la página</span>
+          )}
+
+          {contacto.email ? (
+            <button onClick={() => copiar(contacto.email!, "email")}
+              className="btn-swiss-secondary" style={{ fontSize: 10, padding: "5px 10px" }}>
+              {copiado === "email" ? "¡Copiado!" : `✉ ${contacto.email}`}
+            </button>
+          ) : (
+            <span className="label" style={{ color: "var(--text-muted)" }}>Email no encontrado</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
