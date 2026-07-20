@@ -54,6 +54,9 @@ interface Props {
   /** Para armar el mensaje de cotización (WhatsApp/email) */
   nombreItem?: string;
   cantidad?: number;
+  /** Permite elegir una oferta específica del grupo (no solo la más barata) */
+  onToggleOferta?: (url: string) => void;
+  seleccionadosUrls?: Set<string>;
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -92,7 +95,7 @@ function StarRating({ rating }: { rating: number }) {
   );
 }
 
-export default function CardProveedor({ resultado, seleccionado, onSeleccionar, ofertas, nombreItem, cantidad }: Props) {
+export default function CardProveedor({ resultado, seleccionado, onSeleccionar, ofertas, nombreItem, cantidad, onToggleOferta, seleccionadosUrls }: Props) {
   const [imgError, setImgError] = useState(false);
   const [showSpecs, setShowSpecs] = useState(false);
 
@@ -308,51 +311,73 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
                 const esEsta = o.url === resultado.url;
                 const labelFuente = o.fuente_label || FUENTE_LABEL[o.fuente] || o.fuente;
                 const desc = o.titulo || o.descripcion || "";
+                const elegible = !!onToggleOferta && !!o.url;
+                const elegida = seleccionadosUrls?.has(o.url) ?? false;
                 return (
-                  <a
+                  <div
                     key={o.url || i}
-                    href={o.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
                     style={{
                       display: "flex",
-                      flexDirection: "column",
-                      gap: 1,
-                      textDecoration: "none",
+                      alignItems: "stretch",
+                      gap: 8,
                       padding: "4px 6px",
-                      borderLeft: `2px solid ${esEsta ? "var(--accent)" : "var(--border-default)"}`,
-                      background: esEsta ? "var(--fill-error)" : "transparent",
+                      borderLeft: `2px solid ${elegida ? "var(--accent)" : "var(--border-default)"}`,
+                      background: elegida ? "var(--fill-error)" : "transparent",
                     }}
                   >
-                    {/* Descripción del producto (lo importante para comparar) */}
-                    <span
-                      title={desc}
-                      style={{
-                        fontSize: 11,
-                        color: esEsta ? "var(--text-primary)" : "var(--text-secondary)",
-                        fontWeight: esEsta ? 700 : 400,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        lineHeight: 1.3,
-                      }}
+                    {/* Checkbox para elegir esta oferta específica */}
+                    {elegible && (
+                      <button
+                        onClick={() => onToggleOferta!(o.url)}
+                        title={elegida ? "Quitar de la selección" : "Elegir esta oferta"}
+                        style={{
+                          flexShrink: 0, width: 16, height: 16, alignSelf: "center", cursor: "pointer",
+                          border: `1px solid ${elegida ? "var(--accent)" : "var(--border-strong)"}`,
+                          background: elegida ? "var(--accent)" : "var(--bg-base)",
+                          color: "#fff", fontSize: 11, lineHeight: 1, padding: 0,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                        }}
+                      >
+                        {elegida ? "✓" : ""}
+                      </button>
+                    )}
+                    {/* Descripción + fuente + precio (link a la oferta) */}
+                    <a
+                      href={o.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ flex: 1, display: "flex", flexDirection: "column", gap: 1, textDecoration: "none", minWidth: 0 }}
                     >
-                      {desc || labelFuente}
-                    </span>
-                    {/* Fuente + precio */}
-                    <span className="label" style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                      <span style={{ color: "var(--accent)" }}>
-                        {labelFuente}{o.proveedor && o.proveedor !== labelFuente ? ` · ${o.proveedor}` : ""}
-                        {esEsta ? " — esta oferta" : ""}
+                      <span
+                        title={desc}
+                        style={{
+                          fontSize: 11,
+                          color: elegida ? "var(--text-primary)" : "var(--text-secondary)",
+                          fontWeight: elegida ? 700 : 400,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.3,
+                        }}
+                      >
+                        {desc || labelFuente}
                       </span>
-                      <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)", color: "var(--text-primary)", fontWeight: 700 }}>
-                        {o.precio != null ? formatPrecio(o.precio, o.moneda) : "A cotizar"}
+                      <span className="label" style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <span style={{ color: "var(--accent)" }}>
+                          {labelFuente}{o.proveedor && o.proveedor !== labelFuente ? ` · ${o.proveedor}` : ""}
+                          {esEsta ? " — más barata" : ""}
+                        </span>
+                        <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)", color: "var(--text-primary)", fontWeight: 700 }}>
+                          {o.precio != null ? formatPrecio(o.precio, o.moneda) : "A cotizar"}
+                        </span>
                       </span>
-                    </span>
-                  </a>
+                    </a>
+                  </div>
                 );
               })}
             </div>
+            {onToggleOferta && (
+              <div className="label" style={{ color: "var(--text-muted)", marginTop: 4 }}>
+                Marca ✓ la oferta que quieras cotizar (no tiene que ser la más barata).
+              </div>
+            )}
           </div>
         )}
       </div>

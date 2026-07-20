@@ -1125,6 +1125,8 @@ export default function ResultadosPage() {
                     ofertas={grupo.ofertas.length > 1 ? grupo.ofertas : undefined}
                     nombreItem={nombreItem}
                     cantidad={cantidad}
+                    onToggleOferta={toggleSeleccionado}
+                    seleccionadosUrls={seleccionados}
                   />
 
                   {/* Badges fila inferior */}
