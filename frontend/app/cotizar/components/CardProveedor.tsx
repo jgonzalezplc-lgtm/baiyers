@@ -303,33 +303,51 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
             <div className="label" style={{ color: "var(--text-muted)", marginBottom: 4 }}>
               Mismo producto en {ofertas.length} fuentes:
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {ofertas.map((o, i) => {
                 const esEsta = o.url === resultado.url;
                 const labelFuente = o.fuente_label || FUENTE_LABEL[o.fuente] || o.fuente;
+                const desc = o.titulo || o.descripcion || "";
                 return (
                   <a
                     key={o.url || i}
                     href={o.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="label"
                     style={{
                       display: "flex",
-                      justifyContent: "space-between",
-                      gap: 8,
+                      flexDirection: "column",
+                      gap: 1,
                       textDecoration: "none",
-                      color: esEsta ? "var(--text-primary)" : "var(--text-muted)",
-                      fontWeight: esEsta ? 700 : 400,
-                      padding: "1px 0",
+                      padding: "4px 6px",
+                      borderLeft: `2px solid ${esEsta ? "var(--accent)" : "var(--border-default)"}`,
+                      background: esEsta ? "var(--fill-error)" : "transparent",
                     }}
                   >
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {labelFuente}{o.proveedor && o.proveedor !== labelFuente ? ` (${o.proveedor})` : ""}
-                      {esEsta ? " — esta oferta" : ""}
+                    {/* Descripción del producto (lo importante para comparar) */}
+                    <span
+                      title={desc}
+                      style={{
+                        fontSize: 11,
+                        color: esEsta ? "var(--text-primary)" : "var(--text-secondary)",
+                        fontWeight: esEsta ? 700 : 400,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      {desc || labelFuente}
                     </span>
-                    <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)" }}>
-                      {o.precio != null ? formatPrecio(o.precio, o.moneda) : "A cotizar"}
+                    {/* Fuente + precio */}
+                    <span className="label" style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <span style={{ color: "var(--accent)" }}>
+                        {labelFuente}{o.proveedor && o.proveedor !== labelFuente ? ` · ${o.proveedor}` : ""}
+                        {esEsta ? " — esta oferta" : ""}
+                      </span>
+                      <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)", color: "var(--text-primary)", fontWeight: 700 }}>
+                        {o.precio != null ? formatPrecio(o.precio, o.moneda) : "A cotizar"}
+                      </span>
                     </span>
                   </a>
                 );
