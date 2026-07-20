@@ -158,9 +158,11 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
       borderTop: "none",
       padding: "14px 16px",
       display: "flex",
-      gap: 14,
-      alignItems: "flex-start",
+      flexDirection: "column",
+      gap: 10,
     }}>
+      {/* Fila principal: thumbnail + info + precio/acciones */}
+      <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
 
       {/* Thumbnail */}
       <div style={{
@@ -430,6 +432,7 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
           </button>
         </div>
       </div>
+      </div>{/* cierre fila principal */}
 
       {/* Panel de contacto: email + WhatsApp con mensaje pre-hecho */}
       {contacto && (
