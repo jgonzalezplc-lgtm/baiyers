@@ -16,27 +16,40 @@ function GoogleIcon() {
   );
 }
 
+function OutlookIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#0A2767" d="M44 24l-1-2H29v15l1 1 14-8z" />
+      <path fill="#0364B8" d="M29 8h14a1 1 0 0 1 1 1v15H29z" />
+      <path fill="#28A8EA" d="M4 12h22v24H4z" opacity="0" />
+      <path fill="#0078D4" d="M15 15a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 13a5 5 0 1 1 0-10 5 5 0 0 1 0 10z" />
+      <path fill="#0A2767" d="M4 11l20-4v34L4 37z" />
+      <path fill="#fff" d="M15 16.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zm0 10.5a4 4 0 1 1 0-8 4 4 0 0 1 0 8z" />
+    </svg>
+  );
+}
+
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [empresa, setEmpresa] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
   const handleRegister = async () => {
-    if (!email || !password || !empresa) {
-      setError("Completa todos los campos");
+    if (!email || !password) {
+      setError("Ingresa tu email y contraseña");
       return;
     }
     setLoading(true);
     setError("");
 
+    // La empresa se detecta en el onboarding a partir del correo
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { empresa, plan: "free" } },
+      options: { data: { plan: "free" } },
     });
 
     if (error) {
@@ -54,6 +67,18 @@ export default function RegisterPage() {
       options: { redirectTo: `${window.location.origin}/auth/callback?next=/onboarding` },
     });
     if (error) setError("No se pudo continuar con Google. Intenta de nuevo.");
+  };
+
+  const handleOutlook = async () => {
+    setError("");
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "azure",
+      options: {
+        scopes: "email",
+        redirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
+      },
+    });
+    if (error) setError("Outlook aún no está habilitado. Usa Google o email por ahora.");
   };
 
   return (
@@ -103,14 +128,25 @@ export default function RegisterPage() {
           </div>
         )}
 
+        {/* Proveedores primero — la empresa se detecta luego en el onboarding */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <button onClick={handleGoogle} className="btn-swiss-secondary"
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12 }}>
+            <GoogleIcon /> Continuar con Google
+          </button>
+          <button onClick={handleOutlook} className="btn-swiss-secondary"
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12 }}>
+            <OutlookIcon /> Continuar con Outlook
+          </button>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px 0" }}>
+          <div style={{ flex: 1, height: 1, background: "var(--border-default)" }} />
+          <span className="label" style={{ color: "var(--text-muted)" }}>o con tu correo</span>
+          <div style={{ flex: 1, height: 1, background: "var(--border-default)" }} />
+        </div>
+
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <Input
-            label="Nombre de empresa"
-            type="text"
-            value={empresa}
-            onChange={e => setEmpresa(e.target.value)}
-            placeholder="Empresa SpA"
-          />
           <Input
             label="Email corporativo"
             type="email"
@@ -131,20 +167,10 @@ export default function RegisterPage() {
           onClick={handleRegister}
           disabled={loading}
           className="w-full justify-center"
-          style={{ marginTop: 20 }}
+          style={{ marginTop: 16 }}
         >
           {loading ? "Creando cuenta..." : "Crear cuenta gratis"}
         </BtnPrimary>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px 0" }}>
-          <div style={{ flex: 1, height: 1, background: "var(--border-default)" }} />
-          <span className="label" style={{ color: "var(--text-muted)" }}>o</span>
-          <div style={{ flex: 1, height: 1, background: "var(--border-default)" }} />
-        </div>
-        <button onClick={handleGoogle} className="btn-swiss-secondary"
-          style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12 }}>
-          <GoogleIcon /> Continuar con Google
-        </button>
 
         <p style={{ textAlign: "center", fontSize: 11, color: "var(--text-muted)", marginTop: 16 }}>
           Ya tienes cuenta?{" "}
