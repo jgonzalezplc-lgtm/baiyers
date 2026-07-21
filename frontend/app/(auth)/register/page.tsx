@@ -32,7 +32,7 @@ export default function RegisterPage() {
       setError(error.message);
       setLoading(false);
     } else {
-      router.push("/dashboard");
+      router.push("/onboarding");
     }
   };
 
