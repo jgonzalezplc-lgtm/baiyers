@@ -152,6 +152,65 @@ async def _serp_query(
         return []
 
 
+async def _serper_query(
+    query: str, serper_key: str, client: httpx.AsyncClient,
+    gl: str = "cl", pais_default: str = "CL"
+) -> list[dict]:
+    """Serper.dev — endpoint de Google Shopping (alternativa barata a SerpAPI)."""
+    try:
+        resp = await client.post(
+            "https://google.serper.dev/shopping",
+            headers={"X-API-KEY": serper_key, "Content-Type": "application/json"},
+            json={"q": query, "gl": gl, "hl": "es"},
+            timeout=10.0,
+        )
+        data = resp.json()
+        results = []
+        for item in (data.get("shopping") or [])[:8]:
+            precio, moneda = _parse_precio(item.get("price"))
+            if pais_default == "CL" and moneda == "USD":
+                moneda = "CLP"
+            elif pais_default != "CL" and moneda == "CLP":
+                moneda = "USD"
+            rating = None
+            try:
+                rating = float(item.get("rating") or 0) or None
+            except Exception:
+                pass
+            results.append({
+                "titulo": item.get("title", ""),
+                "precio": precio,
+                "moneda": moneda,
+                "url": item.get("link", ""),
+                "fuente": "google",
+                "pais": pais_default,
+                "proveedor": item.get("source", ""),
+                "thumbnail": item.get("imageUrl"),
+                "descripcion": None,
+                "plazo_entrega_estimado": item.get("delivery"),
+                "rating": rating,
+                "num_reviews": item.get("ratingCount"),
+                "condicion": "nuevo",
+            })
+        return results
+    except Exception as e:
+        print(f"[Serper gl={gl}] Error: {e}")
+        return []
+
+
+async def _google_query(
+    query: str, client: httpx.AsyncClient, gl: str = "cl", pais_default: str = "CL"
+) -> list[dict]:
+    """Búsqueda web/shopping en Google: usa Serper.dev si está configurado
+    (más barato), sino SerpAPI. Si no hay ninguna key, devuelve []."""
+    from app.config import settings
+    if settings.serper_api_key:
+        return await _serper_query(query, settings.serper_api_key, client, gl, pais_default)
+    if settings.serp_api_key:
+        return await _serp_query(query, settings.serp_api_key, client, gl, pais_default)
+    return []
+
+
 async def _ml_query(termino: str, client: httpx.AsyncClient) -> list[dict]:
     try:
         resp = await client.get(
@@ -372,12 +431,12 @@ async def _buscar_fuentes(req: BuscarRequest) -> list[dict]:
     # Todo en paralelo: un solo gather para minimizar latencia total
     async with httpx.AsyncClient() as client:
         tareas = [_ml_query(termino_es, client)]
-        if settings.serp_api_key:
+        if settings.serper_api_key or settings.serp_api_key:
             tareas += [
-                _serp_query(f"{termino_es} proveedor Chile", settings.serp_api_key, client, gl="cl", pais_default="CL"),
-                _serp_query(f"{termino_es} precio", settings.serp_api_key, client, gl="cl", pais_default="CL"),
-                _serp_query(f"{termino_en} supplier buy", settings.serp_api_key, client, gl="us", pais_default="US"),
-                _serp_query(f"{termino_en} wholesale manufacturer", settings.serp_api_key, client, gl="us", pais_default="US"),
+                _google_query(f"{termino_es} proveedor Chile", client, gl="cl", pais_default="CL"),
+                _google_query(f"{termino_es} precio", client, gl="cl", pais_default="CL"),
+                _google_query(f"{termino_en} supplier buy", client, gl="us", pais_default="US"),
+                _google_query(f"{termino_en} wholesale manufacturer", client, gl="us", pais_default="US"),
             ]
         # Fuentes específicas filtradas por categoría
         especificas = {
@@ -560,12 +619,12 @@ async def buscar_stream(req: BuscarRequest):
             sources: list[tuple[str, object]] = [
                 ("MercadoLibre", _ml_query(termino_es, client)),
             ]
-            if settings.serp_api_key:
+            if settings.serper_api_key or settings.serp_api_key:
                 sources += [
-                    ("Google Chile", _serp_query(f"{termino_es} proveedor Chile", settings.serp_api_key, client, gl="cl", pais_default="CL")),
-                    ("Google Chile 2", _serp_query(f"{termino_es} precio", settings.serp_api_key, client, gl="cl", pais_default="CL")),
-                    ("Google EEUU", _serp_query(f"{termino_en} supplier buy", settings.serp_api_key, client, gl="us", pais_default="US")),
-                    ("Google Global", _serp_query(f"{termino_en} wholesale manufacturer", settings.serp_api_key, client, gl="us", pais_default="US")),
+                    ("Google Chile", _google_query(f"{termino_es} proveedor Chile", client, gl="cl", pais_default="CL")),
+                    ("Google Chile 2", _google_query(f"{termino_es} precio", client, gl="cl", pais_default="CL")),
+                    ("Google EEUU", _google_query(f"{termino_en} supplier buy", client, gl="us", pais_default="US")),
+                    ("Google Global", _google_query(f"{termino_en} wholesale manufacturer", client, gl="us", pais_default="US")),
                 ]
             # Fuentes específicas filtradas por categoría (v2)
             especificas: list[tuple[str, str, object]] = [

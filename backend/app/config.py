@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     supabase_service_key: str
     gemini_api_key: str = ""
     serp_api_key: str = ""
+    serper_api_key: str = ""   # Serper.dev (alternativa más barata a SerpAPI)
     anthropic_api_key: str = ""
     environment: str = "development"
     google_redirect_uri: str = "http://localhost:8000/api/gmail/callback"
