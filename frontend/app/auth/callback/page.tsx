@@ -5,26 +5,31 @@
  * window.location al host público. Evita los problemas de host interno
  * (localhost:8080) que ocurren al redirigir server-side detrás del proxy de Railway.
  */
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 function CallbackInner() {
   const params = useSearchParams();
-  const [msg, setMsg] = useState("Iniciando sesión…");
+  const yaCorrio = useRef(false);   // evita el doble intercambio (StrictMode/remount)
 
   useEffect(() => {
+    if (yaCorrio.current) return;
+    yaCorrio.current = true;
+
     const code = params.get("code");
     const next = params.get("next") || "/onboarding";
-    if (!code) { window.location.replace("/login?error=oauth"); return; }
+    const supabase = createClient();
 
-    createClient().auth.exchangeCodeForSession(code).then(({ error }) => {
-      if (error) {
-        setMsg("No se pudo completar el inicio de sesión.");
-        setTimeout(() => window.location.replace("/login?error=oauth"), 1200);
-      } else {
-        window.location.replace(next);
-      }
+    const irA = (destino: string) => window.location.replace(destino);
+
+    if (!code) { irA("/login?error=oauth"); return; }
+
+    supabase.auth.exchangeCodeForSession(code).then(async ({ error }) => {
+      if (!error) { irA(next); return; }
+      // Si "falló" pero la sesión igual quedó creada (código ya consumido), entrar.
+      const { data } = await supabase.auth.getSession();
+      irA(data.session ? next : "/login?error=oauth");
     });
   }, [params]);
 
@@ -34,7 +39,7 @@ function CallbackInner() {
         <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 16 }}>
           {[0, 1, 2].map(i => <div key={i} style={{ width: 8, height: 8, background: "var(--accent)", opacity: 0.3 + i * 0.35, animation: "pulse 1s infinite" }} />)}
         </div>
-        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{msg}</div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Iniciando sesión…</div>
       </div>
       <style>{`@keyframes pulse { 0%,100% { opacity:.3 } 50% { opacity:1 } }`}</style>
     </div>
