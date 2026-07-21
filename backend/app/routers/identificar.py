@@ -68,6 +68,8 @@ class IdentificarRequest(BaseModel):
     imagen_base64: Optional[str] = None
     imagen_mime: Optional[str] = "image/jpeg"
     imagen_url: Optional[str] = None
+    # Contexto de la empresa (del onboarding): orienta ítems ambiguos hacia su rubro
+    industria_empresa: Optional[str] = None
 
 
 def _limpiar_json(text: str) -> str:
@@ -108,6 +110,12 @@ async def identificar_item(req: IdentificarRequest):
         parts.append({"mime_type": "image/jpeg", "data": resp.content})
 
     prompt = PROMPT
+    if req.industria_empresa:
+        prompt += (
+            f"\n\nContexto: el usuario trabaja en una empresa del rubro '{req.industria_empresa}'. "
+            f"Si un ítem es AMBIGUO, inclínate por la interpretación propia de ese rubro. "
+            f"Pero si el ítem es claramente de otra categoría, respétala igual."
+        )
     if req.descripcion:
         prompt += f"\n\nDescripcion adicional del usuario: {req.descripcion}"
     parts.append(prompt)

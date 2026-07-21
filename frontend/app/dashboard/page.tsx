@@ -71,14 +71,22 @@ export default async function DashboardPage({
   return (
     <div>
       {/* Title */}
-      <div style={{ marginBottom: 28 }}>
-        <span className="label" style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-          COTIZADOR INTELIGENTE
-        </span>
-        <h1 style={{ fontSize: 28, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.02em" }}>
-          Dashboard
-        </h1>
-        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>¿Qué necesitas cotizar hoy?</p>
+      <div style={{ marginBottom: 28, display: "flex", alignItems: "center", gap: 14 }}>
+        {user.user_metadata?.logo_url && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={user.user_metadata.logo_url as string} alt={String(user.user_metadata?.empresa ?? "logo")}
+            width={52} height={52}
+            style={{ objectFit: "contain", border: "1px solid var(--border-subtle)", background: "#fff", flexShrink: 0 }} />
+        )}
+        <div>
+          <span className="label" style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
+            {user.user_metadata?.industria ? String(user.user_metadata.industria).toUpperCase() : "COTIZADOR INTELIGENTE"}
+          </span>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.02em" }}>
+            {user.user_metadata?.empresa ? `Hola, ${user.user_metadata.empresa}` : "Dashboard"}
+          </h1>
+          <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>¿Qué necesitas cotizar hoy?</p>
+        </div>
       </div>
 
       {/* Stats row */}

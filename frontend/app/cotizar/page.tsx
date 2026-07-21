@@ -45,6 +45,7 @@ export default function CotizarPage() {
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [industriaEmpresa, setIndustriaEmpresa] = useState<string | null>(null);
   const [lastDescripcion, setLastDescripcion] = useState("");
   const router = useRouter();
 
@@ -52,12 +53,14 @@ export default function CotizarPage() {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
       setUserId(data.user?.id ?? null);
+      setIndustriaEmpresa((data.user?.user_metadata?.industria as string) ?? null);
     });
   }, []);
 
   const identificarUno = async (descripcion: string, imagenBase64: string | null = null, imagenMime = "image/jpeg"): Promise<ResultadoIA> => {
     const body: Record<string, string> = {};
     if (descripcion) body.descripcion = descripcion;
+    if (industriaEmpresa) body.industria_empresa = industriaEmpresa;
     if (imagenBase64) { body.imagen_base64 = imagenBase64; body.imagen_mime = imagenMime; }
     const res = await fetch(`${API_URL}/api/identificar`, {
       method: "POST",
