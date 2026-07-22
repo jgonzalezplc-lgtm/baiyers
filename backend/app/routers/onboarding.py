@@ -23,29 +23,31 @@ _TLD_PAIS = {
 _GENERICOS = {"gmail.com", "hotmail.com", "outlook.com", "yahoo.com", "icloud.com", "live.com", "protonmail.com"}
 
 PROMPT = """Eres un analista de empresas B2B en Latinoamérica. Te doy el dominio de correo
-corporativo de una persona. Investiga QUÉ empresa es (usa tu conocimiento) y responde SOLO
+y/o el NOMBRE de la empresa de una persona. Investiga QUÉ empresa/institución es (usa tu
+conocimiento; incluye empresas, universidades y organismos públicos) y responde SOLO
 JSON válido, sin markdown:
 {
-  "empresa": "nombre comercial de la empresa",
+  "empresa": "nombre comercial/oficial",
   "es_empresa_conocida": true/false,
   "pais": "país principal de operación",
-  "industria": "sector económico (ej: energía, minería, construcción, retail, salud, manufactura)",
-  "descripcion": "1-2 frases sobre qué hace la empresa",
+  "industria": "sector (ej: energía, minería, construcción, retail, salud, educación, manufactura, gobierno)",
+  "descripcion": "1-2 frases sobre a qué se dedica",
   "presencia": "dónde opera (ej: Chile y 5 países de LatAm)",
-  "sitio_web": "https://... (el sitio oficial, deducido del dominio)",
-  "rut": "RUT chileno de la empresa si lo conoces con certeza (formato 99.999.999-9), sino null",
+  "sitio_web": "https://... (el sitio oficial)",
+  "dominio_empresa": "dominio web oficial sin www (ej: usach.cl), para el logo",
+  "rut": "RUT chileno si lo conoces con certeza (formato 99.999.999-9), sino null",
   "direccion": "dirección de la casa matriz si la conoces, sino null",
-  "categorias_compra_probables": ["categorías de insumos/productos que esta empresa suele comprar, 2 a 5, de: electronica, construccion, carpinteria, industrial, electrico, hidraulico, neumatico, tuberias_valvulas, mecanico, insumos_medicos, consumible, servicio"],
+  "categorias_compra_probables": ["categorías de insumos/productos que suele comprar, 2 a 5, de: electronica, construccion, carpinteria, industrial, electrico, hidraulico, neumatico, tuberias_valvulas, mecanico, insumos_medicos, consumible, servicio"],
   "confianza": "alto|medio|bajo"
 }
 IMPORTANTE: rut y direccion SOLO si estás seguro; si dudas, pon null (el usuario los confirmará).
-Si el dominio es genérico o no reconoces la empresa, pon es_empresa_conocida=false y confianza=bajo,
-pero igual deduce lo que puedas del nombre del dominio."""
+Si no reconoces la empresa, pon es_empresa_conocida=false y confianza=bajo, pero igual deduce lo que puedas."""
 
 
 class InvestigarRequest(BaseModel):
     email: Optional[str] = None
     dominio: Optional[str] = None
+    nombre_empresa: Optional[str] = None   # para correos genéricos: investiga por nombre
 
 
 def _dominio_de(email_o_dominio: str) -> str:
@@ -100,39 +102,50 @@ async def _scrape_rut_direccion(dominio: str) -> dict:
     return {"rut": rut, "direccion": direccion}
 
 
+def _logos_de(dominio: str) -> list[str]:
+    return [
+        f"https://logo.clearbit.com/{dominio}",
+        f"https://www.google.com/s2/favicons?domain={dominio}&sz=128",
+    ]
+
+
 @router.post("/investigar-empresa")
 async def investigar_empresa(req: InvestigarRequest):
     from app.config import settings
 
     dominio = _dominio_de(req.dominio or req.email or "")
-    if not dominio or "." not in dominio:
-        raise HTTPException(status_code=400, detail="Dominio inválido")
-
-    tld = dominio.rsplit(".", 1)[-1]
+    nombre = (req.nombre_empresa or "").strip()
+    tld = dominio.rsplit(".", 1)[-1] if "." in dominio else ""
     pais_tld = _TLD_PAIS.get(tld)
     generico = dominio in _GENERICOS
 
-    base = {
-        "dominio": dominio,
-        "pais_tld": pais_tld,
-        "generico": generico,
-        # Logos candidatos (el usuario confirma/elige); Clearbit + favicon Google
-        "logo_candidatos": [
-            f"https://logo.clearbit.com/{dominio}",
-            f"https://www.google.com/s2/favicons?domain={dominio}&sz=128",
-        ],
-    }
+    # Se puede investigar si hay un dominio corporativo O un nombre de empresa
+    if (not dominio or "." not in dominio) and not nombre:
+        raise HTTPException(status_code=400, detail="Falta dominio o nombre de empresa")
 
-    if generico or not settings.gemini_api_key:
+    base = {"dominio": dominio, "pais_tld": pais_tld, "generico": generico,
+            "logo_candidatos": _logos_de(dominio) if not generico else []}
+
+    # Correo genérico y sin nombre → pedir el nombre (el frontend re-investiga con él)
+    if (generico or not dominio or "." not in dominio) and not nombre:
         return {**base, "empresa": None, "es_empresa_conocida": False, "confianza": "bajo",
                 "rut": None, "direccion": None}
+
+    if not settings.gemini_api_key:
+        return {**base, "empresa": nombre or None, "es_empresa_conocida": False, "confianza": "bajo"}
 
     async def _gemini() -> dict:
         import google.generativeai as genai
         genai.configure(api_key=settings.gemini_api_key)
         model = genai.GenerativeModel("gemini-2.5-flash")
-        prompt = PROMPT + f"\n\nDominio de correo: {dominio}" + (f"\nPaís sugerido por el TLD: {pais_tld}" if pais_tld else "")
-        resp = await asyncio.wait_for(model.generate_content_async(prompt), timeout=25.0)
+        ctx = ""
+        if nombre:
+            ctx += f"\nNombre de la empresa: {nombre}"
+        if dominio and not generico:
+            ctx += f"\nDominio de correo corporativo: {dominio}"
+        if pais_tld:
+            ctx += f"\nPaís sugerido por el TLD: {pais_tld}"
+        resp = await asyncio.wait_for(model.generate_content_async(PROMPT + "\n" + ctx), timeout=25.0)
         text = resp.text.strip()
         if "```" in text:
             text = text.split("```")[1]
@@ -140,14 +153,37 @@ async def investigar_empresa(req: InvestigarRequest):
                 text = text[4:]
         return json.loads(text.strip())
 
-    # Investigación IA + scraping del sitio (RUT/dirección) en paralelo
-    gem_res, scrape = await asyncio.gather(_gemini(), _scrape_rut_direccion(dominio), return_exceptions=True)
+    # Dominio a scrapear para RUT/dirección: el corporativo, o el que deduzca la IA
+    dom_scrape = dominio if (dominio and not generico) else None
+    try:
+        gem_res = await _gemini()
+    except Exception as e:
+        print(f"[Onboarding] {dominio or nombre}: {e}")
+        gem_res = {"empresa": nombre or dominio.split(".")[0].title(), "es_empresa_conocida": False, "confianza": "bajo"}
 
-    if isinstance(gem_res, Exception):
-        print(f"[Onboarding] {dominio}: {gem_res}")
-        gem_res = {"empresa": dominio.split(".")[0].title(), "es_empresa_conocida": False, "confianza": "bajo"}
-    if isinstance(scrape, Exception):
-        scrape = {"rut": None, "direccion": None}
+    # Logo: del dominio real de la empresa (lo mejor), luego el corporativo del correo
+    dom_empresa = _dominio_de(gem_res.get("dominio_empresa") or "") if gem_res.get("dominio_empresa") else None
+    logos: list[str] = []
+    if dom_empresa and "." in dom_empresa:
+        logos += _logos_de(dom_empresa)
+        if not dom_scrape:
+            dom_scrape = dom_empresa
+    if not generico and dominio:
+        logos += _logos_de(dominio)
+    gem_res["logo_candidatos"] = logos or base["logo_candidatos"]
 
-    gem_res.setdefault("sitio_web", f"https://{dominio}")
-    return {**base, **gem_res, **scrape}
+    # Scraping de RUT/dirección del sitio real (si la IA no los dio)
+    scrape = {"rut": None, "direccion": None}
+    if dom_scrape and not (gem_res.get("rut") and gem_res.get("direccion")):
+        try:
+            scrape = await _scrape_rut_direccion(dom_scrape)
+        except Exception:
+            pass
+
+    gem_res.setdefault("sitio_web", f"https://{dom_empresa or dominio}")
+    # La IA gana para rut/dirección si los tiene; sino el scrape
+    if not gem_res.get("rut"):
+        gem_res["rut"] = scrape.get("rut")
+    if not gem_res.get("direccion"):
+        gem_res["direccion"] = scrape.get("direccion")
+    return {**base, **gem_res}

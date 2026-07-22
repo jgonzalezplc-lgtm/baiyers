@@ -77,6 +77,31 @@ export default function OnboardingPage() {
     });
   }, [investigar, router]);
 
+  const [buscando, setBuscando] = useState(false);
+
+  // Correo genérico: investiga la empresa por el NOMBRE que escribió el usuario
+  const buscarPorNombre = async () => {
+    if (!empresa.trim()) return;
+    setBuscando(true);
+    try {
+      const res = await fetch(`${API_URL}/api/onboarding/investigar-empresa`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, nombre_empresa: empresa.trim() }),
+      });
+      if (res.ok) {
+        const d: Investigacion = await res.json();
+        setInv(d);
+        setLogoIdx(0);
+        if (d.empresa) setEmpresa(d.empresa);
+        if (d.rut) setRut(d.rut);
+        if (d.direccion) setDireccion(d.direccion);
+        if (d.categorias_compra_probables?.length) setCats(new Set(d.categorias_compra_probables));
+      }
+    } catch { /* silencioso */ } finally {
+      setBuscando(false);
+    }
+  };
+
   const toggleCat = (k: string) => setCats(prev => {
     const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n;
   });
@@ -127,11 +152,12 @@ export default function OnboardingPage() {
         {paso === "empresa" && (
           <div>
             <div className="label" style={{ color: "var(--text-muted)", marginBottom: 8 }}>PASO 1 DE 3 · TU EMPRESA</div>
-            {inv?.empresa && !inv?.generico ? (
+            {inv?.es_empresa_conocida && inv?.empresa ? (
+              /* Encontrada (por dominio o por nombre) → reporte para confirmar */
               <>
-                <h1 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 4px", letterSpacing: "-0.02em" }}>¿Eres tú?</h1>
+                <h1 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 4px", letterSpacing: "-0.02em" }}>¿Es esta tu empresa?</h1>
                 <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 18 }}>
-                  Encontré esto a partir de <strong>{dominio}</strong>. Confírmalo o corrígelo.
+                  Esto es lo que encontré. Confírmalo o corrige el nombre y busco de nuevo.
                 </p>
                 <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-surface)", padding: 18, display: "flex", gap: 14, alignItems: "flex-start", marginBottom: 16 }}>
                   {logo && (
@@ -145,29 +171,44 @@ export default function OnboardingPage() {
                       {inv.industria}{inv.pais ? ` · ${inv.pais}` : ""}
                     </div>
                     {inv.descripcion && <div style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.5 }}>{inv.descripcion}</div>}
-                    {inv.presencia && <div className="label" style={{ color: "var(--text-muted)", marginTop: 6 }}>Presencia: {inv.presencia}</div>}
+                    {inv.rut && <div className="label" style={{ color: "var(--text-muted)", marginTop: 6 }}>RUT: {inv.rut}</div>}
+                    {inv.presencia && <div className="label" style={{ color: "var(--text-muted)", marginTop: 2 }}>Presencia: {inv.presencia}</div>}
                   </div>
+                </div>
+                <label className="label" style={{ color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Nombre (edítalo si no es exacto)</label>
+                <input value={empresa} onChange={e => setEmpresa(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") buscarPorNombre(); }} style={inputSt} />
+                <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+                  <button onClick={buscarPorNombre} disabled={buscando} className="btn-swiss-secondary">
+                    {buscando ? "Buscando…" : "Corregir"}
+                  </button>
+                  <button onClick={() => setPaso("datos")} className="btn-swiss-primary" style={{ flex: 1 }}>
+                    Sí, es correcto →
+                  </button>
                 </div>
               </>
             ) : (
+              /* No detectada (correo genérico) → pedir nombre e investigar */
               <>
-                <h1 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 4px" }}>Cuéntame de tu empresa</h1>
+                <h1 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 4px" }}>¿Cómo se llama tu empresa?</h1>
                 <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 18 }}>
-                  Tu correo es genérico, así que no pude detectarla sola. Escribe el nombre.
+                  Tu correo es genérico, así que dime el nombre y la busco por ti (rubro, país, RUT…).
                 </p>
+                <label className="label" style={{ color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Nombre de la empresa</label>
+                <input value={empresa} onChange={e => setEmpresa(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") buscarPorNombre(); }}
+                  autoFocus style={inputSt} placeholder="Ej: Constructora Andes / Universidad de Chile" />
+                <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+                  <button onClick={buscarPorNombre} disabled={!empresa.trim() || buscando}
+                    className="btn-swiss-primary" style={{ flex: 1 }}>
+                    {buscando ? "Buscando tu empresa…" : "Buscar mi empresa →"}
+                  </button>
+                  <button onClick={() => setPaso("datos")} disabled={!empresa.trim()} className="btn-swiss-secondary">
+                    Omitir
+                  </button>
+                </div>
               </>
             )}
-
-            <label className="label" style={{ color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Nombre de la empresa</label>
-            <input value={empresa} onChange={e => setEmpresa(e.target.value)}
-              style={inputSt} placeholder="Ej: Constructora Andes SpA" />
-
-            <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-              <button onClick={() => setPaso("datos")} disabled={!empresa.trim()}
-                className="btn-swiss-primary" style={{ flex: 1 }}>
-                Sí, continuar →
-              </button>
-            </div>
           </div>
         )}
 
