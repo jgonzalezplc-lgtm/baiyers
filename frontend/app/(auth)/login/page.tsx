@@ -16,6 +16,17 @@ function GoogleIcon() {
   );
 }
 
+function OutlookIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#0364B8" d="M29 8h14a1 1 0 0 1 1 1v15H29z" />
+      <path fill="#0078D4" d="M15 15a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 13a5 5 0 1 1 0-10 5 5 0 0 1 0 10z" />
+      <path fill="#0A2767" d="M4 11l20-4v34L4 37z" />
+      <path fill="#fff" d="M15 16.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zm0 10.5a4 4 0 1 1 0-8 4 4 0 0 1 0 8z" />
+    </svg>
+  );
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -46,6 +57,18 @@ export default function LoginPage() {
       options: { redirectTo: `${window.location.origin}/auth/callback?next=/onboarding` },
     });
     if (error) setError("No se pudo iniciar con Google. Intenta de nuevo.");
+  };
+
+  const handleOutlook = async () => {
+    setError("");
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "azure",
+      options: {
+        scopes: "openid profile email",
+        redirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
+      },
+    });
+    if (error) setError("Outlook aún no está habilitado. Usa Google o email por ahora.");
   };
 
   const handleRecovery = async () => {
@@ -203,8 +226,12 @@ export default function LoginPage() {
               <div style={{ flex: 1, height: 1, background: "var(--border-default)" }} />
             </div>
             <button onClick={handleGoogle} className="btn-swiss-secondary"
-              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12 }}>
+              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12, marginBottom: 8 }}>
               <GoogleIcon /> Continuar con Google
+            </button>
+            <button onClick={handleOutlook} className="btn-swiss-secondary"
+              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12 }}>
+              <OutlookIcon /> Continuar con Outlook
             </button>
             <p style={{ textAlign: "center", fontSize: 11, color: "var(--text-muted)", marginTop: 20 }}>
               No tienes cuenta?{" "}

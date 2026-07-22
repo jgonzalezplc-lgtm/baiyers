@@ -74,7 +74,7 @@ export default function RegisterPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "azure",
       options: {
-        scopes: "email",
+        scopes: "openid profile email",
         redirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
       },
     });
