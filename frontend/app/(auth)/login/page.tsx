@@ -229,10 +229,13 @@ export default function LoginPage() {
               style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12, marginBottom: 8 }}>
               <GoogleIcon /> Continuar con Google
             </button>
-            <button onClick={handleOutlook} className="btn-swiss-secondary"
-              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12 }}>
-              <OutlookIcon /> Continuar con Outlook
-            </button>
+            {/* Outlook oculto hasta configurar Azure AD (cuenta Microsoft de trabajo). Reactivar: false → true */}
+            {false && (
+              <button onClick={handleOutlook} className="btn-swiss-secondary"
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12 }}>
+                <OutlookIcon /> Continuar con Outlook
+              </button>
+            )}
             <p style={{ textAlign: "center", fontSize: 11, color: "var(--text-muted)", marginTop: 20 }}>
               No tienes cuenta?{" "}
               <Link href="/register" style={{ color: "var(--accent)", textDecoration: "none" }}>

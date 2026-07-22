@@ -134,10 +134,14 @@ export default function RegisterPage() {
             style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12 }}>
             <GoogleIcon /> Continuar con Google
           </button>
-          <button onClick={handleOutlook} className="btn-swiss-secondary"
-            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12 }}>
-            <OutlookIcon /> Continuar con Outlook
-          </button>
+          {/* Outlook oculto hasta configurar Azure AD (cuenta Microsoft de trabajo).
+              Reactivar: cambiar false → true. El resto (handleOutlook) ya está listo. */}
+          {false && (
+            <button onClick={handleOutlook} className="btn-swiss-secondary"
+              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12 }}>
+              <OutlookIcon /> Continuar con Outlook
+            </button>
+          )}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px 0" }}>
