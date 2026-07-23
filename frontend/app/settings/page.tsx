@@ -3,6 +3,8 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { BtnPrimary, Input } from "@/components/ui";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
 export default function SettingsPage() {
   const supabase = createClient();
   const [userId, setUserId] = useState("");
@@ -13,6 +15,29 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [toast, setToast] = useState("");
+  const [confirmBaja, setConfirmBaja] = useState("");
+  const [eliminando, setEliminando] = useState(false);
+
+  const handleEliminar = async () => {
+    setEliminando(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error("Sesión no válida");
+      const res = await fetch(`${API_URL}/api/cuenta/eliminar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access_token: token }),
+      });
+      if (!res.ok) throw new Error("No se pudo eliminar la cuenta");
+      await supabase.auth.signOut();
+      window.location.href = "/register";
+    } catch {
+      setToast("No se pudo eliminar la cuenta. Intenta de nuevo.");
+      setTimeout(() => setToast(""), 3500);
+      setEliminando(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -97,6 +122,38 @@ export default function SettingsPage() {
             <BtnPrimary onClick={handleGuardar} disabled={guardando} className="w-full justify-center">
               {guardando ? "Guardando..." : "Guardar"}
             </BtnPrimary>
+          </div>
+        )}
+
+        {/* Zona de peligro — darse de baja */}
+        {!loading && (
+          <div style={{
+            marginTop: 28,
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border-accent)",
+            padding: 24,
+          }}>
+            <div className="label" style={{ color: "var(--text-error)", fontWeight: 800, marginBottom: 6 }}>ZONA DE PELIGRO</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>Darse de baja</div>
+            <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 14 }}>
+              Elimina tu cuenta y sus datos de forma permanente. Esta acción no se puede deshacer.
+              Podrás volver a registrarte con el mismo correo. Para confirmar, escribe <strong>ELIMINAR</strong>.
+            </p>
+            <Input label="" value={confirmBaja} onChange={e => setConfirmBaja(e.target.value)} placeholder="Escribe ELIMINAR" />
+            <button
+              onClick={handleEliminar}
+              disabled={confirmBaja.trim().toUpperCase() !== "ELIMINAR" || eliminando}
+              style={{
+                marginTop: 12, width: "100%", padding: "10px 12px", fontSize: 12, fontWeight: 700,
+                fontFamily: "var(--font-mono)",
+                cursor: confirmBaja.trim().toUpperCase() === "ELIMINAR" && !eliminando ? "pointer" : "not-allowed",
+                background: confirmBaja.trim().toUpperCase() === "ELIMINAR" ? "var(--accent)" : "var(--bg-base)",
+                color: confirmBaja.trim().toUpperCase() === "ELIMINAR" ? "#fff" : "var(--text-muted)",
+                border: "1px solid var(--border-accent)",
+              }}
+            >
+              {eliminando ? "Eliminando cuenta..." : "Eliminar mi cuenta permanentemente"}
+            </button>
           </div>
         )}
       </div>
