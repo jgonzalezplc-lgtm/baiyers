@@ -42,12 +42,22 @@ export interface ItemLista {
   definitivo: Definitivo | null;
 }
 
+interface Aprobacion {
+  estado: "pendiente" | "aprobado" | "rechazado";
+  aprobador_email?: string;
+  token?: string;
+  comentario_rechazo?: string;
+  decidido_at?: string;
+}
+
 export interface DetalleLista {
   id: string;
   nombre: string;
   created_at: string | null;
   monto_total: number;
   items: ItemLista[];
+  aprobacion?: Aprobacion;
+  justificaciones?: Record<string, string>;
 }
 
 const FUENTE_LABEL: Record<string, string> = {
@@ -70,6 +80,11 @@ export default function ListaDetallePage() {
   const [toast, setToast] = useState("");
   const [tasas, setTasas] = useState<Record<string, number>>({});
   const [guardandoDef, setGuardandoDef] = useState<string | null>(null);
+  const [justificaciones, setJustificaciones] = useState<Record<string, string>>({});
+  const [aprobadorEmail, setAprobadorEmail] = useState("");
+  const [solicitando, setSolicitando] = useState(false);
+  const [mostrarAprobacion, setMostrarAprobacion] = useState(false);
+  const [userMeta, setUserMeta] = useState<Record<string, string>>({});
 
   const aCLP = useCallback((valor: number, moneda: string | null | undefined): number => {
     const m = moneda || "CLP";
@@ -80,7 +95,11 @@ export default function ListaDetallePage() {
   const cargar = useCallback(async (uid: string) => {
     try {
       const res = await fetch(`${API_URL}/api/listas/${id}?user_id=${uid}`);
-      if (res.ok) setLista(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setLista(data);
+        if (data.justificaciones) setJustificaciones(data.justificaciones);
+      }
     } catch { /* silent */ }
     setLoading(false);
   }, [id]);
@@ -94,6 +113,9 @@ export default function ListaDetallePage() {
       const uid = data.user?.id ?? null;
       setUserId(uid);
       if (uid) cargar(uid); else setLoading(false);
+      const m = data.user?.user_metadata ?? {};
+      setUserMeta(m);
+      if (m.autorizador_email) setAprobadorEmail(m.autorizador_email);
     });
   }, [cargar]);
 
@@ -159,6 +181,87 @@ export default function ListaDetallePage() {
     } catch { /* silent */ } finally { setGuardandoDef(null); }
   };
 
+  const autoSeleccionarBaratos = async () => {
+    if (!userId || !lista) return;
+    for (const it of lista.items) {
+      if (it.definitivo) continue;
+      const comparados = it.comparados.filter(c => (c.precio_cotizado ?? c.precio) != null);
+      if (!comparados.length) continue;
+      comparados.sort((a, b) => {
+        const pa = aCLP(a.precio_cotizado ?? a.precio!, a.precio_cotizado != null ? "CLP" : a.moneda);
+        const pb = aCLP(b.precio_cotizado ?? b.precio!, b.precio_cotizado != null ? "CLP" : b.moneda);
+        return pa - pb;
+      });
+      await elegirDefinitivo(it, comparados[0]);
+    }
+  };
+
+  const solicitarAprobacion = async () => {
+    if (!userId || !lista || !aprobadorEmail.trim()) return;
+    setSolicitando(true);
+    try {
+      const res = await fetch(`${API_URL}/api/listas/${id}/solicitar-aprobacion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          aprobador_email: aprobadorEmail.trim(),
+          justificaciones,
+          nombre_solicitante: userMeta.nombre_usuario ?? "",
+          empresa: userMeta.empresa ?? "",
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail ?? "Error al solicitar");
+      }
+      const data = await res.json();
+
+      const defItems = lista.items.filter(it => it.definitivo);
+      const totalStr = fmtCLP(defItems.reduce((s, it) => s + (it.definitivo!.precio_clp ?? 0) * (it.cantidad || 1), 0));
+      const itemLines = defItems.map(it =>
+        `- ${it.nombre} ×${it.cantidad || 1}: ${it.definitivo!.proveedor} (${it.definitivo!.precio_clp != null ? fmtCLP(it.definitivo!.precio_clp * (it.cantidad || 1)) : "—"})${justificaciones[it.cotizacion_id] ? ` — ${justificaciones[it.cotizacion_id]}` : ""}`
+      ).join("\n");
+
+      const subject = encodeURIComponent(`Solicitud de aprobación: ${lista.nombre}`);
+      const body = encodeURIComponent(
+        `Hola,\n\n${userMeta.nombre_usuario ?? "Un usuario"} de ${userMeta.empresa ?? "la empresa"} solicita tu aprobación para la siguiente lista de compra:\n\n` +
+        `Lista: ${lista.nombre}\nTotal: ${totalStr}\n\n${itemLines}\n\n` +
+        `Para aprobar:\n${data.magic_link_aprobar}\n\n` +
+        `Para rechazar (puedes agregar comentarios):\n${data.magic_link_rechazar}\n\n` +
+        `Este enlace expira el ${new Date(data.expira_at).toLocaleDateString("es-CL")}.\n\nBaiyer — Procurement Inteligente`
+      );
+
+      window.open(`mailto:${aprobadorEmail.trim()}?subject=${subject}&body=${body}`, "_self");
+      setToast("Solicitud creada — se abrió tu correo para enviar");
+      setTimeout(() => setToast(""), 4000);
+      setMostrarAprobacion(false);
+      await cargar(userId);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Error al solicitar aprobación");
+      setTimeout(() => setToast(""), 3500);
+    } finally {
+      setSolicitando(false);
+    }
+  };
+
+  const reiniciarAprobacion = async () => {
+    if (!userId) return;
+    try {
+      await fetch(`${API_URL}/api/listas/${id}/reenviar-aprobacion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      setToast("Lista desbloqueada — puedes modificarla y re-solicitar");
+      setTimeout(() => setToast(""), 3500);
+      await cargar(userId);
+    } catch {
+      setToast("Error al reiniciar aprobación");
+      setTimeout(() => setToast(""), 3000);
+    }
+  };
+
   if (loading) return <div style={{ padding: "60px 0", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>Cargando…</div>;
   if (!lista) return <div style={{ padding: "60px 0", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>Lista no encontrada.</div>;
 
@@ -210,6 +313,45 @@ export default function ListaDetallePage() {
           </div>
         ))}
       </div>
+
+      {/* Banner de estado de aprobación */}
+      {lista.aprobacion && (
+        <div style={{
+          border: `1px solid ${lista.aprobacion.estado === "aprobado" ? "var(--palette-green-500)" : lista.aprobacion.estado === "rechazado" ? "var(--border-accent)" : "var(--border-default)"}`,
+          background: lista.aprobacion.estado === "aprobado" ? "var(--fill-success)" : lista.aprobacion.estado === "rechazado" ? "var(--fill-error)" : "var(--bg-surface)",
+          padding: "14px 18px", marginBottom: 20,
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+            <div>
+              <span className="label" style={{
+                fontWeight: 800,
+                color: lista.aprobacion.estado === "aprobado" ? "var(--text-success)" : lista.aprobacion.estado === "rechazado" ? "var(--text-error)" : "var(--text-primary)",
+              }}>
+                {lista.aprobacion.estado === "aprobado" ? "AUTORIZADO" : lista.aprobacion.estado === "rechazado" ? "RECHAZADA" : "ESPERANDO AUTORIZACIÓN"}
+              </span>
+              {lista.aprobacion.aprobador_email && (
+                <span className="label" style={{ color: "var(--text-muted)", marginLeft: 8 }}>
+                  — {lista.aprobacion.aprobador_email}
+                </span>
+              )}
+            </div>
+            {lista.aprobacion.estado === "rechazado" && (
+              <button onClick={reiniciarAprobacion} className="label" style={{
+                color: "var(--accent)", background: "none", cursor: "pointer",
+                border: "1px solid var(--border-accent)", padding: "4px 12px", fontFamily: "var(--font-mono)",
+              }}>
+                Modificar y re-solicitar
+              </button>
+            )}
+          </div>
+          {lista.aprobacion.estado === "rechazado" && lista.aprobacion.comentario_rechazo && (
+            <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--bg-base)", border: "1px solid var(--border-default)", fontSize: 12, color: "var(--text-primary)", lineHeight: 1.5 }}>
+              <span className="label" style={{ color: "var(--text-muted)", fontWeight: 700 }}>COMENTARIO:</span>{" "}
+              {lista.aprobacion.comentario_rechazo}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Ítems con sus comparados */}
       {lista.items.map((it, idx) => (
@@ -379,6 +521,83 @@ export default function ListaDetallePage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Acciones de aprobación */}
+      {definitivos.length > 0 && !lista.aprobacion && (
+        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+          <button onClick={() => setMostrarAprobacion(true)} className="btn-swiss-primary">
+            Solicitar autorización
+          </button>
+          {!completa && lista.items.some(it => !it.definitivo && it.comparados.some(c => (c.precio_cotizado ?? c.precio) != null)) && (
+            <button onClick={autoSeleccionarBaratos} className="btn-swiss-secondary">
+              Auto: usar más baratos
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Panel de solicitud de aprobación */}
+      {mostrarAprobacion && !lista.aprobacion && (
+        <div style={{ border: "1px solid var(--border-accent)", background: "var(--bg-surface)", padding: 20, marginBottom: 30 }}>
+          <div className="label" style={{ fontWeight: 800, color: "var(--accent)", marginBottom: 16, letterSpacing: "0.06em" }}>
+            SOLICITAR AUTORIZACIÓN
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <div className="label" style={{ color: "var(--text-muted)", marginBottom: 6 }}>EMAIL DEL AUTORIZADOR</div>
+            <input
+              value={aprobadorEmail}
+              onChange={e => setAprobadorEmail(e.target.value)}
+              placeholder="jefe@empresa.cl"
+              type="email"
+              style={{
+                width: "100%", background: "var(--bg-base)", border: "1px solid var(--border-default)",
+                padding: "8px 12px", fontSize: 12, color: "var(--text-primary)",
+                fontFamily: "var(--font-mono)", outline: "none", boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          <div className="label" style={{ color: "var(--text-muted)", marginBottom: 10 }}>
+            JUSTIFICACIÓN POR ÍTEM (opcional)
+          </div>
+          {definitivos.map(it => (
+            <div key={it.cotizacion_id} style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>
+                {it.nombre} — {it.definitivo?.proveedor}
+                {it.definitivo?.precio_clp != null && (
+                  <span className="label" style={{ color: "var(--text-muted)", fontWeight: 400, marginLeft: 6 }}>
+                    {fmtCLP(it.definitivo.precio_clp * (it.cantidad || 1))}
+                  </span>
+                )}
+              </div>
+              <input
+                value={justificaciones[it.cotizacion_id] ?? ""}
+                onChange={e => setJustificaciones(j => ({ ...j, [it.cotizacion_id]: e.target.value }))}
+                placeholder="Ej: mejor precio, entrega rápida, proveedor conocido…"
+                style={{
+                  width: "100%", background: "var(--bg-base)", border: "1px solid var(--border-default)",
+                  padding: "6px 10px", fontSize: 11, color: "var(--text-primary)",
+                  fontFamily: "var(--font-mono)", outline: "none", boxSizing: "border-box",
+                }}
+              />
+            </div>
+          ))}
+
+          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+            <button
+              onClick={solicitarAprobacion}
+              disabled={solicitando || !aprobadorEmail.trim()}
+              className="btn-swiss-primary"
+            >
+              {solicitando ? "Enviando…" : "Enviar solicitud por correo"}
+            </button>
+            <button onClick={() => setMostrarAprobacion(false)} className="btn-swiss-secondary">
+              Cancelar
+            </button>
+          </div>
         </div>
       )}
     </>

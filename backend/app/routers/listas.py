@@ -173,7 +173,7 @@ async def detalle_lista(lista_id: str, user_id: str):
     ])
 
     definitivos = data.get("definitivos", {})
-    return {
+    result = {
         "id": proy.data["id"],
         "nombre": proy.data["nombre"],
         "created_at": proy.data.get("created_at"),
@@ -188,6 +188,11 @@ async def detalle_lista(lista_id: str, user_id: str):
             for i, it in enumerate(items)
         ],
     }
+    if data.get("aprobacion"):
+        result["aprobacion"] = data["aprobacion"]
+    if data.get("justificaciones"):
+        result["justificaciones"] = data["justificaciones"]
+    return result
 
 
 class MarcarComparadoRequest(BaseModel):
@@ -303,6 +308,110 @@ async def actualizar_cantidad(lista_id: str, req: CantidadRequest):
         sb.table("proyectos").update({"monto_total": monto_total}).eq("id", lista_id).execute()
 
     return {"success": True, "monto_total": monto_total}
+
+
+class SolicitarAprobacionRequest(BaseModel):
+    user_id: str
+    aprobador_email: str
+    justificaciones: dict = {}  # {cotizacion_id: "texto justificación"}
+    nombre_solicitante: str = ""
+    empresa: str = ""
+
+
+@router.post("/{lista_id}/solicitar-aprobacion")
+async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest):
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+
+    async with _lock_de(lista_id):
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).eq("user_id", req.user_id).single().execute()
+        if not proy.data:
+            raise HTTPException(status_code=404, detail="Lista no encontrada")
+        data = _parse_lista(proy.data)
+        if not data:
+            raise HTTPException(status_code=404, detail="No es una lista de cotización")
+
+        definitivos = data.get("definitivos", {})
+        items = data.get("items", [])
+        if not definitivos:
+            raise HTTPException(status_code=400, detail="No hay definitivos elegidos")
+
+        data["justificaciones"] = req.justificaciones
+
+        resumen_items = []
+        for it in items:
+            cid = it["cotizacion_id"]
+            d = definitivos.get(cid)
+            if d:
+                resumen_items.append({
+                    "nombre": it["nombre"],
+                    "cantidad": it.get("cantidad", 1),
+                    "proveedor": d.get("proveedor"),
+                    "precio_clp": d.get("precio_clp"),
+                    "justificacion": req.justificaciones.get(cid, ""),
+                })
+
+        monto_total = _monto_total(data)
+        resumen = {
+            "lista_nombre": proy.data["nombre"],
+            "solicitante": req.nombre_solicitante,
+            "empresa": req.empresa,
+            "items": resumen_items,
+            "monto_total": monto_total,
+        }
+
+        from app.routers.aprobaciones import solicitar_aprobacion as crear_solicitud
+        from app.routers.aprobaciones import SolicitudRequest
+        sol = await crear_solicitud(SolicitudRequest(
+            user_id=req.user_id,
+            referencia=f"lista:{lista_id}",
+            resumen=resumen,
+            aprobador_email=req.aprobador_email,
+        ))
+
+        data["aprobacion"] = {
+            "estado": "pendiente",
+            "aprobador_email": req.aprobador_email,
+            "token": sol["token"],
+            "approval_request_id": sol["id"],
+        }
+        _guardar_lista(sb, lista_id, data)
+
+    return {
+        "success": True,
+        "magic_link_aprobar": sol["magic_link_aprobar"],
+        "magic_link_rechazar": sol["magic_link_rechazar"],
+        "token": sol["token"],
+        "expira_at": sol["expira_at"],
+    }
+
+
+class ReenviarAprobacionRequest(BaseModel):
+    user_id: str
+
+
+@router.post("/{lista_id}/reenviar-aprobacion")
+async def reenviar_aprobacion(lista_id: str, req: ReenviarAprobacionRequest):
+    """Resetea una lista rechazada para poder re-solicitar aprobación."""
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+
+    async with _lock_de(lista_id):
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).eq("user_id", req.user_id).single().execute()
+        if not proy.data:
+            raise HTTPException(status_code=404, detail="Lista no encontrada")
+        data = _parse_lista(proy.data)
+        if not data:
+            raise HTTPException(status_code=404, detail="No es una lista de cotización")
+
+        aprobacion = data.get("aprobacion", {})
+        if aprobacion.get("estado") not in ("rechazado", None):
+            raise HTTPException(status_code=400, detail="Solo se puede re-solicitar una lista rechazada")
+
+        data.pop("aprobacion", None)
+        _guardar_lista(sb, lista_id, data)
+
+    return {"success": True}
 
 
 @router.get("/{lista_id}/informe")

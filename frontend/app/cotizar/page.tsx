@@ -106,8 +106,7 @@ export default function CotizarPage() {
   };
 
   // Confirmación multi-ítem: crea N cotizaciones + la lista, y parte por el 1er ítem
-  const handleConfirmarMulti = async (categoriasPorItem: string[][], nombreLista: string, cantidades: number[], indices?: number[]) => {
-    if (!resultadosMulti) return;
+  const handleConfirmarMulti = async (categoriasPorItem: string[][], nombreLista: string, cantidades: number[], itemsFinales: ItemIdentificado[]) => {
     if (!userId) {
       setError("Debes iniciar sesión para crear una lista de cotización.");
       return;
@@ -115,8 +114,7 @@ export default function CotizarPage() {
     setGuardando(true);
     try {
       const supabase = createClient();
-      // Solo los ítems que el usuario dejó incluidos (en proyectos puede descartar sugerencias)
-      const itemsSel = indices ? indices.map(i => resultadosMulti[i]) : resultadosMulti;
+      const itemsSel = itemsFinales;
 
       const inserts = await Promise.all(itemsSel.map((it, i) =>
         supabase.from("cotizaciones").insert({

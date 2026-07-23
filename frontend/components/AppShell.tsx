@@ -59,9 +59,10 @@ interface AppShellProps {
   planLabel: string;
   planLimitLabel: string;
   userId: string;
+  perfilIncompleto?: boolean;
 }
 
-export default function AppShell({ children, empresa, planLabel, planLimitLabel, userId }: AppShellProps) {
+export default function AppShell({ children, empresa, planLabel, planLimitLabel, userId, perfilIncompleto }: AppShellProps) {
   const pathname = usePathname();
   const breadcrumb = BREADCRUMB[pathname] ?? BREADCRUMB[Object.keys(BREADCRUMB).find(k => pathname.startsWith(k) && k !== "/") ?? ""] ?? "";
 
@@ -107,19 +108,28 @@ export default function AppShell({ children, empresa, planLabel, planLimitLabel,
               </div>
               {links.map(({ href, label }) => {
                 const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
+                const showBadge = href === "/settings" && perfilIncompleto && !active;
                 return (
                   <a key={href} href={href} style={{
-                    display: "block",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
                     padding: "6px 10px",
                     fontSize: 12,
-                    fontWeight: active ? 700 : 400,
-                    color: active ? "var(--accent)" : "var(--text-secondary)",
+                    fontWeight: active || showBadge ? 700 : 400,
+                    color: active ? "var(--accent)" : showBadge ? "var(--accent)" : "var(--text-secondary)",
                     textDecoration: "none",
                     borderRadius: 2,
                     marginBottom: 1,
-                    background: active ? "var(--accent-muted)" : "transparent",
+                    background: active ? "var(--accent-muted)" : showBadge ? "rgba(192,57,43,0.06)" : "transparent",
                   }}>
                     {label}
+                    {showBadge && (
+                      <span style={{
+                        width: 7, height: 7, borderRadius: "50%",
+                        background: "var(--accent)", flexShrink: 0,
+                      }} />
+                    )}
                   </a>
                 );
               })}

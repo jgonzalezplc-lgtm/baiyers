@@ -49,6 +49,31 @@ export default function OnboardingChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, [msgs, fase]);
 
+  const esConfirmacion = (t: string): boolean =>
+    /^(s[ií]|si+|ok|correcto|exacto|ese|esa|eso|claro|dale|ya|sep|sip|confirmo|está bien|esta bien|así es|asi es|afirmativo|yeap?|yes|yep|sí,?\s*es)$/i.test(t.trim());
+
+  const extraer = (texto: string, campo: "rut" | "nombre" | "empresa"): string => {
+    const t = texto.trim();
+    if (!t) return "";
+    if (campo === "rut") {
+      const m = t.match(/(\d{1,3}\.?\d{3}\.?\d{3}-[\dkK])/i);
+      return m ? m[1] : t;
+    }
+    if (campo === "nombre") {
+      return t
+        .replace(/^(me llamo|mi nombre es|mi nombre completo es|soy|me dicen)\s+/i, "")
+        .replace(/[.!,]+$/, "")
+        .trim();
+    }
+    if (campo === "empresa") {
+      return t
+        .replace(/^(se llama|la empresa es|mi empresa es|nuestra empresa es|somos|es|trabajo en|estoy en)\s+/i, "")
+        .replace(/[.!,]+$/, "")
+        .trim();
+    }
+    return t;
+  };
+
   const addBot = (texto?: string, card?: Investigacion) => setMsgs(m => [...m, { rol: "bot", texto, card }]);
   const addUser = (texto: string) => setMsgs(m => [...m, { rol: "user", texto }]);
   const espera = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -112,7 +137,7 @@ export default function OnboardingChatPage() {
       const d = await investigar(email, val);
       setBusy(false);
       if (d.es_empresa_conocida && d.empresa) await revelarEmpresa(d);
-      else { setEmpresa(val); addBot(`Anotado: ${val}. No encontré más detalle, pero podemos seguir.`); setFase("rut"); await espera(400); preguntarRut(val); }
+      else { const emp = extraer(val, "empresa"); setEmpresa(emp); addBot(`Anotado: ${emp}. No encontré más detalle, pero podemos seguir.`); setFase("rut"); await espera(400); preguntarRut(emp); }
       return;
     }
 
@@ -123,13 +148,15 @@ export default function OnboardingChatPage() {
         const d = await investigar(email, val);
         setBusy(false);
         if (d.es_empresa_conocida && d.empresa) await revelarEmpresa(d);
-        else { setEmpresa(val); addBot(`Ok, usaré "${val}".`); setFase("rut"); await espera(300); preguntarRut(val); }
+        else { const emp = extraer(val, "empresa"); setEmpresa(emp); addBot(`Ok, usaré "${emp}".`); setFase("rut"); await espera(300); preguntarRut(emp); }
       }
       return;
     }
 
     if (fase === "rut") {
-      addUser(val || "No lo sé"); setRut(val); setInput("");
+      addUser(val || "No lo sé");
+      const rutLimpio = val && esConfirmacion(val) && rut ? rut : extraer(val, "rut");
+      setRut(rutLimpio); setInput("");
       addBot("Perfecto.");
       setFase("nombre_usuario");
       await espera(300);
@@ -138,9 +165,10 @@ export default function OnboardingChatPage() {
     }
 
     if (fase === "nombre_usuario") {
-      const nom = val || nombreUsuario;
+      const confirma = val && esConfirmacion(val) && nombreUsuario;
+      const nom = confirma ? nombreUsuario : extraer(val || nombreUsuario, "nombre");
       if (!nom) return;
-      addUser(nom); setNombreUsuario(nom); setInput("");
+      addUser(val || nombreUsuario); setNombreUsuario(nom); setInput("");
       setFase("logo");
       await espera(300);
       addBot(`Encantado, ${nom}. ¿Este es el logo de tu empresa?`, inv ?? undefined);

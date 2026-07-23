@@ -108,6 +108,7 @@ async def listar_solicitudes(user_id: str, estado: Optional[str] = None):
 
 class DecisionRequest(BaseModel):
     decision: str  # "aprobar" | "rechazar"
+    comentario: Optional[str] = None
 
 
 @router.get("/token/{token}")
@@ -146,15 +147,37 @@ async def decidir(token: str, req: DecisionRequest):
         raise HTTPException(status_code=410, detail="El enlace de aprobación expiró")
 
     nuevo = "aprobado" if req.decision == "aprobar" else "rechazado"
-    sb.table("approval_requests").update({
-        "estado": nuevo, "decidido_at": _now(),
-    }).eq("id", row["id"]).execute()
+    update_data: dict = {"estado": nuevo, "decidido_at": _now()}
+    if req.comentario:
+        update_data["comentario"] = req.comentario
+    sb.table("approval_requests").update(update_data).eq("id", row["id"]).execute()
 
     # Si la referencia es un quote_supplier y fue aprobado, marcarlo seleccionado
     if nuevo == "aprobado" and row["referencia"].startswith("quote_supplier:"):
         qs_id = row["referencia"].split(":", 1)[1]
         try:
             sb.table("quote_suppliers").update({"estado": "seleccionado", "updated_at": _now()}).eq("id", qs_id).execute()
+        except Exception:
+            pass
+
+    # Si la referencia es una lista, actualizar su estado de aprobación
+    if row["referencia"].startswith("lista:"):
+        import json
+        lista_id = row["referencia"].split(":", 1)[1]
+        try:
+            proy = sb.table("proyectos").select("descripcion").eq("id", lista_id).single().execute()
+            if proy.data:
+                data = json.loads(proy.data.get("descripcion") or "{}")
+                if data.get("tipo") == "lista_cotizacion":
+                    aprobacion = data.get("aprobacion", {})
+                    aprobacion["estado"] = nuevo
+                    aprobacion["decidido_at"] = _now()
+                    if req.comentario:
+                        aprobacion["comentario_rechazo"] = req.comentario
+                    data["aprobacion"] = aprobacion
+                    sb.table("proyectos").update({
+                        "descripcion": json.dumps(data, ensure_ascii=False),
+                    }).eq("id", lista_id).execute()
         except Exception:
             pass
 

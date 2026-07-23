@@ -60,10 +60,10 @@ function claveProducto(r: Resultado): string {
 }
 
 // ── Filtro de relevancia ──────────────────────────────────────────────────────
-// Si busco "taladro percutor" no deben aparecer brocas, kits ni maletines "para
-// taladro". Regla: el título debe contener el sustantivo principal del ítem y
-// no puede ser un accesorio (patrón "X para <ítem>").
-const STOPWORDS = new Set(["para", "con", "del", "los", "las", "por", "una", "uno", "the", "and", "for", "kit", "set"]);
+// Descarta accesorios ("broca para taladro" cuando busco taladro) y resultados
+// que no mencionan ninguna palabra clave del ítem. Usa TODAS las palabras
+// significativas (no solo la primera) para tolerar sinónimos cortos como "TV".
+const STOPWORDS = new Set(["para", "con", "del", "los", "las", "por", "una", "uno", "the", "and", "for", "kit", "set", "de", "en", "al", "el", "la"]);
 
 function stemPalabra(w: string): string {
   if (w.length > 4 && w.endsWith("es")) return w.slice(0, -2);
@@ -71,16 +71,29 @@ function stemPalabra(w: string): string {
   return w;
 }
 
+function matchStem(a: string, b: string): boolean {
+  return a === b || (a.length > 3 && b.startsWith(a)) || (b.length > 3 && a.startsWith(b));
+}
+
 function esRelevanteParaItem(titulo: string, nombreItem: string): boolean {
   if (!nombreItem || !titulo) return true;
-  const toks = normalizarTexto(nombreItem).split(" ").filter(w => w.length > 2 && !STOPWORDS.has(w));
+  const toks = normalizarTexto(nombreItem).split(" ").filter(w => w.length > 1 && !STOPWORDS.has(w));
   if (!toks.length) return true;
-  const head = stemPalabra(toks[0]);
   const palabras = normalizarTexto(titulo).split(" ");
-  const idx = palabras.findIndex(p => stemPalabra(p) === head || (head.length > 3 && p.startsWith(head)));
-  if (idx === -1) return false;                       // no menciona el ítem
-  const antes = palabras.slice(Math.max(0, idx - 2), idx);
-  if (antes.includes("para")) return false;           // accesorio: "broca para taladro"
+  const stems = palabras.map(stemPalabra);
+  const matches = toks.filter(tok => {
+    const st = stemPalabra(tok);
+    return stems.some(s => matchStem(s, st));
+  });
+  // Exigir al menos 2 palabras cuando el nombre tiene 3+, sino al menos 1
+  const minimo = toks.length >= 3 ? 2 : 1;
+  if (matches.length < minimo) return false;
+  // Accesorio: "X para <ítem>"
+  for (let j = 0; j < palabras.length; j++) {
+    if (palabras[j] !== "para") continue;
+    const despues = stems.slice(j + 1);
+    if (toks.some(tok => despues.some(s => matchStem(s, stemPalabra(tok))))) return false;
+  }
   return true;
 }
 
@@ -484,11 +497,31 @@ export default function ResultadosPage() {
           keepalive: true,
         });
 
+        // Si la lista aún no cargó (race condition en navegación rápida), buscarla ahora
+        let listaData = lista;
+        if (!listaData) {
+          try {
+            const r = await fetch(`${API_URL}/api/listas/${listaId}?user_id=${userId}`);
+            if (r.ok) {
+              const d = await r.json();
+              const loc0 = comparadosLocales(listaId);
+              listaData = {
+                ...d,
+                items: d.items.map((it: { cotizacion_id: string; nombre: string; comparado: boolean }) =>
+                  loc0.has(it.cotizacion_id) ? { ...it, comparado: true } : it),
+              };
+              setLista(listaData);
+            }
+          } catch { /* continuar sin lista */ }
+        }
+
         // Registrar el ítem actual como comparado en la sesión ANTES de calcular
         // el siguiente: inmune a que el POST de background aún no haya escrito.
         marcarComparadoLocal(listaId, id);
         const loc = comparadosLocales(listaId);
-        const siguiente = lista?.items.find(it => !it.comparado && !loc.has(it.cotizacion_id));
+        const siguiente = listaData?.items.find(
+          (it: { cotizacion_id: string; comparado: boolean }) => !it.comparado && !loc.has(it.cotizacion_id)
+        );
         if (siguiente) {
           router.push(`/cotizar/${siguiente.cotizacion_id}/resultados?lista=${listaId}`);
           return;
@@ -943,6 +976,14 @@ export default function ResultadosPage() {
         </div>
 
         {/* Barra de progreso de la lista */}
+        {listaId && !lista && (
+          <div style={{
+            background: "var(--bg-surface)", border: "1px solid var(--border-default)",
+            padding: "8px 12px", marginBottom: 16,
+          }}>
+            <span className="label" style={{ color: "var(--text-muted)" }}>Cargando lista…</span>
+          </div>
+        )}
         {lista && (
           <div style={{
             display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
