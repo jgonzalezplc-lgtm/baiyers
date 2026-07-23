@@ -1,23 +1,15 @@
 "use client";
 /**
- * Onboarding inteligente (estilo Ploy): al crear la cuenta, investiga la empresa
- * desde el dominio del correo y acompaña la configuración confirmando empresa,
- * logo, RUT, dirección e industria. Guarda el perfil en user_metadata.
+ * Onboarding conversacional (estilo Ploy): tras verificar el correo, investiga la
+ * empresa en background y va revelando lo encontrado como un chat, pidiendo al
+ * usuario confirmar/completar: empresa, RUT, su nombre, logo y proceso de compra.
+ * Guarda todo el perfil en user_metadata.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-const CATEGORIAS: { key: string; label: string }[] = [
-  { key: "industrial", label: "Industrial" }, { key: "construccion", label: "Construcción" },
-  { key: "carpinteria", label: "Carpintería / Madera" }, { key: "electrico", label: "Eléctrico" },
-  { key: "electronica", label: "Electrónica" }, { key: "mecanico", label: "Mecánico" },
-  { key: "hidraulico", label: "Hidráulico" }, { key: "neumatico", label: "Neumático" },
-  { key: "tuberias_valvulas", label: "Tuberías y válvulas" }, { key: "insumos_medicos", label: "Insumos médicos" },
-  { key: "consumible", label: "Consumible" }, { key: "servicio", label: "Servicio" },
-];
 
 interface Investigacion {
   empresa: string | null;
@@ -34,250 +26,268 @@ interface Investigacion {
   generico?: boolean;
 }
 
-type Paso = "investigando" | "empresa" | "datos" | "categorias" | "guardando";
+type Rol = "bot" | "user";
+interface Msg { rol: Rol; texto?: string; card?: Investigacion; logoIdx?: number; }
+type Fase = "cargando" | "pedir_nombre" | "confirmar_empresa" | "rut" | "nombre_usuario" | "logo" | "proceso" | "fin";
 
-export default function OnboardingPage() {
+export default function OnboardingChatPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [inv, setInv] = useState<Investigacion | null>(null);
-  const [paso, setPaso] = useState<Paso>("investigando");
+  const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [fase, setFase] = useState<Fase>("cargando");
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
   const [logoIdx, setLogoIdx] = useState(0);
 
-  // Campos editables
+  // Datos que se van juntando
   const [empresa, setEmpresa] = useState("");
   const [rut, setRut] = useState("");
-  const [direccion, setDireccion] = useState("");
-  const [cats, setCats] = useState<Set<string>>(new Set());
+  const [nombreUsuario, setNombreUsuario] = useState("");
+  const [cats, setCats] = useState<string[]>([]);
 
-  const investigar = useCallback(async (correo: string) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, [msgs, fase]);
+
+  const addBot = (texto?: string, card?: Investigacion) => setMsgs(m => [...m, { rol: "bot", texto, card }]);
+  const addUser = (texto: string) => setMsgs(m => [...m, { rol: "user", texto }]);
+  const espera = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+  const aplicar = (d: Investigacion) => {
+    setInv(d); setLogoIdx(0);
+    if (d.empresa) setEmpresa(d.empresa);
+    if (d.rut) setRut(d.rut);
+    if (d.categorias_compra_probables?.length) setCats(d.categorias_compra_probables);
+  };
+
+  const investigar = useCallback(async (correo: string, nombre?: string): Promise<Investigacion> => {
     try {
       const res = await fetch(`${API_URL}/api/onboarding/investigar-empresa`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: correo }),
+        body: JSON.stringify({ email: correo, nombre_empresa: nombre }),
       });
-      const d: Investigacion = res.ok ? await res.json() : {};
-      setInv(d);
-      setEmpresa(d.empresa ?? correo.split("@")[1]?.split(".")[0] ?? "");
-      setRut(d.rut ?? "");
-      setDireccion(d.direccion ?? "");
-      setCats(new Set(d.categorias_compra_probables ?? []));
-    } catch {
-      setInv({ empresa: null });
-    }
-    setPaso("empresa");
+      return res.ok ? await res.json() : { empresa: null };
+    } catch { return { empresa: null }; }
   }, []);
 
+  // Muestra el reporte de la empresa encontrada y pasa a confirmar
+  const revelarEmpresa = async (d: Investigacion) => {
+    aplicar(d);
+    await espera(400); addBot(undefined, d);
+    await espera(600); addBot(`Se dedica a ${d.industria ?? "—"}${d.pais ? ` en ${d.pais}` : ""}. ¿Es tu empresa? Si el nombre no es exacto, corrígelo.`);
+    setFase("confirmar_empresa");
+  };
+
+  // Arranque
   useEffect(() => {
-    createClient().auth.getUser().then(({ data }) => {
-      const correo = data.user?.email ?? "";
-      // Si ya hizo onboarding, al dashboard
-      if (data.user?.user_metadata?.onboarding_completo) { router.replace("/dashboard"); return; }
+    createClient().auth.getUser().then(async ({ data }) => {
+      const u = data.user;
+      if (!u) { router.replace("/login"); return; }
+      if (u.user_metadata?.onboarding_completo) { router.replace("/dashboard"); return; }
+      const correo = u.email ?? "";
       setEmail(correo);
-      if (correo) investigar(correo); else router.replace("/login");
+      const primer = (u.user_metadata?.full_name || correo.split("@")[0] || "").split(/[.\s]/)[0];
+      setNombreUsuario(primer ? primer.charAt(0).toUpperCase() + primer.slice(1) : "");
+
+      addBot(`¡Hola! Soy el asistente de Baiyer. Dame un segundo, estoy revisando tu empresa a partir de tu correo (${correo})…`);
+      const d = await investigar(correo);
+      if (d.es_empresa_conocida && d.empresa) {
+        await revelarEmpresa(d);
+      } else {
+        aplicar(d);
+        await espera(500);
+        addBot("Tu correo es genérico, así que no pude detectarla sola. ¿Cómo se llama tu empresa? La busco por ti.");
+        setFase("pedir_nombre");
+      }
     });
   }, [investigar, router]);
 
-  const [buscando, setBuscando] = useState(false);
+  // Enviar (según fase)
+  const enviar = async () => {
+    const val = input.trim();
 
-  // Correo genérico: investiga la empresa por el NOMBRE que escribió el usuario
-  const buscarPorNombre = async () => {
-    if (!empresa.trim()) return;
-    setBuscando(true);
-    try {
-      const res = await fetch(`${API_URL}/api/onboarding/investigar-empresa`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, nombre_empresa: empresa.trim() }),
-      });
-      if (res.ok) {
-        const d: Investigacion = await res.json();
-        setInv(d);
-        setLogoIdx(0);
-        if (d.empresa) setEmpresa(d.empresa);
-        if (d.rut) setRut(d.rut);
-        if (d.direccion) setDireccion(d.direccion);
-        if (d.categorias_compra_probables?.length) setCats(new Set(d.categorias_compra_probables));
+    if (fase === "pedir_nombre") {
+      if (!val) return;
+      addUser(val); setInput(""); setBusy(true);
+      const d = await investigar(email, val);
+      setBusy(false);
+      if (d.es_empresa_conocida && d.empresa) await revelarEmpresa(d);
+      else { setEmpresa(val); addBot(`Anotado: ${val}. No encontré más detalle, pero podemos seguir.`); setFase("rut"); await espera(400); preguntarRut(val); }
+      return;
+    }
+
+    if (fase === "confirmar_empresa") {
+      // Si escribió algo, re-busca con ese nombre; si no, confirma
+      if (val) {
+        addUser(val); setInput(""); setBusy(true);
+        const d = await investigar(email, val);
+        setBusy(false);
+        if (d.es_empresa_conocida && d.empresa) await revelarEmpresa(d);
+        else { setEmpresa(val); addBot(`Ok, usaré "${val}".`); setFase("rut"); await espera(300); preguntarRut(val); }
       }
-    } catch { /* silencioso */ } finally {
-      setBuscando(false);
+      return;
+    }
+
+    if (fase === "rut") {
+      addUser(val || "No lo sé"); setRut(val); setInput("");
+      addBot("Perfecto.");
+      setFase("nombre_usuario");
+      await espera(300);
+      addBot(`¿Y tú cómo te llamas?${nombreUsuario ? ` (¿"${nombreUsuario}"?)` : ""}`);
+      return;
+    }
+
+    if (fase === "nombre_usuario") {
+      const nom = val || nombreUsuario;
+      if (!nom) return;
+      addUser(nom); setNombreUsuario(nom); setInput("");
+      setFase("logo");
+      await espera(300);
+      addBot(`Encantado, ${nom}. ¿Este es el logo de tu empresa?`, inv ?? undefined);
+      return;
+    }
+
+    if (fase === "proceso") {
+      addUser(val || "—"); setInput("");
+      await finalizar(val);
+      return;
     }
   };
 
-  const toggleCat = (k: string) => setCats(prev => {
-    const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n;
-  });
+  const preguntarRut = (emp: string) => {
+    setFase("rut");
+    addBot(`¿Cuál es el RUT de ${emp}?${rut ? ` (encontré ${rut}, confírmalo o corrígelo)` : " (si no lo tienes a mano, puedes omitirlo)"}`);
+  };
 
-  const finalizar = async () => {
-    setPaso("guardando");
-    const supabase = createClient();
-    await supabase.auth.updateUser({
+  // Al confirmar empresa
+  const confirmarEmpresa = async () => {
+    addUser("Sí, es correcta");
+    setFase("rut");
+    await espera(300);
+    preguntarRut(empresa || inv?.empresa || "tu empresa");
+  };
+
+  // Logo
+  const respLogo = async (ok: boolean) => {
+    addUser(ok ? "Sí, es mi logo" : "Lo subo después");
+    setFase("proceso");
+    await espera(300);
+    addBot("Última pregunta 👇 ¿Cómo funciona la compra en tu empresa? Cuéntame quién cotiza, quién autoriza y cómo se decide. (Con tu ritmo, en una frase basta.)");
+  };
+
+  const finalizar = async (proceso: string) => {
+    setFase("fin");
+    addBot(`¡Listo, ${nombreUsuario || ""}! Configuré tu cuenta de ${empresa || "tu empresa"}. Te llevo al dashboard…`);
+    await createClient().auth.updateUser({
       data: {
         onboarding_completo: true,
-        empresa: empresa.trim(),
+        empresa: empresa.trim() || null,
+        nombre_usuario: nombreUsuario.trim() || null,
         industria: inv?.industria ?? null,
         rut: rut.trim() || null,
-        direccion: direccion.trim() || null,
         logo_url: inv?.logo_candidatos?.[logoIdx] ?? null,
         sitio_web: inv?.sitio_web ?? null,
         pais: inv?.pais ?? inv?.pais_tld ?? null,
-        categorias_default: Array.from(cats),
+        categorias_default: cats,
+        proceso_compra: proceso.trim() || null,
       },
     });
+    await espera(900);
     router.replace("/dashboard");
   };
 
-  const logo = inv?.logo_candidatos?.[logoIdx];
-  const dominio = email.split("@")[1] ?? "";
+  // ── Input activo según fase ──
+  const inputTexto = fase === "pedir_nombre" || fase === "confirmar_empresa" || fase === "rut" || fase === "nombre_usuario" || fase === "proceso";
+  const placeholder =
+    fase === "pedir_nombre" ? "Nombre de tu empresa…" :
+    fase === "confirmar_empresa" ? "Corrige el nombre (o pulsa Sí)…" :
+    fase === "rut" ? "99.999.999-9 (o deja vacío)…" :
+    fase === "nombre_usuario" ? (nombreUsuario || "Tu nombre…") :
+    fase === "proceso" ? "Ej: yo cotizo y mi jefe autoriza sobre $500.000…" : "";
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg-base)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ width: "100%", maxWidth: 460 }}>
-        <div className="section-rule" style={{ marginBottom: 20 }} />
-
-        {/* Paso investigando */}
-        {paso === "investigando" && (
-          <div style={{ textAlign: "center", padding: "40px 0" }}>
-            <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 20 }}>
-              {[0, 1, 2].map(i => <div key={i} style={{ width: 8, height: 8, background: "var(--accent)", opacity: 0.3 + i * 0.35, animation: "pulse 1s infinite" }} />)}
-            </div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
-              Investigando <strong>{dominio}</strong>…
-            </div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              Buscando tu empresa para configurar tu cuenta con contexto real.
-            </div>
-          </div>
-        )}
-
-        {/* Paso confirmar empresa */}
-        {paso === "empresa" && (
-          <div>
-            <div className="label" style={{ color: "var(--text-muted)", marginBottom: 8 }}>PASO 1 DE 3 · TU EMPRESA</div>
-            {inv?.es_empresa_conocida && inv?.empresa ? (
-              /* Encontrada (por dominio o por nombre) → reporte para confirmar */
-              <>
-                <h1 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 4px", letterSpacing: "-0.02em" }}>¿Es esta tu empresa?</h1>
-                <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 18 }}>
-                  Esto es lo que encontré. Confírmalo o corrige el nombre y busco de nuevo.
-                </p>
-                <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-surface)", padding: 18, display: "flex", gap: 14, alignItems: "flex-start", marginBottom: 16 }}>
-                  {logo && (
-                    <img src={logo} alt="logo" width={56} height={56}
-                      onError={() => { if (inv?.logo_candidatos && logoIdx < inv.logo_candidatos.length - 1) setLogoIdx(logoIdx + 1); }}
-                      style={{ objectFit: "contain", border: "1px solid var(--border-subtle)", background: "#fff", flexShrink: 0 }} />
-                  )}
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text-primary)" }}>{inv.empresa}</div>
-                    <div className="label" style={{ color: "var(--accent)", margin: "2px 0 6px" }}>
-                      {inv.industria}{inv.pais ? ` · ${inv.pais}` : ""}
-                    </div>
-                    {inv.descripcion && <div style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.5 }}>{inv.descripcion}</div>}
-                    {inv.rut && <div className="label" style={{ color: "var(--text-muted)", marginTop: 6 }}>RUT: {inv.rut}</div>}
-                    {inv.presencia && <div className="label" style={{ color: "var(--text-muted)", marginTop: 2 }}>Presencia: {inv.presencia}</div>}
-                  </div>
-                </div>
-                <label className="label" style={{ color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Nombre (edítalo si no es exacto)</label>
-                <input value={empresa} onChange={e => setEmpresa(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter") buscarPorNombre(); }} style={inputSt} />
-                <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-                  <button onClick={buscarPorNombre} disabled={buscando} className="btn-swiss-secondary">
-                    {buscando ? "Buscando…" : "Corregir"}
-                  </button>
-                  <button onClick={() => setPaso("datos")} className="btn-swiss-primary" style={{ flex: 1 }}>
-                    Sí, es correcto →
-                  </button>
-                </div>
-              </>
-            ) : (
-              /* No detectada (correo genérico) → pedir nombre e investigar */
-              <>
-                <h1 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 4px" }}>¿Cómo se llama tu empresa?</h1>
-                <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 18 }}>
-                  Tu correo es genérico, así que dime el nombre y la busco por ti (rubro, país, RUT…).
-                </p>
-                <label className="label" style={{ color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Nombre de la empresa</label>
-                <input value={empresa} onChange={e => setEmpresa(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter") buscarPorNombre(); }}
-                  autoFocus style={inputSt} placeholder="Ej: Constructora Andes / Universidad de Chile" />
-                <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-                  <button onClick={buscarPorNombre} disabled={!empresa.trim() || buscando}
-                    className="btn-swiss-primary" style={{ flex: 1 }}>
-                    {buscando ? "Buscando tu empresa…" : "Buscar mi empresa →"}
-                  </button>
-                  <button onClick={() => setPaso("datos")} disabled={!empresa.trim()} className="btn-swiss-secondary">
-                    Omitir
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Paso datos: RUT + dirección */}
-        {paso === "datos" && (
-          <div>
-            <div className="label" style={{ color: "var(--text-muted)", marginBottom: 8 }}>PASO 2 DE 3 · DATOS DE FACTURACIÓN</div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 4px" }}>Confirma RUT y dirección</h1>
-            <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 18 }}>
-              {rut || direccion ? "Los busqué automáticamente — revísalos por si acaso." : "No los encontré automáticamente. Complétalos (opcional)."}
-            </p>
-
-            <label className="label" style={{ color: "var(--text-muted)", display: "block", marginBottom: 4 }}>RUT de la empresa</label>
-            <input value={rut} onChange={e => setRut(e.target.value)} style={{ ...inputSt, marginBottom: 14 }} placeholder="99.999.999-9" />
-
-            <label className="label" style={{ color: "var(--text-muted)", display: "block", marginBottom: 4 }}>Dirección</label>
-            <input value={direccion} onChange={e => setDireccion(e.target.value)} style={inputSt} placeholder="Av. Ejemplo 123, Santiago" />
-
-            <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-              <button onClick={() => setPaso("empresa")} className="btn-swiss-secondary">Atrás</button>
-              <button onClick={() => setPaso("categorias")} className="btn-swiss-primary" style={{ flex: 1 }}>Continuar →</button>
-            </div>
-          </div>
-        )}
-
-        {/* Paso categorías */}
-        {paso === "categorias" && (
-          <div>
-            <div className="label" style={{ color: "var(--text-muted)", marginBottom: 8 }}>PASO 3 DE 3 · QUÉ SUELES COMPRAR</div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 4px" }}>Orientemos tus búsquedas</h1>
-            <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 18 }}>
-              Según tu industria ({inv?.industria ?? "—"}) sugerí estas categorías. Ajústalas: tus búsquedas partirán orientadas a ellas.
-            </p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-              {CATEGORIAS.map(c => {
-                const on = cats.has(c.key);
-                return (
-                  <button key={c.key} onClick={() => toggleCat(c.key)} className="label"
-                    style={{
-                      color: on ? "var(--text-inverse)" : "var(--text-secondary)",
-                      background: on ? "var(--bg-inverse)" : "var(--bg-base)",
-                      border: `1px solid ${on ? "var(--border-strong)" : "var(--border-default)"}`,
-                      padding: "6px 12px", cursor: "pointer", fontFamily: "var(--font-mono)",
-                    }}>
-                    {on ? "✓ " : ""}{c.label}
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-              <button onClick={() => setPaso("datos")} className="btn-swiss-secondary">Atrás</button>
-              <button onClick={finalizar} className="btn-swiss-primary" style={{ flex: 1 }}>Finalizar y entrar →</button>
-            </div>
-          </div>
-        )}
-
-        {paso === "guardando" && (
-          <div style={{ textAlign: "center", padding: "40px 0", fontSize: 13, color: "var(--text-muted)" }}>
-            Configurando tu cuenta…
-          </div>
-        )}
+    <div style={{ minHeight: "100vh", background: "var(--bg-base)", display: "flex", flexDirection: "column" }}>
+      <div style={{ borderBottom: "1px solid var(--border-default)", padding: "14px 20px" }}>
+        <span className="label" style={{ color: "var(--accent)", fontWeight: 800 }}>BAIYER · CONFIGURACIÓN</span>
       </div>
-      <style>{`@keyframes pulse { 0%,100% { opacity: .3 } 50% { opacity: 1 } }`}</style>
+
+      {/* Chat */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "24px 16px" }}>
+        <div style={{ maxWidth: 560, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
+          {msgs.map((m, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: m.rol === "user" ? "flex-end" : "flex-start" }}>
+              <div style={{
+                maxWidth: "85%",
+                background: m.rol === "user" ? "var(--accent)" : "var(--bg-surface)",
+                color: m.rol === "user" ? "#fff" : "var(--text-primary)",
+                border: m.rol === "user" ? "none" : "1px solid var(--border-default)",
+                padding: m.card ? 14 : "10px 14px", fontSize: 13, lineHeight: 1.5,
+              }}>
+                {m.texto}
+                {m.card && <EmpresaCard d={m.card} logoIdx={logoIdx} onLogoError={() => setLogoIdx(x => x + 1)} />}
+              </div>
+            </div>
+          ))}
+          {(fase === "cargando" || busy) && <TypingDots />}
+        </div>
+      </div>
+
+      {/* Barra de acción */}
+      <div style={{ borderTop: "1px solid var(--border-default)", padding: "12px 16px", background: "var(--bg-base)" }}>
+        <div style={{ maxWidth: 560, margin: "0 auto", display: "flex", gap: 8, alignItems: "center" }}>
+          {fase === "confirmar_empresa" && (
+            <button onClick={confirmarEmpresa} disabled={busy} className="btn-swiss-primary" style={{ whiteSpace: "nowrap" }}>Sí, es correcta ✓</button>
+          )}
+          {fase === "logo" && (
+            <>
+              <button onClick={() => respLogo(true)} className="btn-swiss-primary" style={{ flex: 1 }}>Sí, es mi logo</button>
+              <button onClick={() => respLogo(false)} className="btn-swiss-secondary">Subir después</button>
+            </>
+          )}
+          {inputTexto && (
+            <>
+              <input
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && !busy) enviar(); }}
+                placeholder={placeholder}
+                autoFocus
+                style={{ flex: 1, background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: "10px 12px", fontSize: 13, color: "var(--text-primary)", fontFamily: "var(--font-mono)", outline: "none" }}
+              />
+              <button onClick={enviar} disabled={busy} className="btn-swiss-primary" style={{ whiteSpace: "nowrap" }}>
+                {busy ? "…" : (fase === "rut" || fase === "proceso") && !input.trim() ? "Omitir" : "Enviar"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-const inputSt: React.CSSProperties = {
-  width: "100%", boxSizing: "border-box", background: "var(--bg-surface)",
-  border: "1px solid var(--border-default)", padding: "10px 12px", fontSize: 13,
-  color: "var(--text-primary)", fontFamily: "var(--font-mono)", outline: "none",
-};
+function EmpresaCard({ d, logoIdx, onLogoError }: { d: Investigacion; logoIdx: number; onLogoError: () => void }) {
+  const logo = d.logo_candidatos?.[logoIdx];
+  return (
+    <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginTop: 8, paddingTop: 10, borderTop: "1px solid var(--border-subtle)" }}>
+      {logo && (
+        <img src={logo} alt="logo" width={48} height={48} onError={onLogoError}
+          style={{ objectFit: "contain", border: "1px solid var(--border-subtle)", background: "#fff", flexShrink: 0 }} />
+      )}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 800 }}>{d.empresa}</div>
+        <div className="label" style={{ color: "var(--accent)", margin: "2px 0" }}>{d.industria}{d.pais ? ` · ${d.pais}` : ""}</div>
+        {d.descripcion && <div style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.5 }}>{d.descripcion}</div>}
+        {d.rut && <div className="label" style={{ color: "var(--text-muted)", marginTop: 4 }}>RUT: {d.rut}</div>}
+      </div>
+    </div>
+  );
+}
+
+function TypingDots() {
+  return (
+    <div style={{ display: "flex", gap: 5, padding: "8px 14px" }}>
+      {[0, 1, 2].map(i => <div key={i} style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--text-muted)", animation: "pulse 1s infinite", animationDelay: `${i * 0.15}s` }} />)}
+      <style>{`@keyframes pulse { 0%,100% { opacity:.3 } 50% { opacity:1 } }`}</style>
+    </div>
+  );
+}
