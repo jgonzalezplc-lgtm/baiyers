@@ -60,7 +60,7 @@ export default function ListasPage() {
             display: "grid", gridTemplateColumns: "1fr 110px 130px 130px 130px",
             padding: "9px 16px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-base)",
           }}>
-            {["LISTA", "ÍTEMS", "COMPARADOS", "DEFINITIVOS", "TOTAL"].map(h => (
+            {["Lista", "Ítems", "Comparados", "Definitivos", "Total"].map(h => (
               <div key={h} style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em" }}>{h}</div>
             ))}
           </div>

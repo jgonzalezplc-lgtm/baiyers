@@ -201,7 +201,7 @@ export default function FacturasPage() {
               color: filtroEstado === e ? "var(--text-inverse)" : "var(--text-muted)",
             }}
           >
-            {e === "todas" ? "TODAS" : (ESTADO_CONFIG[e]?.label || e).toUpperCase()}
+            {e === "todas" ? "Todas" : (ESTADO_CONFIG[e]?.label || e)}
           </button>
         ))}
       </div>
@@ -272,7 +272,7 @@ export default function FacturasPage() {
                   {f.moneda} {Math.round(f.monto_total).toLocaleString("es-CL")}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span className="label" style={{ color: config.color }}>{config.label.toUpperCase()}</span>
+                  <span className="label" style={{ color: config.color }}>{config.label}</span>
                   {f.estado !== "pagada" && (
                     <button
                       onClick={() => handlePagar(f)}
@@ -289,7 +289,7 @@ export default function FacturasPage() {
                         letterSpacing: "0.05em",
                       }}
                     >
-                      {pagandoId === f.id ? "..." : "PAGAR"}
+                      {pagandoId === f.id ? "..." : "Pagar"}
                     </button>
                   )}
                 </div>

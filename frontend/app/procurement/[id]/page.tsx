@@ -156,7 +156,7 @@ export default function ProcurementDetailPage() {
                 display: "grid", gridTemplateColumns: "1fr 110px 120px 100px 120px 200px",
                 gap: 8, padding: "6px 14px", background: "var(--bg-surface)", borderBottom: "1px solid var(--border-default)",
               }}>
-                {["PROVEEDOR", "PRECIO REF.", "PRECIO COTIZ.", "PLAZO", "ESTADO", "ACCIONES"].map((h) => (
+                {["Proveedor", "Precio ref.", "Precio cotiz.", "Plazo", "Estado", "Acciones"].map((h) => (
                   <span key={h} className="label" style={{ fontWeight: 700 }}>{h}</span>
                 ))}
               </div>
@@ -258,7 +258,7 @@ export default function ProcurementDetailPage() {
         {/* ─── Timeline lateral ─── */}
         <aside style={{ border: "1px solid var(--border-default)", position: "sticky", top: 16 }}>
           <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-surface)" }}>
-            <span className="label" style={{ fontWeight: 700 }}>TIMELINE</span>
+            <span className="label" style={{ fontWeight: 700 }}>Timeline</span>
           </div>
           <div style={{ maxHeight: "70vh", overflowY: "auto" }}>
             {data.timeline.length === 0 && <div className="label" style={{ padding: 14, color: "var(--text-muted)" }}>Sin eventos aún.</div>}

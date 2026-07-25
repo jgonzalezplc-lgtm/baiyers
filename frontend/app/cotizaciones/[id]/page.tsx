@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { categoriaLabel } from "@/components/ui/tokens";
 
 // @react-pdf/renderer solo funciona en el cliente
 const InformeCotizacion = dynamic(() => import("@/components/InformeCotizacion"), { ssr: false });
@@ -245,7 +246,7 @@ export default function CotizacionDetallePage() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
-                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 4 }}>PRECIO COTIZADO</div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 4 }}>Precio cotizado</div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input type="number" placeholder="Ej: 45000" value={formResp.precio_cotizado}
                     onChange={e => setFormResp(p => ({ ...p, precio_cotizado: e.target.value }))}
@@ -259,19 +260,19 @@ export default function CotizacionDetallePage() {
               </div>
 
               <div>
-                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 4 }}>PLAZO DE ENTREGA</div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 4 }}>Plazo de entrega</div>
                 <input type="text" placeholder="Ej: 5 días hábiles, 2 semanas..." value={formResp.plazo_entrega}
                   onChange={e => setFormResp(p => ({ ...p, plazo_entrega: e.target.value }))} style={inputSt} />
               </div>
 
               <div>
-                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 4 }}>CONDICIONES DE PAGO</div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 4 }}>Condiciones de pago</div>
                 <input type="text" placeholder="Ej: 30 días neto, contado, transferencia..." value={formResp.condiciones_pago}
                   onChange={e => setFormResp(p => ({ ...p, condiciones_pago: e.target.value }))} style={inputSt} />
               </div>
 
               <div>
-                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 4 }}>TIPO DE PROVEEDOR</div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 4 }}>Tipo de proveedor</div>
                 <select value={formResp.tipo_proveedor}
                   onChange={e => setFormResp(p => ({ ...p, tipo_proveedor: e.target.value }))}
                   style={inputSt}>
@@ -280,7 +281,7 @@ export default function CotizacionDetallePage() {
               </div>
 
               <div>
-                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 4 }}>NOTAS DE LA RESPUESTA</div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 4 }}>Notas de la respuesta</div>
                 <textarea placeholder="Copia aquí lo que respondió el proveedor o añade notas..." value={formResp.notas_respuesta}
                   onChange={e => setFormResp(p => ({ ...p, notas_respuesta: e.target.value }))}
                   rows={3} style={{ ...inputSt, resize: "vertical" }} />
@@ -289,7 +290,7 @@ export default function CotizacionDetallePage() {
 
             <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
               <button onClick={handleGuardarRespuesta} disabled={guardando} className="btn-swiss-primary" style={{ flex: 1 }}>
-                {guardando ? "Guardando..." : "GUARDAR RESPUESTA"}
+                {guardando ? "Guardando..." : "Guardar respuesta"}
               </button>
               <button onClick={() => setModalResp(null)} className="btn-swiss-secondary">Cancelar</button>
             </div>
@@ -313,7 +314,7 @@ export default function CotizacionDetallePage() {
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               {cotizacion?.categoria && (
                 <span style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", border: "1px solid var(--border-default)", padding: "2px 8px" }}>
-                  {cotizacion.categoria.toUpperCase()}
+                  {categoriaLabel(cotizacion.categoria)}
                 </span>
               )}
               {cotizacion?.marca && (
@@ -343,15 +344,15 @@ export default function CotizacionDetallePage() {
       }}>
         {([
           {
-            label: "SELECCIONADOS",
+            label: "Seleccionados",
             val: comparador.length as number | string,
             color: undefined as string | undefined,
             sub: descartados.length > 0 ? `de ${resultados.length} encontrados` : undefined,
           },
-          { label: "CORREOS ENVIADOS", val: enviados.length, color: enviados.length > 0 ? "#2980b9" : undefined, sub: undefined },
-          { label: "RESPONDIERON", val: respondidos.length, color: respondidos.length > 0 ? "var(--text-success)" : undefined, sub: undefined },
+          { label: "Correos enviados", val: enviados.length, color: enviados.length > 0 ? "#2980b9" : undefined, sub: undefined },
+          { label: "Respondieron", val: respondidos.length, color: respondidos.length > 0 ? "var(--text-success)" : undefined, sub: undefined },
           {
-            label: "MEJOR PRECIO",
+            label: "Mejor precio",
             // solo sobre los seleccionados, todo convertido a CLP
             val: (() => {
               const ps = comparador
@@ -403,7 +404,7 @@ export default function CotizacionDetallePage() {
             borderBottom: "1px solid var(--border-default)",
             background: "var(--bg-base)",
           }}>
-            {["#", "PROVEEDOR / PÁGINA", "PRECIO BÚSQ.", "PRECIO COT.", "ENTREGA", "UBICACIÓN", "CONTACTO", "ORIGEN", ""].map((h, hi) => (
+            {["#", "Proveedor / página", "Precio búsq.", "Precio cot.", "Entrega", "Ubicación", "Contacto", "Origen", ""].map((h, hi) => (
               <div key={hi} style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em" }}>{h}</div>
             ))}
           </div>
@@ -479,7 +480,7 @@ export default function CotizacionDetallePage() {
                   border: `1px solid ${r.compra_nacional ? "var(--text-success)" : "#92400e"}`,
                   padding: "2px 5px",
                 }}>
-                  {r.compra_nacional ? "NAC." : "IMP."}
+                  {r.compra_nacional ? "Nac." : "Imp."}
                 </span>
               </div>
               <div style={{ textAlign: "right" }}>
@@ -534,7 +535,7 @@ export default function CotizacionDetallePage() {
                 padding: "9px 16px", borderBottom: "1px solid var(--border-default)",
                 background: "var(--bg-base)",
               }}>
-                {["PROVEEDOR", "EMAIL ENVIADO A", "FECHA ENVÍO", "ESTADO"].map(h => (
+                {["Proveedor", "Email enviado a", "Fecha envío", "Estado"].map(h => (
                   <div key={h} style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em" }}>{h}</div>
                 ))}
               </div>
@@ -624,10 +625,10 @@ export default function CotizacionDetallePage() {
 
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: r.notas_respuesta ? 16 : 0 }}>
                     {[
-                      { label: "PRECIO COTIZADO", val: r.precio_cotizado != null ? fmtMoney(r.precio_cotizado, "CLP") : "—", highlight: true },
-                      { label: "PLAZO ENTREGA", val: r.plazo_entrega || "—" },
-                      { label: "CONDICIONES PAGO", val: r.condiciones_pago || "—" },
-                      { label: "TIPO PROVEEDOR", val: TIPO_PROVEEDOR_LABELS[r.tipo_proveedor] ?? r.tipo_proveedor },
+                      { label: "Precio cotizado", val: r.precio_cotizado != null ? fmtMoney(r.precio_cotizado, "CLP") : "—", highlight: true },
+                      { label: "Plazo entrega", val: r.plazo_entrega || "—" },
+                      { label: "Condiciones pago", val: r.condiciones_pago || "—" },
+                      { label: "Tipo proveedor", val: TIPO_PROVEEDOR_LABELS[r.tipo_proveedor] ?? r.tipo_proveedor },
                     ].map(s => (
                       <div key={s.label} style={{ background: "var(--bg-base)", border: "1px solid var(--border-default)", padding: "10px 14px" }}>
                         <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 4 }}>{s.label}</div>
@@ -640,7 +641,7 @@ export default function CotizacionDetallePage() {
 
                   {r.notas_respuesta && (
                     <div style={{ background: "var(--bg-base)", border: "1px solid var(--border-default)", padding: "12px 14px" }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 4 }}>NOTAS / RESPUESTA DEL PROVEEDOR</div>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 4 }}>Notas / respuesta del proveedor</div>
                       <div style={{ fontSize: 11, color: "var(--text-secondary)", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{r.notas_respuesta}</div>
                     </div>
                   )}

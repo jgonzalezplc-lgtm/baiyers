@@ -236,7 +236,7 @@ export default function OnboardingChatPage() {
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg-base)", display: "flex", flexDirection: "column" }}>
       <div style={{ borderBottom: "1px solid var(--border-default)", padding: "14px 20px" }}>
-        <span className="label" style={{ color: "var(--accent)", fontWeight: 800 }}>BAIYER · CONFIGURACIÓN</span>
+        <span className="label" style={{ color: "var(--accent)", fontWeight: 800 }}>Baiyer · configuración</span>
       </div>
 
       {/* Chat */}

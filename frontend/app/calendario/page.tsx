@@ -198,7 +198,7 @@ export default function CalendarioPage() {
         {Object.entries(grupos).map(([fecha, evs]) => (
           <div key={fecha}>
             <div className="label" style={{ color: "var(--text-muted)", marginBottom: 6 }}>
-              {new Date(fecha + "T12:00:00").toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" }).toUpperCase()}
+              {new Date(fecha + "T12:00:00").toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "long" })}
             </div>
             <div style={{ border: "1px solid var(--border-default)" }}>
               {evs.map((ev, idx) => (
@@ -300,7 +300,7 @@ export default function CalendarioPage() {
               background: vista === v ? "var(--bg-inverse)" : "var(--bg-surface)",
               color: vista === v ? "var(--text-inverse)" : "var(--text-muted)",
             }}>
-              {v === "mes" ? "MES" : "AGENDA"}
+              {v === "mes" ? "MES" : "Agenda"}
             </button>
           ))}
         </div>

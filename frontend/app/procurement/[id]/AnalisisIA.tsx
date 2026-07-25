@@ -97,7 +97,7 @@ export default function AnalisisIA({ userId, itemNombre, cantidad, opciones }: {
               display: "grid", gridTemplateColumns: "1fr 110px 70px 70px 70px 70px 80px",
               gap: 6, padding: "5px 0", borderBottom: "1px solid var(--border-default)", minWidth: 620,
             }}>
-              {["PROVEEDOR", "TOTAL EST.", "PRECIO", "DISPON.", "PLAZO", "CONF.", "SCORE"].map(h => (
+              {["Proveedor", "Total est.", "Precio", "Dispon.", "Plazo", "Conf.", "Score"].map(h => (
                 <span key={h} className="label" style={{ fontWeight: 700 }}>{h}</span>
               ))}
             </div>

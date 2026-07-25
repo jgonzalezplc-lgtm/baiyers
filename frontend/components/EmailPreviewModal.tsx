@@ -84,7 +84,7 @@ export default function EmailPreviewModal({
                 borderBottom: tabActiva === t.key ? "2px solid var(--accent)" : "2px solid transparent",
               }}
             >
-              {t.label.toUpperCase()}
+              {t.label}
             </button>
           ))}
         </div>

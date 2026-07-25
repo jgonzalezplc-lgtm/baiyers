@@ -21,11 +21,11 @@ interface Cotizacion {
 }
 
 const ESTADO_CONFIG: Record<string, { label: string; color: string }> = {
-  identificado: { label: "IDENTIFICADO", color: "#2980b9" },
-  cotizando:    { label: "COTIZANDO",    color: "#f39c12" },
-  oc_emitida:   { label: "OC EMITIDA",   color: "var(--text-success)" },
-  pendiente:    { label: "PENDIENTE",    color: "var(--text-muted)" },
-  cancelado:    { label: "CANCELADO",    color: "var(--text-error)" },
+  identificado: { label: "Identificado", color: "#2980b9" },
+  cotizando:    { label: "Cotizando",    color: "#f39c12" },
+  oc_emitida:   { label: "OC emitida",   color: "var(--text-success)" },
+  pendiente:    { label: "Pendiente",    color: "var(--text-muted)" },
+  cancelado:    { label: "Cancelado",    color: "var(--text-error)" },
 };
 
 const CONFIANZA_COLORS: Record<string, string> = {
@@ -115,7 +115,7 @@ export default function CotizacionesPage() {
         </select>
 
         <div style={{ display: "flex", gap: 0, border: "1px solid var(--border-default)" }}>
-          {([["fecha", "FECHA"], ["precio", "PRECIO ↑"], ["respondieron", "RESPONDIÓ"]] as const).map(([val, lbl]) => (
+          {([["fecha", "Fecha"], ["precio", "PRECIO ↑"], ["respondieron", "Respondió"]] as const).map(([val, lbl]) => (
             <button key={val} onClick={() => setOrden(val)} style={{
               fontSize: 9, fontWeight: 700, padding: "6px 11px", cursor: "pointer",
               background: orden === val ? "var(--bg-inverse)" : "var(--bg-surface)",
@@ -143,7 +143,7 @@ export default function CotizacionesPage() {
           borderBottom: "1px solid var(--border-default)",
           background: "var(--bg-base)",
         }}>
-          {["ID", "ITEM", "CATEGORÍA", "CONFIANZA", "CORREOS ENV.", "RESPONDIERON", "PRECIO MIN", "FECHA"].map(h => (
+          {["ID", "Ítem", "Categoría", "Confianza", "Correos env.", "Respondieron", "Precio mín.", "Fecha"].map(h => (
             <div key={h} style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em" }}>{h}</div>
           ))}
         </div>
@@ -159,7 +159,7 @@ export default function CotizacionesPage() {
           </div>
         ) : ordenadas.map((c, i) => {
           const conf = c.confianza_ia?.toLowerCase();
-          const est = ESTADO_CONFIG[c.estado] ?? { label: c.estado.toUpperCase(), color: "var(--text-muted)" };
+          const est = ESTADO_CONFIG[c.estado] ?? { label: c.estado, color: "var(--text-muted)" };
           const tieneRespuestas = c.n_respondieron > 0;
           const tieneEnviados = c.n_enviados > 0;
 
@@ -185,7 +185,7 @@ export default function CotizacionesPage() {
               <div>
                 {conf ? (
                   <span style={{ fontSize: 9, fontWeight: 700, color: CONFIANZA_COLORS[conf] ?? "var(--text-muted)", border: `1px solid ${CONFIANZA_COLORS[conf] ?? "var(--border-default)"}`, padding: "2px 6px" }}>
-                    {conf.toUpperCase()}
+                    {conf}
                   </span>
                 ) : <span style={{ fontSize: 11, color: "var(--text-muted)" }}>—</span>}
               </div>

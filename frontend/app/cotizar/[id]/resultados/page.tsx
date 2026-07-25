@@ -749,7 +749,7 @@ export default function ResultadosPage() {
           }} onClick={() => setModalRespuesta(null)}>
             <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: 28, width: "100%", maxWidth: 400 }}
               onClick={e => e.stopPropagation()}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 4 }}>REGISTRAR RESPUESTA</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 4 }}>Registrar respuesta</div>
               <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", marginBottom: 20 }}>{modalRespuesta.proveedor}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -769,7 +769,7 @@ export default function ResultadosPage() {
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
                 <button onClick={handleGuardarRespuesta} disabled={guardandoResp} className="btn-swiss-primary" style={{ flex: 1 }}>
-                  {guardandoResp ? "Guardando..." : "GUARDAR"}
+                  {guardandoResp ? "Guardando..." : "Guardar"}
                 </button>
                 <button onClick={() => setModalRespuesta(null)} className="btn-swiss-secondary">Cancelar</button>
               </div>
@@ -932,7 +932,7 @@ export default function ResultadosPage() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {/* Cantidad a comprar del ítem actual */}
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "1px solid var(--border-default)", padding: "4px 8px", background: "var(--bg-surface)" }}>
-              <span className="label" style={{ color: "var(--text-muted)" }}>CANTIDAD</span>
+              <span className="label" style={{ color: "var(--text-muted)" }}>Cantidad</span>
               <span
                 title="Cantidad a comprar de este ítem. La usamos para calcular el total (precio × cantidad), los informes PDF y el mensaje de cotización a los proveedores. Cada ítem de la lista tiene su propia cantidad; puedes editarla."
                 style={{

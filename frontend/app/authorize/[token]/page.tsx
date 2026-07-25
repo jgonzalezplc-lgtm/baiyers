@@ -78,7 +78,7 @@ export default function AuthorizePage() {
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-base)", padding: 24 }}>
       <div style={{ width: 560, maxWidth: "100%", border: "1px solid var(--border-strong)", background: "var(--bg-elevated)", padding: 32 }}>
-        <div className="label" style={{ color: "var(--accent)", fontWeight: 800, marginBottom: 4, letterSpacing: "0.06em" }}>BAIYER</div>
+        <div className="label" style={{ color: "var(--accent)", fontWeight: 800, marginBottom: 4, letterSpacing: "0.06em" }}>Baiyer</div>
         <h1 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 16px" }}>Autorización de compra</h1>
 
         {error && <div className="label" style={{ color: "var(--text-error)", padding: 12, background: "var(--fill-error)", marginBottom: 12 }}>{error}</div>}
@@ -116,9 +116,9 @@ export default function AuthorizePage() {
                   display: "grid", gridTemplateColumns: "1.5fr 1fr 100px",
                   padding: "8px 14px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-base)",
                 }}>
-                  <div className="label" style={{ fontWeight: 700, color: "var(--text-muted)" }}>ÍTEM</div>
-                  <div className="label" style={{ fontWeight: 700, color: "var(--text-muted)" }}>PROVEEDOR</div>
-                  <div className="label" style={{ fontWeight: 700, color: "var(--text-muted)", textAlign: "right" }}>PRECIO</div>
+                  <div className="label" style={{ fontWeight: 700, color: "var(--text-muted)" }}>Ítem</div>
+                  <div className="label" style={{ fontWeight: 700, color: "var(--text-muted)" }}>Proveedor</div>
+                  <div className="label" style={{ fontWeight: 700, color: "var(--text-muted)", textAlign: "right" }}>Precio</div>
                 </div>
                 {items.map((it, i) => (
                   <div key={i}>
@@ -145,7 +145,7 @@ export default function AuthorizePage() {
                 ))}
                 {total > 0 && (
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "var(--bg-base)", borderTop: "1px solid var(--border-default)" }}>
-                    <span style={{ fontSize: 12, fontWeight: 800 }}>TOTAL</span>
+                    <span style={{ fontSize: 12, fontWeight: 800 }}>Total</span>
                     <span style={{ fontSize: 14, fontWeight: 800 }}>{fmtCLP(total)}</span>
                   </div>
                 )}
@@ -172,7 +172,7 @@ export default function AuthorizePage() {
               <>
                 {mostrarRechazo ? (
                   <div style={{ border: "1px solid var(--border-accent)", padding: 16, marginBottom: 12 }}>
-                    <div className="label" style={{ color: "var(--text-error)", fontWeight: 700, marginBottom: 8 }}>RECHAZAR SOLICITUD</div>
+                    <div className="label" style={{ color: "var(--text-error)", fontWeight: 700, marginBottom: 8 }}>Rechazar solicitud</div>
                     <textarea
                       value={comentario}
                       onChange={e => setComentario(e.target.value)}

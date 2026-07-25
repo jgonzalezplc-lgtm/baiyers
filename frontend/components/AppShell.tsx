@@ -1,57 +1,71 @@
 "use client";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import {
+  LayoutDashboard, PlusCircle, FileText, ListChecks, Building2, BarChart3,
+  ScrollText, Receipt, FolderKanban, CalendarDays, Repeat, FileBarChart,
+  MessageSquare, Plug, Code2, Settings, LogOut, Menu, X,
+  type LucideIcon,
+} from "lucide-react";
+import { ThemeToggle } from "@/components/ui";
 
-const NAV = [
+interface NavLink { href: string; label: string; icon: LucideIcon }
+
+const NAV: { section: string; links: NavLink[] }[] = [
   {
-    section: "PRINCIPAL",
+    section: "Principal",
     links: [
-      { href: "/dashboard", label: "Dashboard" },
-      { href: "/cotizar", label: "Nueva cotización" },
-      { href: "/cotizaciones", label: "Cotizaciones" },
-      { href: "/listas", label: "Listas de cotización" },
+      { href: "/dashboard", label: "Inicio", icon: LayoutDashboard },
+      { href: "/cotizar", label: "Nueva cotización", icon: PlusCircle },
+      { href: "/cotizaciones", label: "Cotizaciones", icon: FileText },
+      { href: "/listas", label: "Listas de cotización", icon: ListChecks },
     ],
   },
   {
-    section: "GESTIÓN",
+    section: "Gestión",
     links: [
-      { href: "/proveedores", label: "Proveedores" },
-      { href: "/estadisticas", label: "Estadísticas" },
-      { href: "/oc", label: "OC emitidas" },
-      { href: "/facturas", label: "Facturas" },
-      { href: "/proyectos", label: "Proyectos" },
-      { href: "/calendario", label: "Calendario" },
-      { href: "/recurrencias", label: "Recurrencias" },
-      { href: "/reportes", label: "Reportes" },
+      { href: "/proveedores", label: "Proveedores", icon: Building2 },
+      { href: "/estadisticas", label: "Estadísticas", icon: BarChart3 },
+      { href: "/oc", label: "Órdenes de compra", icon: ScrollText },
+      { href: "/facturas", label: "Facturas", icon: Receipt },
+      { href: "/proyectos", label: "Proyectos", icon: FolderKanban },
+      { href: "/calendario", label: "Calendario", icon: CalendarDays },
+      { href: "/recurrencias", label: "Recurrencias", icon: Repeat },
+      { href: "/reportes", label: "Reportes", icon: FileBarChart },
     ],
   },
   {
-    section: "SISTEMA",
+    section: "Sistema",
     links: [
-      { href: "/chat", label: "Chat IA" },
-      { href: "/integraciones", label: "MCP" },
-      { href: "/developers", label: "API" },
-      { href: "/settings", label: "Configuración" },
+      { href: "/chat", label: "Chat IA", icon: MessageSquare },
+      { href: "/integraciones", label: "MCP", icon: Plug },
+      { href: "/developers", label: "API", icon: Code2 },
+      { href: "/settings", label: "Configuración", icon: Settings },
     ],
   },
 ];
 
 const BREADCRUMB: Record<string, string> = {
-  "/dashboard": "DASHBOARD",
-  "/cotizar": "NUEVA COTIZACIÓN",
-  "/cotizaciones": "COTIZACIONES",
-  "/proveedores": "PROVEEDORES",
-  "/estadisticas": "ESTADÍSTICAS",
-  "/oc": "OC EMITIDAS",
-  "/facturas": "FACTURAS",
-  "/proyectos": "PROYECTOS",
-  "/calendario": "CALENDARIO",
-  "/recurrencias": "RECURRENCIAS",
-  "/reportes": "REPORTES",
-  "/chat": "CHAT IA",
+  "/dashboard": "Inicio",
+  "/cotizar": "Nueva cotización",
+  "/cotizaciones": "Cotizaciones",
+  "/listas": "Listas de cotización",
+  "/proveedores": "Proveedores",
+  "/estadisticas": "Estadísticas",
+  "/oc": "Órdenes de compra",
+  "/facturas": "Facturas",
+  "/proyectos": "Proyectos",
+  "/calendario": "Calendario",
+  "/recurrencias": "Recurrencias",
+  "/reportes": "Reportes",
+  "/chat": "Chat IA",
   "/integraciones": "MCP",
   "/developers": "API",
-  "/settings": "CONFIGURACIÓN",
+  "/settings": "Configuración",
 };
+
+const RAIL = 66;
+const EXPANDED = 224;
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -62,161 +76,200 @@ interface AppShellProps {
   perfilIncompleto?: boolean;
 }
 
-export default function AppShell({ children, empresa, planLabel, planLimitLabel, userId, perfilIncompleto }: AppShellProps) {
+export default function AppShell({ children, empresa, planLabel, planLimitLabel, perfilIncompleto }: AppShellProps) {
   const pathname = usePathname();
-  const breadcrumb = BREADCRUMB[pathname] ?? BREADCRUMB[Object.keys(BREADCRUMB).find(k => pathname.startsWith(k) && k !== "/") ?? ""] ?? "";
+  const [expandido, setExpandido] = useState(false);
+  const [drawerAbierto, setDrawerAbierto] = useState(false);
+  const [esMobile, setEsMobile] = useState(false);
 
-  return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg-base)" }}>
-      {/* Sidebar */}
-      <aside style={{
-        width: 208,
-        minHeight: "100vh",
-        background: "var(--bg-surface)",
-        borderRight: "1px solid var(--border-default)",
-        display: "flex",
-        flexDirection: "column",
-        flexShrink: 0,
-        position: "sticky",
-        top: 0,
+  const breadcrumb = BREADCRUMB[pathname]
+    ?? BREADCRUMB[Object.keys(BREADCRUMB).find(k => pathname.startsWith(k) && k !== "/") ?? ""]
+    ?? "";
+
+  useEffect(() => {
+    const check = () => setEsMobile(window.innerWidth < 860);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  useEffect(() => { setDrawerAbierto(false); }, [pathname]);
+
+  // En mobile el riel se reemplaza por un drawer; en desktop se expande al hover
+  const abierto = esMobile ? drawerAbierto : expandido;
+  const anchoVisible = esMobile ? 0 : RAIL;
+
+  const sidebar = (
+    <aside
+      onMouseEnter={() => !esMobile && setExpandido(true)}
+      onMouseLeave={() => !esMobile && setExpandido(false)}
+      style={{
+        position: "fixed", top: 0, left: 0, zIndex: 60,
         height: "100vh",
-        overflowY: "auto",
-      }}>
-        {/* Logo */}
-        <div style={{ padding: "20px 20px 18px" }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
-            cotizador<span style={{ color: "var(--accent)" }}>.ai</span>
-          </div>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
-            Plan {planLabel} · {planLimitLabel}/mes
-          </div>
+        width: abierto ? EXPANDED : RAIL,
+        transform: esMobile && !drawerAbierto ? `translateX(-${EXPANDED}px)` : "translateX(0)",
+        background: "var(--surface)",
+        borderRight: "1px solid var(--n-200)",
+        boxShadow: abierto ? "var(--shadow-pop)" : "none",
+        display: "flex", flexDirection: "column",
+        overflowX: "hidden", overflowY: "auto",
+        transition: "width .3s cubic-bezier(.4,0,.2,1), transform .3s cubic-bezier(.4,0,.2,1), box-shadow .3s ease",
+      }}
+    >
+      {/* Marca */}
+      <div style={{ padding: "18px 0 16px", display: "flex", alignItems: "center", gap: 10, paddingLeft: 20, minHeight: 66 }}>
+        <span style={{
+          width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+          background: "var(--brand)", color: "#fff",
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          fontSize: 14, fontWeight: 700,
+        }}>B</span>
+        <div style={{
+          opacity: abierto ? 1 : 0,
+          transform: abierto ? "translateX(0)" : "translateX(-6px)",
+          transition: "opacity .2s ease, transform .2s ease",
+          whiteSpace: "nowrap",
+        }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)", letterSpacing: "-0.015em" }}>Baiyer</div>
+          <div style={{ fontSize: 12, color: "var(--n-500)" }}>Plan {planLabel} · {planLimitLabel}/mes</div>
         </div>
+      </div>
 
-        {/* Nav */}
-        <nav style={{ flex: 1, padding: "0 10px" }}>
-          {NAV.map(({ section, links }) => (
-            <div key={section} style={{ marginBottom: 18 }}>
-              <div style={{
-                fontSize: 9,
-                fontWeight: 700,
-                color: "var(--text-muted)",
-                letterSpacing: "0.08em",
-                padding: "0 10px",
-                marginBottom: 4,
-              }}>
-                {section}
-              </div>
-              {links.map(({ href, label }) => {
-                const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
-                const showBadge = href === "/settings" && perfilIncompleto && !active;
-                return (
-                  <a key={href} href={href} style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "6px 10px",
-                    fontSize: 12,
-                    fontWeight: active || showBadge ? 700 : 400,
-                    color: active ? "var(--accent)" : showBadge ? "var(--accent)" : "var(--text-secondary)",
-                    textDecoration: "none",
-                    borderRadius: 2,
-                    marginBottom: 1,
-                    background: active ? "var(--accent-muted)" : showBadge ? "rgba(192,57,43,0.06)" : "transparent",
-                  }}>
-                    {label}
-                    {showBadge && (
+      {/* Navegación */}
+      <nav style={{ flex: 1, padding: "0 12px" }}>
+        {NAV.map(({ section, links }) => (
+          <div key={section} style={{ marginBottom: 14 }}>
+            <div style={{
+              fontSize: 11, fontWeight: 600, color: "var(--n-500)",
+              padding: "0 10px", marginBottom: 4, height: 16,
+              opacity: abierto ? 1 : 0,
+              transition: "opacity .2s ease",
+              whiteSpace: "nowrap", overflow: "hidden",
+            }}>
+              {section}
+            </div>
+            {links.map(({ href, label, icon: Icon }) => {
+              const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
+              const alerta = href === "/settings" && perfilIncompleto && !active;
+              return (
+                <a key={href} href={href} title={abierto ? undefined : label} style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "9px 10px", marginBottom: 2,
+                  borderRadius: "var(--r-md)",
+                  color: active ? "var(--brand)" : alerta ? "var(--brand)" : "var(--n-600)",
+                  background: active ? "var(--brand-50)" : "transparent",
+                  fontWeight: active ? 600 : 500,
+                  fontSize: 14, textDecoration: "none",
+                  whiteSpace: "nowrap",
+                  transition: "background .15s ease, color .15s ease",
+                }}>
+                  <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+                    <Icon size={19} strokeWidth={1.75} />
+                    {alerta && (
                       <span style={{
+                        position: "absolute", top: -2, right: -2,
                         width: 7, height: 7, borderRadius: "50%",
-                        background: "var(--accent)", flexShrink: 0,
+                        background: "var(--brand)", border: "1.5px solid var(--surface)",
                       }} />
                     )}
-                  </a>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-
-        {/* Footer */}
-        <div style={{ padding: "14px 20px", borderTop: "1px solid var(--border-default)" }}>
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.08em", marginBottom: 6 }}>
-              VARIACIÓN DE TEMA
-            </div>
-            <div style={{ display: "flex", gap: 5 }}>
-              {["A · STARK", "B · WARM"].map((t) => (
-                <span key={t} style={{
-                  fontSize: 9,
-                  fontWeight: 700,
-                  padding: "3px 8px",
-                  border: "1px solid var(--border-default)",
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
-                }}>{t}</span>
-              ))}
-            </div>
+                  </span>
+                  <span style={{
+                    opacity: abierto ? 1 : 0,
+                    transform: abierto ? "translateX(0)" : "translateX(-6px)",
+                    transition: "opacity .2s ease, transform .2s ease",
+                    overflow: "hidden",
+                  }}>{label}</span>
+                </a>
+              );
+            })}
           </div>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 5, wordBreak: "break-all" }}>{empresa}</div>
-          <form action="/auth/signout" method="post">
-            <button style={{
-              background: "none",
-              border: "none",
-              padding: 0,
-              fontSize: 11,
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              fontFamily: "inherit",
-              textDecoration: "underline",
-            }}>Salir</button>
-          </form>
-        </div>
-      </aside>
+        ))}
+      </nav>
 
-      {/* Main */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {/* Top bar */}
+      {/* Pie */}
+      <div style={{ borderTop: "1px solid var(--n-200)", padding: "10px 12px" }}>
+        <div style={{ padding: "0 2px" }}><ThemeToggle compact={!abierto} /></div>
+        {abierto && empresa && (
+          <div style={{
+            fontSize: 12, color: "var(--n-500)", padding: "6px 10px 2px",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}>{empresa}</div>
+        )}
+        <form action="/auth/signout" method="post">
+          <button title={abierto ? undefined : "Salir"} style={{
+            display: "flex", alignItems: "center", gap: 12,
+            width: "100%", padding: "9px 10px", borderRadius: "var(--r-md)",
+            background: "none", border: "none", cursor: "pointer",
+            color: "var(--n-600)", fontSize: 14, fontFamily: "inherit",
+            whiteSpace: "nowrap",
+          }}>
+            <LogOut size={19} strokeWidth={1.75} style={{ flexShrink: 0 }} />
+            <span style={{
+              opacity: abierto ? 1 : 0,
+              transition: "opacity .2s ease",
+              overflow: "hidden",
+            }}>Salir</span>
+          </button>
+        </form>
+      </div>
+    </aside>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--canvas)" }}>
+      {sidebar}
+
+      {/* Backdrop del drawer en mobile */}
+      {esMobile && drawerAbierto && (
+        <div
+          onClick={() => setDrawerAbierto(false)}
+          style={{ position: "fixed", inset: 0, zIndex: 55, background: "rgba(33,29,24,.4)" }}
+        />
+      )}
+
+      {/* Contenido — el margen sólo reserva el riel, así el hover no genera reflow */}
+      <div style={{ marginLeft: anchoVisible, display: "flex", flexDirection: "column", minHeight: "100vh", minWidth: 0 }}>
         <header style={{
-          borderBottom: "1px solid var(--border-default)",
-          padding: "11px 32px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          background: "var(--bg-surface)",
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
+          borderBottom: "1px solid var(--n-200)",
+          padding: "0 24px", height: 56,
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          background: "var(--surface)",
+          position: "sticky", top: 0, zIndex: 40,
         }}>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.07em", fontWeight: 700 }}>
-            COTIZADOR.AI{breadcrumb ? ` · ${breadcrumb}` : ""}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            {esMobile && (
+              <button
+                onClick={() => setDrawerAbierto(v => !v)}
+                aria-label="Abrir navegación"
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--n-700)", display: "inline-flex", padding: 4 }}
+              >
+                {drawerAbierto ? <X size={20} strokeWidth={1.75} /> : <Menu size={20} strokeWidth={1.75} />}
+              </button>
+            )}
+            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--n-900)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {breadcrumb || "Baiyer"}
+            </span>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <span style={{
-              fontSize: 9,
-              fontWeight: 700,
-              letterSpacing: "0.07em",
-              color: "var(--accent)",
-              border: "1px solid var(--accent)",
-              padding: "3px 8px",
-            }}>
-              {planLabel.toUpperCase()}
-            </span>
+              fontSize: 12, fontWeight: 600, padding: "4px 11px",
+              borderRadius: "var(--r-pill)",
+              background: "var(--brand-50)", color: "var(--brand-700)",
+            }}>{planLabel}</span>
             <a href="/cotizar" style={{
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              background: "var(--accent)",
-              color: "var(--accent-text)",
-              border: "1px solid var(--accent)",
-              padding: "7px 14px",
+              display: "inline-flex", alignItems: "center", gap: 7,
+              fontSize: 14, fontWeight: 600,
+              background: "var(--brand)", color: "#fff",
+              padding: "8px 14px", borderRadius: "var(--r-md)",
               textDecoration: "none",
             }}>
-              + NUEVA COTIZACIÓN
+              <PlusCircle size={16} strokeWidth={1.75} />
+              Nueva cotización
             </a>
           </div>
         </header>
 
-        {/* Page content */}
-        <main style={{ flex: 1, padding: "32px" }}>
+        <main style={{ flex: 1, padding: 28, minWidth: 0 }}>
           {children}
         </main>
       </div>

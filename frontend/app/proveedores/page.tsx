@@ -266,7 +266,7 @@ export default function ProveedoresPage() {
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {p.bloqueado ? "DESBLOQUEAR" : "BLOQUEAR"}
+                    {p.bloqueado ? "Desbloquear" : "Bloquear"}
                   </button>
                 </div>
               </div>

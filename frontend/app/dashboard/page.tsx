@@ -80,7 +80,7 @@ export default async function DashboardPage({
         )}
         <div>
           <span className="label" style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-            {user.user_metadata?.industria ? String(user.user_metadata.industria).toUpperCase() : "COTIZADOR INTELIGENTE"}
+            {user.user_metadata?.industria ? String(user.user_metadata.industria) : "Cotizador inteligente"}
           </span>
           <h1 style={{ fontSize: 28, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.02em" }}>
             {user.user_metadata?.empresa ? `Hola, ${user.user_metadata.empresa}` : "Dashboard"}
@@ -98,19 +98,19 @@ export default async function DashboardPage({
       }}>
         {[
           {
-            label: "COTIZACIONES ESTE MES",
+            label: "Cotizaciones este mes",
             val: stats.cotizaciones,
             sub: `Límite: ${planInfo.cotizaciones === 9999 ? "ilimitadas" : planInfo.cotizaciones + "/mes"}`,
             subColor: "var(--text-muted)",
           },
           {
-            label: "PROVEEDORES CONTACTADOS",
+            label: "Proveedores contactados",
             val: stats.proveedores,
             sub: "Red en crecimiento",
             subColor: "var(--text-muted)",
           },
           {
-            label: "OC EMITIDAS",
+            label: "OC emitidas",
             val: stats.ocs,
             sub: stats.totalOC > 0
               ? `$${stats.totalOC.toLocaleString("es-CL")} CLP total`
@@ -184,7 +184,7 @@ export default async function DashboardPage({
             borderBottom: "1px solid var(--border-default)",
             background: "var(--bg-base)",
           }}>
-            {["ID", "ITEM", "CATEGORÍA", "CONFIANZA", "CORREOS ENV.", "RESPONDIERON", "PRECIO MIN", "FECHA"].map(h => (
+            {["ID", "Ítem", "Categoría", "Confianza", "Correos env.", "Respondieron", "Precio mín.", "Fecha"].map(h => (
               <div key={h} style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em" }}>{h}</div>
             ))}
           </div>
@@ -221,7 +221,7 @@ export default async function DashboardPage({
                   <div>
                     {conf ? (
                       <span style={{ fontSize: 9, fontWeight: 700, color: CONFIANZA_COLORS[conf] ?? "var(--text-muted)", border: `1px solid ${CONFIANZA_COLORS[conf] ?? "var(--border-default)"}`, padding: "2px 6px" }}>
-                        {conf.toUpperCase()}
+                        {conf}
                       </span>
                     ) : <span style={{ fontSize: 11, color: "var(--text-muted)" }}>—</span>}
                   </div>

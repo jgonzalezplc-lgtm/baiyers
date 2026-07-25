@@ -19,12 +19,12 @@ interface OC {
 }
 
 const ESTADO_CONFIG: Record<string, { label: string; color: string }> = {
-  borrador:   { label: "BORRADOR",   color: "var(--text-muted)" },
-  enviada:    { label: "ENVIADA",    color: "#2980b9" },
-  confirmada: { label: "CONFIRMADA", color: "var(--text-success)" },
-  rechazada:  { label: "RECHAZADA", color: "var(--text-error)" },
-  pendiente:  { label: "PENDIENTE",  color: "var(--text-warning)" },
-  pagada:     { label: "PAGADA",     color: "var(--text-success)" },
+  borrador:   { label: "Borrador",   color: "var(--text-muted)" },
+  enviada:    { label: "Enviada",    color: "#2980b9" },
+  confirmada: { label: "Confirmada", color: "var(--text-success)" },
+  rechazada:  { label: "Rechazada", color: "var(--text-error)" },
+  pendiente:  { label: "Pendiente",  color: "var(--text-warning)" },
+  pagada:     { label: "Pagada",     color: "var(--text-success)" },
 };
 
 function fmt(n: number) {
@@ -109,7 +109,7 @@ export default function OCPage() {
           padding: "10px 16px",
           borderBottom: "1px solid var(--border-default)",
         }}>
-          {["N° OC", "ITEM", "PROVEEDOR", "CONDICIONES", "TOTAL", "ESTADO", "FECHA"].map(h => (
+          {["N° OC", "Item", "Proveedor", "Condiciones", "Total", "Estado", "Fecha"].map(h => (
             <div key={h} style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em" }}>{h}</div>
           ))}
         </div>
@@ -131,7 +131,7 @@ export default function OCPage() {
           </div>
         ) : (
           filtradas.map((oc, i) => {
-            const est = ESTADO_CONFIG[oc.estado] ?? { label: oc.estado.toUpperCase(), color: "var(--text-muted)" };
+            const est = ESTADO_CONFIG[oc.estado] ?? { label: oc.estado, color: "var(--text-muted)" };
             return (
               <div key={oc.id} style={{
                 display: "grid",

@@ -62,7 +62,7 @@ export default function ProcurementListPage() {
             gap: 8, padding: "8px 14px", background: "var(--bg-surface)",
             borderBottom: "1px solid var(--border-default)",
           }}>
-            {["EVENTO", "ESTADO", "ÍTEMS", "PROVEEDORES", "COTIZADOS", "FECHA"].map((h) => (
+            {["Evento", "Estado", "Ítems", "Proveedores", "Cotizados", "Fecha"].map((h) => (
               <span key={h} className="label" style={{ fontWeight: 700 }}>{h}</span>
             ))}
           </div>

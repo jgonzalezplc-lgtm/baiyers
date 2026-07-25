@@ -187,7 +187,7 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
                   {/* Cantidad + quitar */}
                   <div style={{ display: "flex", gap: 12, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      <span className="label" style={{ color: "var(--text-muted)" }}>CANTIDAD</span>
+                      <span className="label" style={{ color: "var(--text-muted)" }}>Cantidad</span>
                       <input
                         type="number" min={1} value={cants[i]}
                         onChange={e => {
@@ -221,7 +221,7 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
 
                   {/* Categorías */}
                   <div style={{ marginBottom: 14 }}>
-                    <div className="label" style={{ color: "var(--text-muted)", marginBottom: 6 }}>CATEGORÍAS</div>
+                    <div className="label" style={{ color: "var(--text-muted)", marginBottom: 6 }}>Categorías</div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
                       {CATEGORIAS.map(c => {
                         const activa = cats[i].has(c.key);
@@ -292,7 +292,7 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
 
                   {/* Términos de búsqueda */}
                   <div>
-                    <div className="label" style={{ color: "var(--text-muted)", marginBottom: 6 }}>TÉRMINOS DE BÚSQUEDA</div>
+                    <div className="label" style={{ color: "var(--text-muted)", marginBottom: 6 }}>Términos de búsqueda</div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
                       {terminos[i].map((t, tIdx) => (
                         <span key={tIdx} style={{

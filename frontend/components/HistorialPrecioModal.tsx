@@ -133,7 +133,7 @@ export default function HistorialPrecioModal({ itemNombre, precioActual, userId,
               <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
                 {tend && (
                   <span className="label" style={{ color: tend.color }}>
-                    {tend.label.toUpperCase()}
+                    {tend.label}
                   </span>
                 )}
                 {data.mejor_proveedor && (

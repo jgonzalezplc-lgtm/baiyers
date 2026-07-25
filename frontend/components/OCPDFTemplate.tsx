@@ -66,7 +66,7 @@ export default function OCPDFTemplate({ oc }: { oc: OCData }) {
         {/* Header */}
         <View style={s.header}>
           <View>
-            <Text style={s.logoText}>CLARIA</Text>
+            <Text style={s.logoText}>Claria</Text>
             <Text style={s.ocTitle}>Orden de Compra</Text>
           </View>
           <View>
@@ -116,7 +116,7 @@ export default function OCPDFTemplate({ oc }: { oc: OCData }) {
           </View>
           <View style={[s.totalLine]} />
           <View style={s.totalRow}>
-            <Text style={s.totalFinalLabel}>TOTAL</Text>
+            <Text style={s.totalFinalLabel}>Total</Text>
             <Text style={s.totalFinalValue}>{fmt(oc.total, oc.moneda)}</Text>
           </View>
         </View>

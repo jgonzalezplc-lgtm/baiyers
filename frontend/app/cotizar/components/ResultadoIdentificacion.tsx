@@ -106,7 +106,7 @@ export default function ResultadoIdentificacion({ resultado, onConfirmar, onCorr
             padding: "3px 8px",
             whiteSpace: "nowrap",
           }}>
-            {resultado.confianza.toUpperCase()}
+            {resultado.confianza}
           </span>
         </div>
 

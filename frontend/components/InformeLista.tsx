@@ -65,7 +65,7 @@ function ListaPDF({ datos, modo = "normal" }: { datos: DetalleLista; modo?: "nor
       <Page size="A4" style={s.page}>
         <View style={s.rule} />
         <Text style={s.kicker}>
-          {esMejorPrecio ? "INFORME DE LISTA — ESCENARIO MEJOR PRECIO" : "INFORME DE LISTA DE COTIZACIÓN"}
+          {esMejorPrecio ? "INFORME DE LISTA — ESCENARIO MEJOR PRECIO" : "Informe de lista de cotización"}
         </Text>
         <Text style={s.titulo}>{datos.nombre}</Text>
         <Text style={s.meta}>
@@ -245,7 +245,7 @@ export default function InformeLista({ listaId, userId, nombreLista }: { listaId
           style={{ fontSize: 10, whiteSpace: "nowrap", cursor: generando ? "wait" : "pointer" }}
           title="Selecciona automáticamente la opción más barata de cada ítem y descarga el PDF"
         >
-          {generando === "mejor_precio" ? "GENERANDO..." : "INFORME MEJOR PRECIO ↓"}
+          {generando === "mejor_precio" ? "Generando..." : "INFORME MEJOR PRECIO ↓"}
         </button>
         <button
           onClick={() => descargar("normal")}
@@ -253,7 +253,7 @@ export default function InformeLista({ listaId, userId, nombreLista }: { listaId
           className="btn-swiss-secondary"
           style={{ fontSize: 10, whiteSpace: "nowrap", cursor: generando ? "wait" : "pointer" }}
         >
-          {generando === "normal" ? "GENERANDO..." : "INFORME PDF DE LA LISTA ↓"}
+          {generando === "normal" ? "Generando..." : "INFORME PDF DE LA LISTA ↓"}
         </button>
       </div>
       {error && <span className="label" style={{ color: "var(--text-error)" }}>{error}</span>}

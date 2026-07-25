@@ -303,9 +303,9 @@ export default function ListaDetallePage() {
       {/* Resumen */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", border: "1px solid var(--border-default)", marginBottom: 24 }}>
         {[
-          { label: "DEFINITIVOS ELEGIDOS", val: `${definitivos.length}/${lista.items.length}`, color: completa ? "var(--text-success)" : undefined },
-          { label: "TOTAL SELECCIONADOS (CLP)", val: totalCLP ? fmtCLP(totalCLP) : "—" },
-          { label: "PROVEEDORES DISTINTOS", val: new Set(definitivos.map(it => it.definitivo?.proveedor)).size || "—" },
+          { label: "Definitivos elegidos", val: `${definitivos.length}/${lista.items.length}`, color: completa ? "var(--text-success)" : undefined },
+          { label: "Total seleccionados (CLP)", val: totalCLP ? fmtCLP(totalCLP) : "—" },
+          { label: "Proveedores distintos", val: new Set(definitivos.map(it => it.definitivo?.proveedor)).size || "—" },
         ].map((s, i) => (
           <div key={i} style={{ background: "var(--bg-surface)", borderRight: i < 2 ? "1px solid var(--border-default)" : "none", padding: "16px 20px" }}>
             <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 8 }}>{s.label}</div>
@@ -327,7 +327,7 @@ export default function ListaDetallePage() {
                 fontWeight: 800,
                 color: lista.aprobacion.estado === "aprobado" ? "var(--text-success)" : lista.aprobacion.estado === "rechazado" ? "var(--text-error)" : "var(--text-primary)",
               }}>
-                {lista.aprobacion.estado === "aprobado" ? "AUTORIZADO" : lista.aprobacion.estado === "rechazado" ? "RECHAZADA" : "ESPERANDO AUTORIZACIÓN"}
+                {lista.aprobacion.estado === "aprobado" ? "Autorizado" : lista.aprobacion.estado === "rechazado" ? "Rechazada" : "Esperando autorización"}
               </span>
               {lista.aprobacion.aprobador_email && (
                 <span className="label" style={{ color: "var(--text-muted)", marginLeft: 8 }}>
@@ -361,9 +361,9 @@ export default function ListaDetallePage() {
             padding: "10px 16px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-base)",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span className="label" style={{ fontWeight: 800 }}>{idx + 1}. {it.nombre.toUpperCase()}</span>
+              <span className="label" style={{ fontWeight: 800 }}>{idx + 1}. {it.nombre}</span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <span className="label" style={{ color: "var(--text-muted)" }}>CANT.</span>
+                <span className="label" style={{ color: "var(--text-muted)" }}>Cant.</span>
                 <input
                   type="number"
                   min={1}
@@ -402,7 +402,7 @@ export default function ListaDetallePage() {
                 display: "grid", gridTemplateColumns: "1.4fr 110px 100px 120px 90px 110px",
                 padding: "7px 16px", borderBottom: "1px solid var(--border-subtle)",
               }}>
-                {["PROVEEDOR / PÁGINA", "PRECIO", "ENTREGA", "UBICACIÓN", "ORIGEN", ""].map((h, hi) => (
+                {["Proveedor / página", "Precio", "Entrega", "Ubicación", "Origen", ""].map((h, hi) => (
                   <div key={hi} style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em" }}>{h}</div>
                 ))}
               </div>
@@ -546,7 +546,7 @@ export default function ListaDetallePage() {
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <div className="label" style={{ color: "var(--text-muted)", marginBottom: 6 }}>EMAIL DEL AUTORIZADOR</div>
+            <div className="label" style={{ color: "var(--text-muted)", marginBottom: 6 }}>Email del autorizador</div>
             <input
               value={aprobadorEmail}
               onChange={e => setAprobadorEmail(e.target.value)}

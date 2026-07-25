@@ -119,14 +119,14 @@ export default function IntegracionesPage() {
       <div style={{ borderBottom: "1px solid var(--border-default)", marginBottom: 24, display: "flex", gap: 4 }}>
         {(["conexiones", "audit", "docs"] as const).map(t => (
           <button key={t} style={tabBtn(tab === t)} onClick={() => setTab(t)}>
-            {t === "conexiones" ? "CONEXIONES" : t === "audit" ? "ACTIVIDAD" : "CONFIGURACIÓN"}
+            {t === "conexiones" ? "Conexiones" : t === "audit" ? "Actividad" : "Configuración"}
           </button>
         ))}
       </div>
 
       {tab === "conexiones" && (
         <div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 14 }}>CLIENTES DISPONIBLES</div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 14 }}>Clientes disponibles</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 1, border: "1px solid var(--border-default)", marginBottom: 28 }}>
             {Object.entries(KNOWN_CLIENTS).map(([id, client]) => {
               const connected = connections.find(c => c.client_id === id);
@@ -135,8 +135,8 @@ export default function IntegracionesPage() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{client.name}</div>
                     {connected
-                      ? <span style={{ fontSize: 9, fontWeight: 700, color: "var(--text-success)", border: "1px solid var(--text-success)", padding: "2px 7px" }}>CONECTADO</span>
-                      : <span style={{ fontSize: 9, color: "var(--text-muted)", border: "1px solid var(--border-default)", padding: "2px 7px" }}>NO CONECTADO</span>
+                      ? <span style={{ fontSize: 9, fontWeight: 700, color: "var(--text-success)", border: "1px solid var(--text-success)", padding: "2px 7px" }}>Conectado</span>
+                      : <span style={{ fontSize: 9, color: "var(--text-muted)", border: "1px solid var(--border-default)", padding: "2px 7px" }}>No conectado</span>
                     }
                   </div>
                   <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 14 }}>{client.description}</div>
@@ -162,7 +162,7 @@ export default function IntegracionesPage() {
 
           {connections.length > 0 && (
             <div>
-              <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 14 }}>DETALLES DE CONEXIONES</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 14 }}>Detalles de conexiones</div>
               <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-surface)" }}>
                 {connections.map((conn, i) => (
                   <div key={conn.id} style={{ padding: "14px 16px", borderBottom: i < connections.length - 1 ? "1px solid var(--border-subtle)" : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}>

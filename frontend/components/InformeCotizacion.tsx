@@ -81,11 +81,11 @@ function InformePDF({ datos }: { datos: DatosInforme }) {
     <Document title={`Informe de cotización — ${c.nombre}`}>
       <Page size="A4" style={s.page}>
         <View style={s.rule} />
-        <Text style={s.kicker}>INFORME DE COTIZACIÓN</Text>
+        <Text style={s.kicker}>Informe de cotización</Text>
         <Text style={s.titulo}>{c.nombre}</Text>
         <Text style={s.meta}>
           {[
-            c.categoria ? c.categoria.toUpperCase() : null,
+            c.categoria ?? null,
             c.marca,
             c.numero_parte ? `N/P: ${c.numero_parte}` : null,
             `Generado el ${fecha}`,
@@ -119,15 +119,15 @@ function InformePDF({ datos }: { datos: DatosInforme }) {
 
               <View style={s.filaDatos}>
                 <View style={s.dato}>
-                  <Text style={s.datoLabel}>UBICACIÓN</Text>
+                  <Text style={s.datoLabel}>Ubicación</Text>
                   <Text style={s.datoValor}>{p.ubicacion ?? "—"}</Text>
                 </View>
                 <View style={s.dato}>
-                  <Text style={s.datoLabel}>ENTREGA</Text>
+                  <Text style={s.datoLabel}>Entrega</Text>
                   <Text style={s.datoValor}>{p.plazo_entrega ?? "—"}</Text>
                 </View>
                 <View style={s.dato}>
-                  <Text style={s.datoLabel}>CONTACTO</Text>
+                  <Text style={s.datoLabel}>Contacto</Text>
                   <Text style={s.datoValor}>{p.contacto ?? "vía web"}</Text>
                 </View>
               </View>
@@ -185,7 +185,7 @@ export default function InformeCotizacion({ cotizacionId, nombreItem }: { cotiza
         className="btn-swiss-secondary"
         style={{ fontSize: 10, whiteSpace: "nowrap", cursor: generando ? "wait" : "pointer" }}
       >
-        {generando ? "GENERANDO INFORME..." : "INFORME PDF ↓"}
+        {generando ? "Generando informe..." : "INFORME PDF ↓"}
       </button>
       {error && <span className="label" style={{ color: "var(--text-error)" }}>{error}</span>}
     </div>

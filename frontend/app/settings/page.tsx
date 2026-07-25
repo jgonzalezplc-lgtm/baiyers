@@ -6,14 +6,14 @@ import { BtnPrimary, Input } from "@/components/ui";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const CAMPOS_PERFIL = [
-  { key: "empresa", label: "EMPRESA", placeholder: "Mi Empresa S.A." },
-  { key: "industria", label: "INDUSTRIA / RUBRO", placeholder: "Construcción, Tecnología, etc." },
-  { key: "rut", label: "RUT EMPRESA", placeholder: "76.123.456-7" },
-  { key: "nombre_usuario", label: "TU NOMBRE", placeholder: "Juan Pérez" },
-  { key: "pais", label: "PAÍS", placeholder: "Chile" },
-  { key: "sitio_web", label: "SITIO WEB", placeholder: "https://miempresa.cl" },
-  { key: "proceso_compra", label: "PROCESO DE COMPRA", placeholder: "Ej: yo cotizo y mi jefe autoriza sobre $500.000" },
-  { key: "autorizador_email", label: "EMAIL DEL AUTORIZADOR", placeholder: "jefe@empresa.cl — quién aprueba tus compras" },
+  { key: "empresa", label: "Empresa", placeholder: "Mi Empresa S.A." },
+  { key: "industria", label: "Industria / rubro", placeholder: "Construcción, Tecnología, etc." },
+  { key: "rut", label: "RUT empresa", placeholder: "76.123.456-7" },
+  { key: "nombre_usuario", label: "Tu nombre", placeholder: "Juan Pérez" },
+  { key: "pais", label: "País", placeholder: "Chile" },
+  { key: "sitio_web", label: "Sitio web", placeholder: "https://miempresa.cl" },
+  { key: "proceso_compra", label: "Proceso de compra", placeholder: "Ej: yo cotizo y mi jefe autoriza sobre $500.000" },
+  { key: "autorizador_email", label: "Email del autorizador", placeholder: "jefe@empresa.cl — quién aprueba tus compras" },
 ] as const;
 
 type CampoKey = typeof CAMPOS_PERFIL[number]["key"];
@@ -220,7 +220,7 @@ export default function SettingsPage() {
             marginTop: 28, background: "var(--bg-surface)",
             border: "1px solid var(--border-accent)", padding: 24,
           }}>
-            <div className="label" style={{ color: "var(--text-error)", fontWeight: 800, marginBottom: 6 }}>ZONA DE PELIGRO</div>
+            <div className="label" style={{ color: "var(--text-error)", fontWeight: 800, marginBottom: 6 }}>Zona de peligro</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>Darse de baja</div>
             <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 14 }}>
               Elimina tu cuenta y sus datos de forma permanente. Esta acción no se puede deshacer.

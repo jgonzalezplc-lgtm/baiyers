@@ -161,7 +161,7 @@ export default function DevelopersPage() {
       <div style={{ borderBottom: "1px solid var(--border-default)", marginBottom: 24, display: "flex", gap: 4 }}>
         {(["keys", "webhooks", "uso", "docs"] as const).map(t => (
           <button key={t} style={tabBtn(tab === t)} onClick={() => setTab(t)}>
-            {t === "keys" ? "API KEYS" : t === "webhooks" ? "WEBHOOKS" : t === "uso" ? "USO DEL MES" : "QUICK START"}
+            {t === "keys" ? "API keys" : t === "webhooks" ? "Webhooks" : t === "uso" ? "Uso del mes" : "Quick start"}
           </button>
         ))}
       </div>
@@ -190,11 +190,11 @@ export default function DevelopersPage() {
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", marginBottom: 16 }}>Nueva API Key</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <div>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 6 }}>NOMBRE</div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 6 }}>Nombre</div>
                   <input value={newKeyName} onChange={e => setNewKeyName(e.target.value)} placeholder="Ej: Defontana producción" style={inputSt} />
                 </div>
                 <div>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 6 }}>MODO</div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 6 }}>Modo</div>
                   <div style={{ display: "flex", gap: 8 }}>
                     {(["live", "test"] as const).map(m => (
                       <button key={m} onClick={() => setNewKeyModo(m)} style={{ padding: "6px 16px", fontSize: 10, fontWeight: newKeyModo === m ? 700 : 400, background: newKeyModo === m ? "var(--accent)" : "var(--bg-surface)", color: newKeyModo === m ? "#fff" : "var(--text-muted)", border: `1px solid ${newKeyModo === m ? "var(--accent)" : "var(--border-default)"}`, cursor: "pointer", fontFamily: "var(--font-mono)" }}>
@@ -216,7 +216,7 @@ export default function DevelopersPage() {
           ) : (
             <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-surface)" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 80px 110px 80px 70px", padding: "8px 16px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-base)" }}>
-                {["NOMBRE", "KEY", "PLAN", "ÚLTIMO USO", "ESTADO", ""].map(h => <div key={h} style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em" }}>{h}</div>)}
+                {["Nombre", "KEY", "Plan", "Último uso", "Estado", ""].map(h => <div key={h} style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em" }}>{h}</div>)}
               </div>
               {keys.map((k, i) => (
                 <div key={k.id} style={{ display: "grid", gridTemplateColumns: "1fr 140px 80px 110px 80px 70px", padding: "10px 16px", borderBottom: i < keys.length - 1 ? "1px solid var(--border-subtle)" : "none", alignItems: "center" }}>
@@ -224,7 +224,7 @@ export default function DevelopersPage() {
                   <code style={{ fontSize: 10, color: "var(--accent)", fontFamily: "var(--font-mono)" }}>{k.key_prefix}••••••••</code>
                   <div style={{ fontSize: 11, color: "var(--text-secondary)", textTransform: "capitalize" }}>{k.plan}</div>
                   <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{k.ultimo_uso_at ? new Date(k.ultimo_uso_at).toLocaleDateString("es-CL") : "Nunca"}</div>
-                  <div><span style={{ fontSize: 9, fontWeight: 700, color: k.activa ? "var(--text-success)" : "var(--text-error)", border: `1px solid ${k.activa ? "var(--text-success)" : "var(--text-error)"}`, padding: "2px 7px" }}>{k.activa ? "ACTIVA" : "REVOCADA"}</span></div>
+                  <div><span style={{ fontSize: 9, fontWeight: 700, color: k.activa ? "var(--text-success)" : "var(--text-error)", border: `1px solid ${k.activa ? "var(--text-success)" : "var(--text-error)"}`, padding: "2px 7px" }}>{k.activa ? "Activa" : "Revocada"}</span></div>
                   <div>{k.activa && <button onClick={() => handleRevoke(k.id)} disabled={revoking === k.id} style={{ background: "none", color: "var(--text-error)", border: "1px solid var(--text-error)", padding: "3px 8px", fontSize: 9, cursor: "pointer", fontFamily: "inherit" }}>{revoking === k.id ? "..." : "Revocar"}</button>}</div>
                 </div>
               ))}
@@ -243,10 +243,10 @@ export default function DevelopersPage() {
             <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: "20px", marginBottom: 20 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", marginBottom: 16 }}>Nuevo webhook</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div><div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 6 }}>URL DEL ENDPOINT</div><input value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} placeholder="https://tu-erp.cl/webhook/claria" style={inputSt} /></div>
+                <div><div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 6 }}>URL del endpoint</div><input value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)} placeholder="https://tu-erp.cl/webhook/claria" style={inputSt} /></div>
                 <div><div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 6 }}>SECRET HMAC (opcional)</div><input value={webhookSecret} onChange={e => setWebhookSecret(e.target.value)} placeholder="mi_secret_privado" type="password" style={inputSt} /></div>
                 <div>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 8 }}>EVENTOS</div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 8 }}>Eventos</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     {TODOS_EVENTOS.map(ev => (
                       <button key={ev} onClick={() => setWebhookEventos(prev => prev.includes(ev) ? prev.filter(e => e !== ev) : [...prev, ev])} style={{ fontSize: 10, padding: "5px 10px", cursor: "pointer", fontFamily: "var(--font-mono)", background: webhookEventos.includes(ev) ? "var(--accent-muted)" : "var(--bg-base)", color: webhookEventos.includes(ev) ? "var(--accent)" : "var(--text-muted)", border: `1px solid ${webhookEventos.includes(ev) ? "var(--accent)" : "var(--border-default)"}`, fontWeight: webhookEventos.includes(ev) ? 700 : 400 }}>{ev}</button>
@@ -299,8 +299,8 @@ export default function DevelopersPage() {
       {tab === "uso" && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1, border: "1px solid var(--border-default)" }}>
           {[
-            { label: "COTIZACIONES ESTE MES", usadas: usage?.cotizaciones.usadas ?? 0, limite: usage?.cotizaciones.limite ?? 100, ilimitado: usage?.cotizaciones.ilimitado ?? false },
-            { label: "OCS EMITIDAS", usadas: usage?.ocs.usadas ?? 0, limite: usage?.ocs.limite ?? 100, ilimitado: usage?.ocs.ilimitado ?? false },
+            { label: "Cotizaciones este mes", usadas: usage?.cotizaciones.usadas ?? 0, limite: usage?.cotizaciones.limite ?? 100, ilimitado: usage?.cotizaciones.ilimitado ?? false },
+            { label: "Ocs emitidas", usadas: usage?.ocs.usadas ?? 0, limite: usage?.ocs.limite ?? 100, ilimitado: usage?.ocs.ilimitado ?? false },
           ].map((item, i) => {
             const pct = item.limite > 0 ? (item.usadas / item.limite) * 100 : 0;
             return (

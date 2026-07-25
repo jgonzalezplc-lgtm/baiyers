@@ -118,7 +118,7 @@ export default function ConfirmarOCPage() {
 
               <div style={{ border: "1px solid var(--border-default)", marginBottom: 20 }}>
                 {[
-                  { label: "Item", val: oc.nombre_item },
+                  { label: "Ítem", val: oc.nombre_item },
                   { label: "Cantidad", val: String(oc.cantidad) },
                   { label: "Total", val: fmt(oc.precio_total, oc.moneda) },
                   { label: "Condiciones de pago", val: oc.condiciones_pago },

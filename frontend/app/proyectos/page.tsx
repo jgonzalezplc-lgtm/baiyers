@@ -85,7 +85,7 @@ export default function ProyectosPage() {
               color: filtroEstado === e ? "var(--text-inverse)" : "var(--text-muted)",
             }}
           >
-            {e === "todos" ? "TODOS" : (ESTADO_CONFIG[e]?.label || e).toUpperCase()}
+            {e === "todos" ? "Todos" : (ESTADO_CONFIG[e]?.label || e)}
           </button>
         ))}
       </div>
@@ -127,7 +127,7 @@ export default function ProyectosPage() {
                   height: "100%",
                 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                    <span className="label" style={{ color: cfg.color }}>{cfg.label.toUpperCase()}</span>
+                    <span className="label" style={{ color: cfg.color }}>{cfg.label}</span>
                     <span className="label" style={{ color: "var(--text-muted)" }}>
                       {new Date(p.created_at).toLocaleDateString("es-CL")}
                     </span>
