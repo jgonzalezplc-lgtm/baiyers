@@ -147,7 +147,7 @@ export default function GanttChart({ proyectoId, userId }: { proyectoId: string;
                   style={{ marginTop: 2, width: "100%", border: "1px solid var(--border-default)", background: "var(--bg-base)", fontSize: 10, padding: "1px 2px", cursor: "pointer" }}>
                   {s.opciones.map((o, i) => (
                     <option key={o.cotizacion_id ?? i} value={o.cotizacion_id ?? ""}>
-                      {(o.proveedor ?? "Sin proveedor")} — {fmtCLP(o.precio_unitario)} · {o.plazo_dias}d
+                      {(o.proveedor ?? "Sin proveedor")}, {fmtCLP(o.precio_unitario)} · {o.plazo_dias}d
                     </option>
                   ))}
                 </select>

@@ -79,7 +79,7 @@ export default function ImportarProveedoresPage() {
             </button>
           </div>
           <p style={{ fontSize: 11, color: "var(--n-600)", marginTop: 6 }}>
-            Acepta .xlsx, .xls, .csv — Gemini mapea las columnas automáticamente sin importar el formato.
+            Acepta .xlsx, .xls, .csv, Gemini mapea las columnas automáticamente sin importar el formato.
           </p>
         </div>
 
@@ -107,7 +107,7 @@ export default function ImportarProveedoresPage() {
           {archivo ? (
             <>
               <div style={{ fontSize: 13, fontWeight: 700, color: "var(--success)", marginBottom: 4 }}>{archivo.name}</div>
-              <div style={{ fontSize: 11, color: "var(--n-600)" }}>{(archivo.size / 1024).toFixed(1)} KB — click para cambiar</div>
+              <div style={{ fontSize: 11, color: "var(--n-600)" }}>{(archivo.size / 1024).toFixed(1)} KB, click para cambiar</div>
             </>
           ) : (
             <>
@@ -162,7 +162,7 @@ export default function ImportarProveedoresPage() {
         {preview.length > 0 && (
           <div>
             <div style={{ fontSize: 11, color: "var(--n-600)", letterSpacing: "0.1em", marginBottom: 8, fontWeight: 700 }}>
-              Preview — primeras {preview.length} filas
+              Preview, primeras {preview.length} filas
             </div>
             <div style={{ background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: 8, overflow: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>

@@ -14,7 +14,7 @@ const CAMPOS_PERFIL = [
   { key: "pais", label: "País", placeholder: "Chile" },
   { key: "sitio_web", label: "Sitio web", placeholder: "https://miempresa.cl" },
   { key: "proceso_compra", label: "Proceso de compra", placeholder: "Ej: yo cotizo y mi jefe autoriza sobre $500.000" },
-  { key: "autorizador_email", label: "Email del autorizador", placeholder: "jefe@empresa.cl — quién aprueba tus compras" },
+  { key: "autorizador_email", label: "Email del autorizador", placeholder: "jefe@empresa.cl, quién aprueba tus compras" },
 ] as const;
 
 type CampoKey = typeof CAMPOS_PERFIL[number]["key"];
@@ -138,7 +138,7 @@ export default function SettingsPage() {
               }}>
                 <AlertCircle size={17} strokeWidth={1.75} style={{ flexShrink: 0, marginTop: 1 }} />
                 <span>
-                  Completa tu perfil — faltan:{" "}
+                  Completa tu perfil, faltan:{" "}
                   <strong>{camposFaltantes.map(k => CAMPOS_PERFIL.find(c => c.key === k)!.label).join(", ")}</strong>
                 </span>
               </div>

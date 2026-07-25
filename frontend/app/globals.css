@@ -303,6 +303,48 @@ input, textarea, select, button { font-family: inherit; }
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Loader — puntos en onda */
+@keyframes dotWave {
+  0%, 60%, 100% { transform: translateY(0); opacity: .4; }
+  30%           { transform: translateY(-7px); opacity: 1; }
+}
+
+/* Loader — halo pulsante alrededor del ícono */
+@keyframes haloPulse {
+  0%   { transform: scale(.9); opacity: .7; }
+  70%  { transform: scale(1.5); opacity: 0; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* Ícono que respira suave */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.08); }
+}
+
+/* Fade + subida suave para paneles que aparecen */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Acordeón estilo iOS: anima la altura con grid-template-rows */
+.acc-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows .32s cubic-bezier(.4,0,.2,1),
+              opacity .28s ease;
+  opacity: 0;
+}
+.acc-panel.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.acc-panel > .acc-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .01ms !important;

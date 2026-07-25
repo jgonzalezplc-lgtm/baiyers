@@ -280,10 +280,10 @@ export default function ProyectoDetallePage() {
                             onChange={e => e.target.value && handleSelectProveedor(it.id, e.target.value)}
                             style={{ background: "var(--canvas)", border: "1px solid var(--n-200)", borderRadius: 4, color: "var(--n-900)", fontSize: 11, padding: "4px 8px", width: "100%", fontFamily: "inherit", cursor: "pointer" }}
                           >
-                            <option value="">— Sin seleccionar —</option>
+                            <option value="">— Sin seleccionar,</option>
                             {it.cotizaciones.map(c => (
                               <option key={c.id} value={c.id}>
-                                {c.proveedor_nombre} — ${Math.round(c.precio_unitario).toLocaleString("es-CL")} ({c.plazo_entrega_dias || "?"} días)
+                                {c.proveedor_nombre}, ${Math.round(c.precio_unitario).toLocaleString("es-CL")} ({c.plazo_entrega_dias || "?"} días)
                               </option>
                             ))}
                           </select>
@@ -334,7 +334,7 @@ export default function ProyectoDetallePage() {
           <div>
             {liquidez.length === 0 ? (
               <div style={{ textAlign: "center", padding: "48px 20px", color: "var(--n-600)", fontSize: 12 }}>
-                Sin datos de liquidez — cotiza primero los ítems del proyecto.
+                Sin datos de liquidez, cotiza primero los ítems del proyecto.
               </div>
             ) : (
               <div>
@@ -377,7 +377,7 @@ export default function ProyectoDetallePage() {
                         <tr key={i} style={{ borderBottom: i < liquidez.length - 1 ? "1px solid var(--surface-2)" : "none" }}>
                           <td style={{ padding: "8px 12px", color: "var(--n-500)", fontWeight: 700 }}>{s.semana}</td>
                           <td style={{ padding: "8px 12px", color: "var(--n-600)", fontSize: 10 }}>
-                            {new Date(s.fecha_inicio + "T12:00:00").toLocaleDateString("es-CL", { day: "2-digit", month: "short" })} —{" "}
+                            {new Date(s.fecha_inicio + "T12:00:00").toLocaleDateString("es-CL", { day: "2-digit", month: "short" })},{" "}
                             {new Date(s.fecha_fin + "T12:00:00").toLocaleDateString("es-CL", { day: "2-digit", month: "short" })}
                           </td>
                           <td style={{ padding: "8px 12px", color: NIVEL_COLOR[s.nivel] || "var(--n-900)", fontWeight: 700 }}>

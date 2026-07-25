@@ -165,7 +165,7 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
           <div>
             <span className="label" style={{ color: "var(--accent)", display: "block", marginBottom: 2 }}>Orden de Compra</span>
             <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", margin: 0, letterSpacing: "-0.01em" }}>
-              {paso === "form" ? "Emitir OC" : paso === "preview" ? `Preview — ${ocData?.numero_oc}` : "OC Enviada"}
+              {paso === "form" ? "Emitir OC" : paso === "preview" ? `Preview, ${ocData?.numero_oc}` : "OC Enviada"}
             </h2>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 18 }}>✕</button>
@@ -271,7 +271,7 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
 
               {!email && (
                 <div style={{ fontSize: 10, color: "var(--text-warning)", background: "var(--fill-warning)", border: "1px solid var(--palette-yellow-500, #ca8a04)", padding: "8px 12px" }}>
-                  No ingresaste email del proveedor — la OC se enviara solo a tu copia (hola@claria.cc).
+                  No ingresaste email del proveedor, la OC se enviara solo a tu copia (hola@claria.cc).
                 </div>
               )}
 

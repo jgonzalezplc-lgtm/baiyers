@@ -153,9 +153,8 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
 
   return (
     <div style={{
-      background: seleccionado ? "var(--fill-success)" : "var(--bg-surface)",
-      border: `1px solid ${seleccionado ? "var(--palette-green-500, #16a34a)" : "var(--border-default)"}`,
-      borderTop: "none",
+      background: seleccionado ? "var(--st-aprobada-bg)" : "var(--surface)",
+      borderLeft: seleccionado ? "3px solid var(--success)" : "3px solid transparent",
       padding: "14px 16px",
       display: "flex",
       flexDirection: "column",
@@ -167,7 +166,7 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
       {/* Thumbnail */}
       <div style={{
         width: 52, height: 52, flexShrink: 0,
-        background: "var(--bg-base)", border: "1px solid var(--border-default)",
+        background: "var(--surface-2)", border: "1px solid var(--n-200)", borderRadius: "var(--r-md)",
         overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
       }}>
         {showThumb ? (
@@ -204,7 +203,7 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
 
         {/* Badges */}
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center", marginBottom: 6 }}>
-          <span className="label" style={{ background: "var(--bg-base)", border: "1px solid var(--border-default)", padding: "1px 5px" }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: "var(--n-600)", background: "var(--surface-2)", border: "1px solid var(--n-200)", padding: "1px 8px", borderRadius: "var(--r-pill)" }}>
             {fuenteLabel}
           </span>
           <span className="label" style={{ color: "var(--text-muted)" }}>{paisLabel}</span>
@@ -302,7 +301,7 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
           </div>
         )}
 
-        {/* Mismo producto visto en otras fuentes — comparativa de precios */}
+        {/* Mismo producto visto en otras fuentes, comparativa de precios */}
         {ofertas && ofertas.length > 1 && (
           <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed var(--border-default)" }}>
             <div className="label" style={{ color: "var(--text-muted)", marginBottom: 4 }}>
@@ -322,9 +321,9 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
                       display: "flex",
                       alignItems: "stretch",
                       gap: 8,
-                      padding: "4px 6px",
-                      borderLeft: `2px solid ${elegida ? "var(--accent)" : "var(--border-default)"}`,
-                      background: elegida ? "var(--fill-error)" : "transparent",
+                      padding: "5px 8px", borderRadius: "var(--r-sm)",
+                      borderLeft: `2px solid ${elegida ? "var(--brand)" : "var(--n-200)"}`,
+                      background: elegida ? "var(--brand-50)" : "transparent",
                     }}
                   >
                     {/* Checkbox para elegir esta oferta específica */}
@@ -333,9 +332,10 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
                         onClick={() => onToggleOferta!(o.url)}
                         title={elegida ? "Quitar de la selección" : "Elegir esta oferta"}
                         style={{
-                          flexShrink: 0, width: 16, height: 16, alignSelf: "center", cursor: "pointer",
-                          border: `1px solid ${elegida ? "var(--accent)" : "var(--border-strong)"}`,
-                          background: elegida ? "var(--accent)" : "var(--bg-base)",
+                          flexShrink: 0, width: 18, height: 18, alignSelf: "center", cursor: "pointer",
+                          borderRadius: "var(--r-sm)",
+                          border: `1px solid ${elegida ? "var(--brand)" : "var(--n-400)"}`,
+                          background: elegida ? "var(--brand)" : "var(--surface)",
                           color: "#fff", fontSize: 11, lineHeight: 1, padding: 0,
                           display: "flex", alignItems: "center", justifyContent: "center",
                         }}
@@ -364,7 +364,7 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
                       <span className="label" style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                         <span style={{ color: "var(--accent)" }}>
                           {labelFuente}{o.proveedor && o.proveedor !== labelFuente ? ` · ${o.proveedor}` : ""}
-                          {esEsta ? " — más barata" : ""}
+                          {esEsta ? ", más barata" : ""}
                         </span>
                         <span style={{ flexShrink: 0, fontFamily: "var(--font-mono)", color: "var(--text-primary)", fontWeight: 700 }}>
                           {o.precio != null ? formatPrecio(o.precio, o.moneda) : "A cotizar"}

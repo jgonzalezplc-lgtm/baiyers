@@ -93,7 +93,7 @@ export default function AuthorizePage() {
                 <div style={{ fontSize: 12, marginBottom: 4 }}>
                   <span className="label" style={{ color: "var(--text-muted)" }}>SOLICITANTE:</span>{" "}
                   <span style={{ fontWeight: 700 }}>{sol.resumen.solicitante}</span>
-                  {sol.resumen.empresa && <span style={{ color: "var(--text-muted)" }}> — {sol.resumen.empresa}</span>}
+                  {sol.resumen.empresa && <span style={{ color: "var(--text-muted)" }}>, {sol.resumen.empresa}</span>}
                 </div>
               )}
               {sol.resumen.lista_nombre && (
@@ -209,7 +209,7 @@ export default function AuthorizePage() {
                 )}
                 {decisionAuto && (
                   <div className="label" style={{ color: "var(--text-muted)", marginTop: 10 }}>
-                    Llegaste desde el enlace de {decisionAuto === "aprobar" ? "aprobación" : "rechazo"} — confirma con el botón.
+                    Llegaste desde el enlace de {decisionAuto === "aprobar" ? "aprobación" : "rechazo"}, confirma con el botón.
                   </div>
                 )}
               </>

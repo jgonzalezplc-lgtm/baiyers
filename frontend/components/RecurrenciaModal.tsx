@@ -184,7 +184,7 @@ export default function RecurrenciaModal({ userId, recurrencia, onGuardado, onCe
               Proveedor preferido (opcional)
             </label>
             <select value={proveedorId} onChange={e => setProveedorId(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
-              <option value="">— Sin asignar —</option>
+              <option value="">— Sin asignar,</option>
               {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </select>
           </div>

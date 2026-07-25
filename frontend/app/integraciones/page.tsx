@@ -185,7 +185,7 @@ export default function IntegracionesPage() {
           )}
           {connections.length === 0 && mcpToken && (
             <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)", fontSize: 12 }}>
-              Sin conexiones activas — conecta tu primer cliente arriba
+              Sin conexiones activas, conecta tu primer cliente arriba
             </div>
           )}
         </div>

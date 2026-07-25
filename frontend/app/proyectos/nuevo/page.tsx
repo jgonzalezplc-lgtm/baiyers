@@ -240,7 +240,7 @@ export default function NuevoProyectoPage() {
             {items.length > 0 && (
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-success)", letterSpacing: "0.05em", marginBottom: 10 }}>
-                  {items.length} ÍTEMS DETECTADOS — puedes editar antes de confirmar
+                  {items.length} ÍTEMS DETECTADOS, puedes editar antes de confirmar
                 </div>
                 <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-surface)", maxHeight: 320, overflowY: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>

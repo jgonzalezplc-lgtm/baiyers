@@ -60,12 +60,12 @@ function ListaPDF({ datos, modo = "normal" }: { datos: DetalleLista; modo?: "nor
   const esMejorPrecio = modo === "mejor_precio";
 
   return (
-    <Document title={`Informe lista — ${datos.nombre}`}>
+    <Document title={`Informe lista, ${datos.nombre}`}>
       {/* Página 1: resumen + ruta de compra */}
       <Page size="A4" style={s.page}>
         <View style={s.rule} />
         <Text style={s.kicker}>
-          {esMejorPrecio ? "INFORME DE LISTA — ESCENARIO MEJOR PRECIO" : "Informe de lista de cotización"}
+          {esMejorPrecio ? "INFORME DE LISTA, ESCENARIO MEJOR PRECIO" : "Informe de lista de cotización"}
         </Text>
         <Text style={s.titulo}>{datos.nombre}</Text>
         <Text style={s.meta}>
@@ -76,7 +76,7 @@ function ListaPDF({ datos, modo = "normal" }: { datos: DetalleLista; modo?: "nor
 
         {definitivos.length > 0 && (
           <>
-            <Text style={s.seccion}>{esMejorPrecio ? "Ruta de compra — mejor precio" : "Ruta de compra final"}</Text>
+            <Text style={s.seccion}>{esMejorPrecio ? "Ruta de compra, mejor precio" : "Ruta de compra final"}</Text>
             {definitivos.map((it, i) => {
               const d = it.definitivo!;
               const cant = it.cantidad || 1;
@@ -106,7 +106,7 @@ function ListaPDF({ datos, modo = "normal" }: { datos: DetalleLista; modo?: "nor
             </View>
             {definitivos.length < datos.items.length && (
               <Text style={{ fontSize: 7.5, color: "#666666", marginTop: 4 }}>
-                * {datos.items.length - definitivos.length} ítem(s) aún sin proveedor definitivo — no incluidos en el total.
+                * {datos.items.length - definitivos.length} ítem(s) aún sin proveedor definitivo, no incluidos en el total.
               </Text>
             )}
           </>
@@ -119,7 +119,7 @@ function ListaPDF({ datos, modo = "normal" }: { datos: DetalleLista; modo?: "nor
       <Page size="A4" style={s.page}>
         <View style={s.rule} />
         <Text style={s.kicker}>
-          {esMejorPrecio ? "DETALLE POR ÍTEM — OPCIÓN MÁS ECONÓMICA" : "DETALLE POR ÍTEM — PROVEEDORES COMPARADOS"}
+          {esMejorPrecio ? "DETALLE POR ÍTEM, OPCIÓN MÁS ECONÓMICA" : "DETALLE POR ÍTEM, PROVEEDORES COMPARADOS"}
         </Text>
 
         {datos.items.map((it, idx) => (

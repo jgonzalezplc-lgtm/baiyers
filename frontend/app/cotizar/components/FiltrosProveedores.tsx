@@ -14,73 +14,81 @@ interface Props {
   onOrden: (v: Orden) => void;
 }
 
-function BtnFiltro({ activo, onClick, children }: { activo: boolean; onClick: () => void; children: React.ReactNode }) {
+function Segmento<T extends string>({ opciones, valor, onChange }: {
+  opciones: { val: T; label: string }[];
+  valor: T;
+  onChange: (v: T) => void;
+}) {
   return (
-    <button
-      onClick={onClick}
-      className="label"
-      style={{
-        padding: "5px 10px",
-        cursor: "pointer",
-        fontFamily: "var(--font-mono)",
-        border: "1px solid var(--border-default)",
-        borderLeft: "none",
-        background: activo ? "var(--fill-error)" : "var(--bg-surface)",
-        color: activo ? "var(--accent)" : "var(--text-muted)",
-        fontWeight: activo ? 700 : 400,
-      }}
-    >
-      {children}
-    </button>
+    <div style={{
+      display: "inline-flex", gap: 2, padding: 3,
+      background: "var(--surface-2)", borderRadius: "var(--r-md)",
+      border: "1px solid var(--n-200)",
+    }}>
+      {opciones.map(f => {
+        const activo = valor === f.val;
+        return (
+          <button
+            key={f.val}
+            onClick={() => onChange(f.val)}
+            style={{
+              padding: "5px 12px", cursor: "pointer",
+              border: "none", borderRadius: "var(--r-sm)",
+              background: activo ? "var(--surface)" : "transparent",
+              color: activo ? "var(--n-900)" : "var(--n-500)",
+              fontWeight: activo ? 600 : 500, fontSize: 13,
+              fontFamily: "var(--font-sans)",
+              boxShadow: activo ? "var(--shadow-card)" : "none",
+              transition: "background .12s ease, color .12s ease",
+            }}
+          >
+            {f.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
 export default function FiltrosProveedores({ filtroPrecio, filtroPais, orden, total, onFiltroPrecio, onFiltroPais, onOrden }: Props) {
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--border-default)", marginBottom: 16 }}>
-      <span className="label" style={{ color: "var(--text-muted)", marginRight: 4 }}>{total} resultados</span>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", paddingBottom: 16, borderBottom: "1px solid var(--n-200)", marginBottom: 16 }}>
+      <span style={{ fontSize: 13, color: "var(--n-500)", marginRight: 2 }}>{total} resultados</span>
 
-      <div style={{ display: "flex", border: "1px solid var(--border-default)" }}>
-        {([
+      <Segmento<FiltroPrecio>
+        valor={filtroPrecio}
+        onChange={onFiltroPrecio}
+        opciones={[
           { val: "todos", label: "Todos" },
           { val: "con_precio", label: "Con precio" },
           { val: "sin_precio", label: "A cotizar" },
-        ] as { val: FiltroPrecio; label: string }[]).map(f => (
-          <BtnFiltro key={f.val} activo={filtroPrecio === f.val} onClick={() => onFiltroPrecio(f.val)}>
-            {f.label}
-          </BtnFiltro>
-        ))}
-      </div>
+        ]}
+      />
 
-      <div style={{ width: 1, height: 16, background: "var(--border-default)" }} />
-
-      <div style={{ display: "flex", border: "1px solid var(--border-default)" }}>
-        {([
+      <Segmento<FiltroPais>
+        valor={filtroPais}
+        onChange={onFiltroPais}
+        opciones={[
           { val: "todos", label: "Todos" },
           { val: "chile", label: "Chile" },
           { val: "internacional", label: "Internacional" },
-        ] as { val: FiltroPais; label: string }[]).map(f => (
-          <BtnFiltro key={f.val} activo={filtroPais === f.val} onClick={() => onFiltroPais(f.val)}>
-            {f.label}
-          </BtnFiltro>
-        ))}
-      </div>
-
-      <div style={{ width: 1, height: 16, background: "var(--border-default)" }} />
+        ]}
+      />
 
       <select
         value={orden}
         onChange={e => onOrden(e.target.value as Orden)}
         style={{
-          padding: "5px 10px",
-          fontSize: 10,
-          background: "var(--bg-base)",
-          border: "1px solid var(--border-default)",
-          color: "var(--text-secondary)",
-          fontFamily: "var(--font-mono)",
+          marginLeft: "auto",
+          padding: "7px 12px", height: 36,
+          fontSize: 13,
+          background: "var(--surface)",
+          border: "1px solid var(--n-300)",
+          borderRadius: "var(--r-md)",
+          color: "var(--n-700)",
+          fontFamily: "var(--font-sans)",
           cursor: "pointer",
           outline: "none",
-          letterSpacing: "0.05em",
         }}
       >
         <option value="relevancia">Relevancia</option>

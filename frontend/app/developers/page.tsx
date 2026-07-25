@@ -175,13 +175,13 @@ export default function DevelopersPage() {
 
           {createdKey && (
             <div style={{ background: "var(--bg-surface)", border: "1px solid var(--text-success)", borderLeft: "3px solid var(--text-success)", padding: "20px", marginBottom: 20 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-success)", marginBottom: 6 }}>API Key creada — guarda esto ahora</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-success)", marginBottom: 6 }}>API Key creada, guarda esto ahora</div>
               <p style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 12 }}>Esta es la única vez que podrás ver la key completa.</p>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <code style={{ flex: 1, background: "var(--bg-base)", border: "1px solid var(--border-default)", padding: "10px 14px", fontSize: 11, color: "var(--text-primary)", fontFamily: "var(--font-mono)", overflowX: "auto" }}>{createdKey}</code>
                 <button onClick={() => copyKey(createdKey)} className="btn-swiss-primary" style={{ padding: "10px 16px", fontSize: 11, whiteSpace: "nowrap" }}>{copied ? "Copiada ✓" : "Copiar"}</button>
               </div>
-              <button onClick={() => setCreatedKey(null)} style={{ marginTop: 10, background: "none", border: "none", color: "var(--text-muted)", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>Ya la guardé — cerrar</button>
+              <button onClick={() => setCreatedKey(null)} style={{ marginTop: 10, background: "none", border: "none", color: "var(--text-muted)", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>Ya la guardé, cerrar</button>
             </div>
           )}
 
@@ -212,7 +212,7 @@ export default function DevelopersPage() {
           )}
 
           {keys.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "48px 0", color: "var(--text-muted)", fontSize: 12 }}>Sin API keys — crea tu primera key para comenzar a integrar</div>
+            <div style={{ textAlign: "center", padding: "48px 0", color: "var(--text-muted)", fontSize: 12 }}>Sin API keys, crea tu primera key para comenzar a integrar</div>
           ) : (
             <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-surface)" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 140px 80px 110px 80px 70px", padding: "8px 16px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-base)" }}>

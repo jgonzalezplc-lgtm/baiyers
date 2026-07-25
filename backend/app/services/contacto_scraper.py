@@ -24,6 +24,43 @@ _WA_RE = re.compile(r"(?:wa\.me/|api\.whatsapp\.com/send\?phone=|whatsapp://send
 _EMAIL_BASURA = ("sentry", "example.com", "@2x", ".png", ".jpg", ".gif", "wixpress", "godaddy", "domain")
 _RUTAS_CONTACTO = ["", "/contacto", "/contactenos", "/contacto.html", "/contact", "/nosotros"]
 
+# Dominios agregadores donde NO hay contacto real del proveedor (hay que resolver la tienda)
+_DOMINIOS_AGREGADORES = (
+    "google.", "mercadolibre.", "mercadolibre.cl", "articulo.mercadolibre",
+    "amazon.", "aliexpress.", "alibaba.", "bing.", "shopping.google",
+)
+
+
+def _es_agregador(url: str) -> bool:
+    host = re.sub(r"^https?://", "", url or "").split("/")[0].lower()
+    return any(d in host for d in _DOMINIOS_AGREGADORES)
+
+
+async def _resolver_dominio_tienda(proveedor: str, client: httpx.AsyncClient) -> str | None:
+    """Cuando el resultado viene de un agregador (Google Shopping, MercadoLibre),
+    busca el sitio web real de la tienda por su nombre usando Serper."""
+    from app.config import settings
+    key = settings.serper_api_key
+    if not key or not proveedor or len(proveedor.strip()) < 3:
+        return None
+    try:
+        resp = await client.post(
+            "https://google.serper.dev/search",
+            headers={"X-API-KEY": key, "Content-Type": "application/json"},
+            json={"q": f"{proveedor} sitio oficial contacto", "gl": "cl", "hl": "es", "num": 5},
+            timeout=8.0,
+        )
+        data = resp.json()
+        for item in (data.get("organic") or [])[:5]:
+            link = item.get("link", "")
+            if link and not _es_agregador(link):
+                m = re.match(r"(https?://[^/?#]+)", link)
+                if m:
+                    return m.group(1)
+    except Exception:
+        pass
+    return None
+
 
 def _normalizar_wsp_cl(raw: str) -> str | None:
     """Deja solo dígitos y normaliza a internacional chileno para wa.me."""
@@ -48,21 +85,25 @@ def _mejor_email(emails: list[str]) -> str | None:
     if not limpios:
         return None
     # Priorizar buzones de contacto/ventas
-    for pref in ("ventas", "contacto", "cotiza", "comercial", "info"):
+    for pref in ("ventas", "contacto", "cotiza", "comercial", "info", "hola", "clientes"):
         for e in limpios:
             if e.startswith(pref):
                 return e
-    return limpios[0]
+    # Deprioriza buzones no comerciales; úsalos solo si no hay nada mejor
+    no_comercial = ("denuncia", "privacidad", "legal", "rrhh", "prensa", "trabaja", "postula", "spam", "abuse")
+    comerciales = [e for e in limpios if not any(nc in e for nc in no_comercial)]
+    return (comerciales or limpios)[0]
 
 
-async def extraer_contacto(url: str, timeout: float = 8.0) -> dict:
-    """Devuelve { email, whatsapp: {numero, link} | None, telefono }."""
+async def extraer_contacto(url: str, timeout: float = 8.0, proveedor: str | None = None) -> dict:
+    """Devuelve { email, whatsapp: {numero, link} | None, telefono }.
+
+    Si la URL es de un agregador (Google Shopping, MercadoLibre…), primero
+    resuelve el sitio real de la tienda por el nombre del proveedor.
+    """
     vacio = {"email": None, "whatsapp": None, "telefono": None}
     if not url or not url.startswith("http"):
         return vacio
-
-    base = re.match(r"(https?://[^/?#]+)", url)
-    base = base.group(1) if base else url
 
     emails: list[str] = []
     wsp_num: str | None = None
@@ -70,9 +111,19 @@ async def extraer_contacto(url: str, timeout: float = 8.0) -> dict:
 
     try:
         async with httpx.AsyncClient(timeout=timeout, headers={"User-Agent": UA}, follow_redirects=True) as client:
-            # La URL del producto primero, luego rutas de contacto típicas del dominio
-            urls = [url] + [base + r for r in _RUTAS_CONTACTO if r]
-            for u in urls[:4]:
+            # Si viene de un agregador, resolver el dominio real de la tienda
+            origen = url
+            if _es_agregador(url) and proveedor:
+                dominio = await _resolver_dominio_tienda(proveedor, client)
+                if dominio:
+                    origen = dominio
+
+            base = re.match(r"(https?://[^/?#]+)", origen)
+            base = base.group(1) if base else origen
+
+            # La URL (producto o tienda) primero, luego rutas de contacto típicas
+            urls = [origen] + [base + r for r in _RUTAS_CONTACTO if r]
+            for u in urls[:5]:
                 try:
                     resp = await client.get(u)
                     if resp.status_code != 200:

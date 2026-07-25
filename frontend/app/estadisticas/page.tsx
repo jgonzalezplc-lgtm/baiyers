@@ -206,7 +206,7 @@ export default function EstadisticasPage() {
         {/* Gasto mensual */}
         <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: "16px 20px" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 12 }}>
-            Gasto mensual — ultimos 12 meses
+            Gasto mensual, ultimos 12 meses
           </div>
           <ResponsiveContainer width="100%" height={180}>
             <AreaChart data={gastos}>
@@ -274,7 +274,7 @@ export default function EstadisticasPage() {
 
       {/* Liquidez 90 dias */}
       <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: "20px", marginBottom: 28 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 4 }}>Liquidez — proximos 90 dias</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 4 }}>Liquidez, proximos 90 dias</div>
         <div className="label" style={{ color: "var(--text-muted)", marginBottom: 16 }}>Facturas pendientes agrupadas por semana</div>
 
         {liquidez.length === 0 ? (
@@ -306,7 +306,7 @@ export default function EstadisticasPage() {
             <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
               {[{ nivel: "verde", label: "Normal" }, { nivel: "amarillo", label: "Alto" }, { nivel: "rojo", label: "Muy alto" }].map(l => (
                 <span key={l.nivel} className="label" style={{ color: NIVEL_COLORS[l.nivel as keyof typeof NIVEL_COLORS] }}>
-                  — {l.label}
+                 , {l.label}
                 </span>
               ))}
             </div>

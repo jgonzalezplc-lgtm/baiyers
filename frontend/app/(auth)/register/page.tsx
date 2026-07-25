@@ -128,7 +128,7 @@ export default function RegisterPage() {
           </div>
         )}
 
-        {/* Proveedores primero — la empresa se detecta luego en el onboarding */}
+        {/* Proveedores primero, la empresa se detecta luego en el onboarding */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <button onClick={handleGoogle} className="btn-swiss-secondary"
             style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12 }}>

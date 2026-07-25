@@ -145,7 +145,7 @@ export default function RatingModal({ proveedorNombre, proveedorId, userId, ocId
           {/* Comentario */}
           <div style={{ marginBottom: 20 }}>
             <label className="label" style={{ color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
-              Comentario — opcional
+              Comentario, opcional
             </label>
             <textarea
               value={comentario}

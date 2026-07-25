@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { FileText } from "lucide-react";
-import { Card, Badge, CategoryChip, EmptyState, categoriaLabel, fmtCLP } from "@/components/ui";
+import { Card, Badge, CategoryChip, EmptyState } from "@/components/ui";
+import { categoriaLabel, fmtCLP } from "@/components/ui/tokens";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -147,7 +148,7 @@ export default async function DashboardPage({
             Nueva cotización
           </h2>
           <p style={{ fontSize: 13.5, color: "var(--n-600)", margin: 0, maxWidth: 420, lineHeight: 1.6 }}>
-            Describe el ítem o sube una foto — el sistema lo identifica, busca proveedores y cotiza automáticamente.
+            Describe el ítem o sube una foto, el sistema lo identifica, busca proveedores y cotiza automáticamente.
           </p>
         </div>
         <a href="/cotizar" className="btn-swiss-primary" style={{ textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}>

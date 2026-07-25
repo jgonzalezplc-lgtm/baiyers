@@ -508,7 +508,7 @@ export default function CotizacionDetallePage() {
 
         {descartados.length > 0 && (
           <div className="label" style={{ color: "var(--text-muted)", marginTop: 10 }}>
-            {descartados.length} resultado{descartados.length !== 1 ? "s" : ""} no seleccionado{descartados.length !== 1 ? "s" : ""} — {" "}
+            {descartados.length} resultado{descartados.length !== 1 ? "s" : ""} no seleccionado{descartados.length !== 1 ? "s" : ""}, {" "}
             <Link href={`/cotizar/${id}/resultados`} style={{ color: "var(--accent)" }}>
               volver a la búsqueda para cambiar la selección →
             </Link>
@@ -654,7 +654,7 @@ export default function CotizacionDetallePage() {
           {enviados.filter(r => !r.respuesta_recibida_at).length > 0 && (
             <div style={{ marginTop: 24, borderTop: "1px solid var(--border-default)", paddingTop: 16 }}>
               <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 12 }}>
-                CORREOS AÚN SIN RESPUESTA — Registrar manualmente
+                CORREOS AÚN SIN RESPUESTA, Registrar manualmente
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {enviados.filter(r => !r.respuesta_recibida_at).map(r => (

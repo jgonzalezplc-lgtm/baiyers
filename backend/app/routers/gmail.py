@@ -156,18 +156,19 @@ async def generar_correo(req: GenerarCorreoRequest):
     genai.configure(api_key=settings.gemini_api_key)
     model = genai.GenerativeModel("gemini-2.5-flash")
 
-    prompt = f"""Genera un email profesional en español para solicitar cotizacion de un item industrial.
+    prompt = f"""Genera una PLANTILLA de email profesional en español para solicitar cotización de un ítem.
 Datos:
 - Item: {req.nombre_item}
-- Especificaciones: {req.specs or "segun descripcion"}
+- Especificaciones: {req.specs or "según descripción"}
 - Cantidad: {req.cantidad} unidades
 - Plazo requerido: {req.plazo or "a convenir"}
-- Proveedor: {req.proveedor_nombre}
-- Remitente: hola@claria.cc (empresa de procurement)
 
-Instrucciones: maximo 150 palabras, tono profesional. Solicita precio unitario, disponibilidad, plazo de entrega y condiciones de pago.
+Instrucciones IMPORTANTES:
+- El saludo DEBE usar el marcador literal {{proveedor_nombre}} (ej: "Estimados {{proveedor_nombre}},"). NO inventes ni uses un nombre de proveedor real: se reemplaza automáticamente por cada destinatario.
+- NO firmes con un nombre de empresa específico ni pongas un correo remitente: el correo se envía desde la cuenta del propio usuario. Cierra con una despedida neutra (ej: "Quedamos atentos. Saludos cordiales.") sin firma inventada.
+- Máximo 150 palabras, tono profesional. Solicita precio unitario, disponibilidad, plazo de entrega y condiciones de pago.
 
-Responde SOLO en JSON valido sin markdown:
+Responde SOLO en JSON válido sin markdown:
 {{"subject": "string", "body": "string"}}"""
 
     try:

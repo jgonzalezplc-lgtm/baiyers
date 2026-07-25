@@ -78,7 +78,7 @@ function InformePDF({ datos }: { datos: DatosInforme }) {
   const fecha = new Date().toLocaleDateString("es-CL", { day: "numeric", month: "long", year: "numeric" });
 
   return (
-    <Document title={`Informe de cotización — ${c.nombre}`}>
+    <Document title={`Informe de cotización, ${c.nombre}`}>
       <Page size="A4" style={s.page}>
         <View style={s.rule} />
         <Text style={s.kicker}>Informe de cotización</Text>

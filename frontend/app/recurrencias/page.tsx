@@ -159,7 +159,7 @@ export default function RecurrenciasPage() {
             Sin compras recurrentes
           </div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 20 }}>
-            Automatiza tus compras periodicas — papel, insumos, materiales.
+            Automatiza tus compras periodicas, papel, insumos, materiales.
           </div>
           <button onClick={() => setModalAbierto(true)} className="btn-swiss-primary">
             Crear primera recurrencia

@@ -300,7 +300,7 @@ function RespuestaModal({ qs, onClose, onSave }: {
   const [cond, setCond] = useState(qs.condiciones ?? "");
   return (
     <Overlay onClose={onClose}>
-      <h2 style={modalTitle}>Registrar respuesta — {qs.proveedor_nombre}</h2>
+      <h2 style={modalTitle}>Registrar respuesta, {qs.proveedor_nombre}</h2>
       <Field label="Precio cotizado (CLP)"><input type="number" value={precio} onChange={(e) => setPrecio(e.target.value)} style={inputStyle} /></Field>
       <Field label="Plazo (texto, ej. 3-5 días)"><input value={plazoTxt} onChange={(e) => setPlazoTxt(e.target.value)} style={inputStyle} /></Field>
       <Field label="Plazo (días, para calendario)"><input type="number" value={plazoDias} onChange={(e) => setPlazoDias(e.target.value)} style={inputStyle} /></Field>

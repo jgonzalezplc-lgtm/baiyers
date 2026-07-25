@@ -150,6 +150,7 @@ export default function ResultadosPage() {
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState("");
   const [plan, setPlan] = useState("free");
   const [tasas, setTasas] = useState<Record<string, number>>({});
 
@@ -205,6 +206,7 @@ export default function ResultadosPage() {
     createClient().auth.getUser().then(({ data }) => {
       setUserId(data.user?.id ?? null);
       setPlan(data.user?.user_metadata?.plan ?? "free");
+      setUserEmail(data.user?.email ?? "");
     });
     fetch("https://open.er-api.com/v6/latest/USD")
       .then(r => r.json())
@@ -214,7 +216,7 @@ export default function ResultadosPage() {
   }, []);
 
   // Reconstruye Resultados desde filas de la BD (precargadas por el prefetch de
-  // la lista) — carga instantánea sin repetir la búsqueda en vivo.
+  // la lista), carga instantánea sin repetir la búsqueda en vivo.
   const cargarPrecargados = (filas: Record<string, unknown>[]): boolean => {
     const items: Resultado[] = [];
     const fuentes = new Set<string>();
@@ -333,7 +335,7 @@ export default function ResultadosPage() {
             if (msg.done) {
               setLoading(false);
             } else if (msg.result) {
-              // Un resultado individual — efecto cascada
+              // Un resultado individual, efecto cascada
               const r: Resultado = msg.result;
               if (r.url && seenUrls.has(r.url)) continue;
               if (r.url) seenUrls.add(r.url);
@@ -526,13 +528,13 @@ export default function ResultadosPage() {
           router.push(`/cotizar/${siguiente.cotizacion_id}/resultados?lista=${listaId}`);
           return;
         }
-        // Último ítem: la vista de lista lee los flags recién escritos — esperar aquí
+        // Último ítem: la vista de lista lee los flags recién escritos, esperar aquí
         await Promise.all([pComparador, pComparado]);
         router.push(`/listas/${listaId}`);
         return;
       }
 
-      // Sin lista: el comparador lee los flags — esperar antes de navegar
+      // Sin lista: el comparador lee los flags, esperar antes de navegar
       await pComparador;
       router.push(`/cotizaciones/${id}`);
     } catch {
@@ -624,9 +626,33 @@ export default function ResultadosPage() {
       const { subject, body } = await res.json();
       setEmailSubject(subject);
       setEmailBody(body);
-      setDestinatarios(selArray.map(r => ({ nombre: r.proveedor || r.titulo, url: r.url, email: "" })));
+      // Email inicial: el que ya venga en el resultado (si lo hay)
+      setDestinatarios(selArray.map(r => ({
+        nombre: r.proveedor || r.titulo,
+        url: r.url,
+        email: (r as unknown as { contacto?: string }).contacto || "",
+      })));
       setEnviados(new Set());
       setModalEmailAbierto(true);
+
+      // En background: scrapea el email de cada proveedor que no lo tenga y rellena
+      selArray.forEach(async r => {
+        if ((r as unknown as { contacto?: string }).contacto || !r.url) return;
+        try {
+          const cr = await fetch(`${API_URL}/api/contacto`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: r.url, proveedor: r.proveedor, nombre_item: nombreItem, cantidad }),
+          });
+          if (!cr.ok) return;
+          const datos = await cr.json();
+          if (datos.email) {
+            setDestinatarios(prev => prev.map(d =>
+              d.url === r.url && !d.email ? { ...d, email: datos.email } : d
+            ));
+          }
+        } catch { /* silencioso */ }
+      });
     } catch {
       setToast("Error generando el correo. Verifica que el backend este corriendo.");
       setTimeout(() => setToast(""), 3000);
@@ -662,22 +688,37 @@ export default function ResultadosPage() {
     const pendientes = destinatarios.filter(d => d.email.includes("@") && !enviados.has(d.url));
     if (!pendientes.length) return;
     setEnviando(true);
+    let ok = 0;
+    let errMsg = "";
     for (const dest of pendientes) {
       try {
-        await fetch(`${API_URL}/api/gmail/enviar`, {
+        const res = await fetch(`${API_URL}/api/gmail/enviar`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cotizacion_id: id, to_email: dest.email, subject: emailSubject, body: emailBody.replace("{proveedor_nombre}", dest.nombre), user_id: userId, proveedor_nombre: dest.nombre }),
+          body: JSON.stringify({ cotizacion_id: id, to_email: dest.email, subject: emailSubject, body: emailBody, user_id: userId, proveedor_nombre: dest.nombre }),
         });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          errMsg = d.detail || "No se pudo enviar";
+          continue;
+        }
+        ok++;
         setEnviados(prev => new Set([...prev, dest.url]));
-      } catch { /* continue */ }
+      } catch { errMsg = "Error de red al enviar"; }
     }
     setEnviando(false);
-    setTimeout(() => {
-      setModalEmailAbierto(false);
-      setToast(`Correos enviados a ${pendientes.length} proveedor${pendientes.length !== 1 ? "es" : ""}`);
-      setTimeout(() => setToast(""), 4000);
-    }, 800);
+    if (ok > 0) {
+      setTimeout(() => {
+        setModalEmailAbierto(false);
+        setToast(`Correos enviados a ${ok} proveedor${ok !== 1 ? "es" : ""} desde tu correo`);
+        setTimeout(() => setToast(""), 4000);
+      }, 800);
+    } else {
+      setToast(errMsg.includes("Gmail no conectado")
+        ? "Conecta tu Gmail en el dashboard para enviar desde tu correo"
+        : errMsg || "No se pudieron enviar los correos");
+      setTimeout(() => setToast(""), 4500);
+    }
   };
 
   // Agrupa resultados que parecen ser el mismo producto (mismo número de parte,
@@ -732,13 +773,20 @@ export default function ResultadosPage() {
   const fuentesLabel = fuentesActivas.join(" · ");
 
   const inputSt: React.CSSProperties = {
-    background: "var(--bg-base)", border: "1px solid var(--border-default)",
-    padding: "8px 12px", fontSize: 11, color: "var(--text-primary)",
-    fontFamily: "var(--font-mono)", outline: "none", width: "100%",
+    background: "var(--surface)", border: "1px solid var(--n-300)", borderRadius: "var(--r-md)",
+    padding: "9px 12px", fontSize: 14, color: "var(--n-900)",
+    fontFamily: "var(--font-sans)", outline: "none", width: "100%",
+  };
+
+  // Botón secundario dentro de la barra flotante oscura
+  const barBtn: React.CSSProperties = {
+    background: "rgba(255,255,255,.1)", color: "var(--canvas)", border: "none",
+    borderRadius: "var(--r-md)", padding: "9px 13px",
+    fontSize: 13.5, fontWeight: 500, fontFamily: "var(--font-sans)", cursor: "pointer",
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg-base)", padding: "24px 20px" }}>
+    <div style={{ minHeight: "100vh", background: "var(--canvas)", padding: "24px 20px" }}>
       <div style={{ maxWidth: 800, margin: "0 auto" }}>
 
         {/* Modal registrar respuesta proveedor */}
@@ -840,6 +888,7 @@ export default function ResultadosPage() {
 
         {modalEmailAbierto && (
           <EmailPreviewModal
+            fromEmail={userEmail}
             destinatarios={destinatarios}
             subject={emailSubject}
             body={emailBody}
@@ -882,48 +931,46 @@ export default function ResultadosPage() {
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28 }}>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <Link href="/cotizar" className="label" style={{ color: "var(--text-muted)", textDecoration: "none" }}>
-                ← Nueva cotizacion
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <Link href="/cotizar" style={{ fontSize: 13, color: "var(--n-500)", textDecoration: "none" }}>
+                ← Nueva cotización
               </Link>
-              <span style={{ color: "var(--border-default)" }}>/</span>
-              <span className="label" style={{ color: "var(--accent)" }}>Proveedores</span>
+              <span style={{ color: "var(--n-300)" }}>/</span>
+              <span style={{ fontSize: 13, color: "var(--brand)", fontWeight: 500 }}>Proveedores</span>
             </div>
-            <div className="section-rule" style={{ marginBottom: 12 }} />
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)", margin: 0, letterSpacing: "-0.02em" }}>
-              {nombreItem || "Buscando proveedores..."}
+            <h1 style={{ fontSize: 26, fontWeight: 600, color: "var(--n-900)", margin: 0, letterSpacing: "-0.015em" }}>
+              {nombreItem || "Buscando proveedores…"}
             </h1>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
               {resultados.length > 0 && (
                 <span style={{
-                  fontSize: 10,
-                  color: "var(--text-success)",
-                  background: "var(--fill-success)",
-                  border: "1px solid var(--palette-green-500)",
-                  padding: "2px 10px",
-                  fontWeight: 600,
-                  letterSpacing: "0.05em",
+                  fontSize: 12.5, fontWeight: 500,
+                  color: "var(--success)", background: "var(--st-aprobada-bg)",
+                  padding: "3px 11px", borderRadius: "var(--r-pill)",
                 }}>
-                  {resultados.length} proveedores{loading ? "..." : ""}
+                  {resultados.length} proveedores{loading ? "…" : ""}
                 </span>
               )}
               {loading && resultados.length === 0 && (
-                <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                  Buscando...
+                <span style={{ fontSize: 13, color: "var(--n-500)" }}>
+                  Buscando…
                 </span>
               )}
               {precargado && (
-                <span className="label" style={{
-                  color: "var(--accent)", background: "var(--fill-error)",
-                  border: "1px solid var(--border-accent)", padding: "1px 7px", fontWeight: 700,
+                <span style={{
+                  fontSize: 12.5, fontWeight: 500,
+                  color: "var(--brand-700)", background: "var(--brand-50)",
+                  padding: "3px 11px", borderRadius: "var(--r-pill)",
                 }} title="Búsqueda hecha en background al crear la lista. Usa Recargar para actualizar.">
-                  ⚡ PRECARGADO
+                  ⚡ Precargado
                 </span>
               )}
               {fuentesActivas.map(f => (
-                <span key={f} className="label" style={{
-                  color: "var(--text-success)", background: "var(--fill-success)",
-                  border: "1px solid var(--palette-green-500)", padding: "1px 7px",
+                <span key={f} style={{
+                  fontSize: 12.5, fontWeight: 500,
+                  color: "var(--n-600)", background: "var(--surface-2)",
+                  border: "1px solid var(--n-200)",
+                  padding: "3px 11px", borderRadius: "var(--r-pill)",
                   animation: "fadeIn 0.3s ease",
                 }}>{f}</span>
               ))}
@@ -931,14 +978,14 @@ export default function ResultadosPage() {
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {/* Cantidad a comprar del ítem actual */}
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "1px solid var(--border-default)", padding: "4px 8px", background: "var(--bg-surface)" }}>
-              <span className="label" style={{ color: "var(--text-muted)" }}>Cantidad</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, border: "1px solid var(--n-300)", borderRadius: "var(--r-md)", padding: "6px 10px", background: "var(--surface)" }}>
+              <span style={{ fontSize: 13, color: "var(--n-600)" }}>Cantidad</span>
               <span
                 title="Cantidad a comprar de este ítem. La usamos para calcular el total (precio × cantidad), los informes PDF y el mensaje de cotización a los proveedores. Cada ítem de la lista tiene su propia cantidad; puedes editarla."
                 style={{
-                  cursor: "help", fontSize: 10, fontWeight: 700, color: "var(--text-muted)",
-                  border: "1px solid var(--border-default)", borderRadius: "50%",
-                  width: 14, height: 14, display: "inline-flex", alignItems: "center",
+                  cursor: "help", fontSize: 10, fontWeight: 600, color: "var(--n-500)",
+                  border: "1px solid var(--n-300)", borderRadius: "50%",
+                  width: 15, height: 15, display: "inline-flex", alignItems: "center",
                   justifyContent: "center", lineHeight: 1,
                 }}
               >?</span>
@@ -950,9 +997,9 @@ export default function ResultadosPage() {
                 onBlur={e => guardarCantidad(parseFloat(e.target.value) || 1)}
                 onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                 style={{
-                  width: 54, background: "var(--bg-base)", border: "1px solid var(--border-default)",
-                  padding: "2px 6px", fontSize: 11, color: "var(--text-primary)",
-                  fontFamily: "var(--font-mono)", outline: "none", textAlign: "right",
+                  width: 54, background: "var(--surface-2)", border: "1px solid var(--n-300)",
+                  borderRadius: "var(--r-sm)", padding: "4px 6px", fontSize: 13, color: "var(--n-900)",
+                  fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", outline: "none", textAlign: "right",
                 }}
               />
             </span>
@@ -960,7 +1007,7 @@ export default function ResultadosPage() {
               <button
                 onClick={() => router.push(`/listas/${lista.id}`)}
                 className="btn-swiss-secondary"
-                style={{ fontSize: 10, padding: "6px 12px", whiteSpace: "nowrap" }}
+                style={{ fontSize: 13, padding: "8px 14px", whiteSpace: "nowrap" }}
               >
                 Ver lista ({nComparadosLista}/{nItemsLista})
               </button>
@@ -968,7 +1015,7 @@ export default function ResultadosPage() {
             <button
               onClick={() => buscar(undefined, true)}
               className="btn-swiss-secondary"
-              style={{ fontSize: 10, padding: "6px 12px" }}
+              style={{ fontSize: 13, padding: "8px 14px" }}
             >
               Recargar
             </button>
@@ -978,34 +1025,34 @@ export default function ResultadosPage() {
         {/* Barra de progreso de la lista */}
         {listaId && !lista && (
           <div style={{
-            background: "var(--bg-surface)", border: "1px solid var(--border-default)",
-            padding: "8px 12px", marginBottom: 16,
+            background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: "var(--r-lg)",
+            padding: "12px 14px", marginBottom: 16,
           }}>
-            <span className="label" style={{ color: "var(--text-muted)" }}>Cargando lista…</span>
+            <span style={{ fontSize: 13, color: "var(--n-500)" }}>Cargando lista…</span>
           </div>
         )}
         {lista && (
           <div style={{
-            display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-            background: "var(--bg-surface)", border: "1px solid var(--border-default)",
-            padding: "8px 12px", marginBottom: 16,
+            background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: "var(--r-lg)",
+            padding: "12px 14px", marginBottom: 16,
           }}>
-            <span className="label" style={{ fontWeight: 800 }}>LISTA: {lista.nombre}</span>
-            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--n-500)", marginBottom: 8 }}>Lista: {lista.nombre}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {lista.items.map((it, i) => {
                 const actual = it.cotizacion_id === id;
                 return (
                   <button
                     key={it.cotizacion_id}
                     onClick={() => !actual && router.push(`/cotizar/${it.cotizacion_id}/resultados?lista=${lista.id}`)}
-                    className="label"
                     title={it.nombre}
                     style={{
-                      padding: "3px 9px", cursor: actual ? "default" : "pointer",
-                      background: actual ? "var(--bg-inverse)" : it.comparado ? "var(--fill-success)" : "var(--bg-base)",
-                      color: actual ? "var(--text-inverse)" : it.comparado ? "var(--text-success)" : "var(--text-muted)",
-                      border: `1px solid ${actual ? "var(--border-strong)" : it.comparado ? "var(--palette-green-500)" : "var(--border-default)"}`,
-                      fontFamily: "var(--font-mono)",
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                      padding: "5px 11px", cursor: actual ? "default" : "pointer",
+                      borderRadius: "var(--r-pill)", fontSize: 13, fontWeight: 500,
+                      fontFamily: "var(--font-sans)",
+                      background: actual ? "var(--brand)" : it.comparado ? "var(--st-aprobada-bg)" : "var(--surface-2)",
+                      color: actual ? "#fff" : it.comparado ? "var(--success)" : "var(--n-600)",
+                      border: `1px solid ${actual ? "var(--brand)" : it.comparado ? "transparent" : "var(--n-200)"}`,
                     }}
                   >
                     {it.comparado ? "✓ " : ""}{i + 1}. {it.nombre.length > 18 ? it.nombre.slice(0, 18) + "…" : it.nombre}
@@ -1032,22 +1079,21 @@ export default function ResultadosPage() {
         {!loading && resultados.length > 0 && (
           <div style={{
             display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap",
-            border: "1px solid var(--border-accent)", background: "var(--fill-error)",
-            padding: "8px 12px", marginBottom: 12,
+            border: "1px solid var(--brand-100)", background: "var(--brand-50)", borderRadius: "var(--r-md)",
+            padding: "10px 14px", marginBottom: 12,
           }}>
-            <span style={{ fontSize: 11, color: "var(--text-primary)" }}>
+            <span style={{ fontSize: 13.5, color: "var(--n-700)" }}>
               ¿No encontraste lo que buscabas? Cuéntanos qué necesitas exactamente y depuramos la búsqueda.
             </span>
             <button
               onClick={() => setRefinarAbierto(true)}
-              className="label"
               style={{
-                color: "var(--accent)", background: "var(--bg-base)", cursor: "pointer",
-                border: "1px solid var(--border-accent)", padding: "5px 12px",
-                fontFamily: "var(--font-mono)", fontWeight: 700, whiteSpace: "nowrap",
+                color: "#fff", background: "var(--brand)", cursor: "pointer",
+                border: "none", padding: "8px 14px", borderRadius: "var(--r-md)",
+                fontFamily: "var(--font-sans)", fontWeight: 600, fontSize: 13, whiteSpace: "nowrap",
               }}
             >
-              REBUSCAR CON CONTEXTO →
+              Rebuscar con contexto →
             </button>
           </div>
         )}
@@ -1055,22 +1101,21 @@ export default function ResultadosPage() {
         {/* Filtro de relevancia: oculta accesorios y resultados que no son el ítem */}
         {resultados.length > 0 && nOcultos > 0 && (
           <div style={{
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-            padding: "8px 12px", marginBottom: 12,
-            background: "var(--bg-surface)", border: "1px solid var(--border-default)",
+            display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap",
+            padding: "10px 14px", marginBottom: 12, borderRadius: "var(--r-md)",
+            background: "var(--surface-2)", border: "1px solid var(--n-200)",
           }}>
-            <span className="label" style={{ color: "var(--text-muted)" }}>
+            <span style={{ fontSize: 13, color: "var(--n-500)" }}>
               {soloRelevantes
                 ? `${nOcultos} resultado${nOcultos !== 1 ? "s" : ""} poco relevante${nOcultos !== 1 ? "s" : ""} oculto${nOcultos !== 1 ? "s" : ""} (accesorios, otros productos)`
                 : "Mostrando todos los resultados, incluidos los poco relevantes"}
             </span>
             <button
               onClick={() => setSoloRelevantes(v => !v)}
-              className="label"
               style={{
-                color: "var(--accent)", background: "none",
-                border: "1px solid var(--border-accent)", padding: "3px 10px",
-                cursor: "pointer", fontFamily: "var(--font-mono)",
+                color: "var(--brand)", background: "var(--surface)",
+                border: "1px solid var(--n-300)", padding: "6px 12px", borderRadius: "var(--r-md)",
+                cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: 13, fontWeight: 500,
               }}
             >
               {soloRelevantes ? `Mostrar todos (+${nOcultos})` : "Solo relevantes"}
@@ -1091,19 +1136,19 @@ export default function ResultadosPage() {
         {/* Indicador de carga progresiva mientras llegan más resultados */}
         {loading && resultados.length > 0 && (
           <div style={{
-            display: "flex", alignItems: "center", gap: 8,
+            display: "flex", alignItems: "center", gap: 10,
             padding: "8px 0", marginBottom: 8,
-            fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-mono)",
+            fontSize: 13, color: "var(--n-500)",
           }}>
-            <div style={{ display: "flex", gap: 4 }}>
+            <div style={{ display: "flex", gap: 5 }}>
               {[0,1,2].map(i => (
-                <div key={i} style={{
-                  width: 5, height: 5, background: "var(--accent)",
-                  opacity: 0.3 + i * 0.35,
+                <span key={i} style={{
+                  width: 7, height: 7, borderRadius: "50%", background: "var(--brand)",
+                  animation: `dotWave 1.3s ease-in-out ${i * 0.16}s infinite`,
                 }} />
               ))}
             </div>
-            Cargando más fuentes...
+            Cargando más fuentes…
           </div>
         )}
 
@@ -1145,16 +1190,17 @@ export default function ResultadosPage() {
           </div>
         )}
 
-        {/* Resultados — muestran mientras carga (streaming) */}
+        {/* Resultados, muestran mientras carga (streaming) */}
         {filtrados.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 0, border: "1px solid var(--border-default)" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {filtrados.map((grupo, i) => {
               const r = grupo.principal;
               const ev = evaluaciones[r.url];
 
               return (
                 <div key={r.url || i} style={{
-                  borderBottom: i < filtrados.length - 1 ? "1px solid var(--border-subtle)" : "none",
+                  border: "1px solid var(--n-200)", borderRadius: "var(--r-lg)",
+                  overflow: "hidden", background: "var(--surface)", boxShadow: "var(--shadow-card)",
                   animation: "slideIn 0.22s ease both",
                   animationDelay: `${Math.min(i * 40, 400)}ms`,
                 }}>
@@ -1175,9 +1221,9 @@ export default function ResultadosPage() {
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
-                    padding: "6px 16px 10px",
-                    background: "var(--bg-surface)",
-                    borderTop: "1px solid var(--border-subtle)",
+                    padding: "8px 16px 10px",
+                    background: "var(--surface-2)",
+                    borderTop: "1px solid var(--n-200)",
                   }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       {/* Precio histórico badge */}
@@ -1212,14 +1258,14 @@ export default function ResultadosPage() {
                           setFormResp({ precio: "", moneda: "CLP", plazo: "", condiciones: "", notas: "" });
                           setModalRespuesta({ resultado_id: String((r as unknown as Record<string, unknown>).id), proveedor: r.proveedor || r.titulo });
                         }}
-                        className="label"
                         style={{
-                          color: "var(--text-success)", background: "none",
-                          border: "1px solid var(--text-success)", padding: "3px 10px",
-                          cursor: "pointer", fontFamily: "var(--font-mono)",
+                          fontSize: 13, fontWeight: 500,
+                          color: "var(--success)", background: "var(--surface)",
+                          border: "1px solid var(--success)", padding: "5px 12px", borderRadius: "var(--r-md)",
+                          cursor: "pointer", fontFamily: "var(--font-sans)",
                         }}
                       >
-                        + RESPUESTA
+                        + Respuesta
                       </button>
                     )}
 
@@ -1227,25 +1273,26 @@ export default function ResultadosPage() {
                     {r.precio != null && (
                       <div>
                         {ocEmitidas.has(r.url) ? (
-                          <span className="label" style={{
-                            color: "var(--text-success)",
-                            background: "var(--fill-success)",
-                            border: "1px solid var(--palette-green-500)",
-                            padding: "3px 10px",
+                          <span style={{
+                            fontSize: 13, fontWeight: 500,
+                            color: "var(--success)",
+                            background: "var(--st-aprobada-bg)",
+                            borderRadius: "var(--r-pill)",
+                            padding: "4px 11px",
                           }}>
-                            OC Enviada
+                            OC enviada
                           </span>
                         ) : (
                           <button
                             onClick={() => setOcProveedor(r)}
-                            className="label"
                             style={{
-                              color: puedeEmitirOC ? "var(--accent)" : "var(--text-muted)",
-                              background: "none",
-                              border: `1px solid ${puedeEmitirOC ? "var(--accent)" : "var(--border-default)"}`,
-                              padding: "3px 10px",
+                              fontSize: 13, fontWeight: 500,
+                              color: puedeEmitirOC ? "var(--brand)" : "var(--n-500)",
+                              background: "var(--surface)",
+                              border: `1px solid ${puedeEmitirOC ? "var(--brand)" : "var(--n-300)"}`,
+                              padding: "5px 12px", borderRadius: "var(--r-md)",
                               cursor: "pointer",
-                              fontFamily: "var(--font-mono)",
+                              fontFamily: "var(--font-sans)",
                             }}
                           >
                             {puedeEmitirOC ? "Emitir OC →" : "OC (Pro)"}
@@ -1260,15 +1307,16 @@ export default function ResultadosPage() {
           </div>
         )}
 
-        {/* Barra flotante de acciones — siempre visible con selección activa */}
+        {/* Barra flotante de acciones, siempre visible con selección activa */}
         {nSeleccionados > 0 && (
           <div style={{
             position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
             width: "min(780px, calc(100vw - 40px))", zIndex: 300,
           }}>
             <div style={{
-              background: "var(--bg-inverse)",
-              border: "1px solid var(--border-strong)",
+              background: "var(--n-900)",
+              borderRadius: "var(--r-xl)",
+              boxShadow: "var(--shadow-modal)",
               padding: "12px 18px",
               display: "flex",
               justifyContent: "space-between",
@@ -1276,33 +1324,30 @@ export default function ResultadosPage() {
               gap: 10,
               flexWrap: "wrap",
             }}>
-              <span className="label" style={{ color: "var(--text-inverse)" }}>
+              <span style={{ fontSize: 13.5, fontWeight: 500, color: "var(--canvas)" }}>
                 {nSeleccionados} seleccionado{nSeleccionados > 1 ? "s" : ""}
               </span>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
                   onClick={handleAgregarLista}
                   disabled={creandoLista}
-                  className="btn-swiss-secondary disabled:opacity-40"
-                  style={{ fontSize: 10, padding: "8px 12px" }}
+                  style={{ ...barBtn, opacity: creandoLista ? 0.5 : 1 }}
                   title="Agrupa varios ítems en una lista de cotización / proyecto"
                 >
-                  {creandoLista ? "Creando..." : "+ Lista"}
+                  {creandoLista ? "Creando…" : "+ Lista"}
                 </button>
                 <button
                   onClick={handleSolicitar}
                   disabled={generandoEmail}
-                  className="btn-swiss-secondary disabled:opacity-40"
-                  style={{ fontSize: 10, padding: "8px 12px" }}
+                  style={{ ...barBtn, opacity: generandoEmail ? 0.5 : 1 }}
                   title="Enviar solicitud de cotización por correo"
                 >
-                  {generandoEmail ? "Generando..." : "✉ Correo"}
+                  {generandoEmail ? "Generando…" : "✉ Correo"}
                 </button>
                 {lista && (
                   <button
                     onClick={() => router.push(`/listas/${lista.id}`)}
-                    className="btn-swiss-secondary"
-                    style={{ fontSize: 10, padding: "8px 12px", whiteSpace: "nowrap" }}
+                    style={{ ...barBtn, whiteSpace: "nowrap" }}
                   >
                     Ver lista ({nComparadosLista}/{nItemsLista})
                   </button>
@@ -1310,10 +1355,15 @@ export default function ResultadosPage() {
                 <button
                   onClick={handleComparar}
                   disabled={comparando}
-                  className="btn-swiss-primary disabled:opacity-40"
+                  style={{
+                    background: "var(--brand)", color: "#fff", border: "none",
+                    borderRadius: "var(--r-md)", padding: "9px 16px",
+                    fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-sans)",
+                    cursor: "pointer", opacity: comparando ? 0.5 : 1,
+                  }}
                 >
                   {comparando
-                    ? "Guardando..."
+                    ? "Guardando…"
                     : lista && idxItemActual >= 0 && idxItemActual < nItemsLista - 1
                       ? `Comparar y seguir (${nSeleccionados}) →`
                       : `Comparar (${nSeleccionados}) →`}

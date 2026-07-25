@@ -82,9 +82,12 @@ export default function AppShell({ children, empresa, planLabel, planLimitLabel,
   const [drawerAbierto, setDrawerAbierto] = useState(false);
   const [esMobile, setEsMobile] = useState(false);
 
-  const breadcrumb = BREADCRUMB[pathname]
+  const [breadcrumbOverride, setBreadcrumbOverride] = useState<string | null>(null);
+
+  const breadcrumbBase = BREADCRUMB[pathname]
     ?? BREADCRUMB[Object.keys(BREADCRUMB).find(k => pathname.startsWith(k) && k !== "/") ?? ""]
     ?? "";
+  const breadcrumb = breadcrumbOverride || breadcrumbBase;
 
   useEffect(() => {
     const check = () => setEsMobile(window.innerWidth < 860);
@@ -93,7 +96,14 @@ export default function AppShell({ children, empresa, planLabel, planLimitLabel,
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  useEffect(() => { setDrawerAbierto(false); }, [pathname]);
+  // Páginas pueden sobrescribir el breadcrumb (ej: nombre de la lista en cotizar)
+  useEffect(() => {
+    const h = (e: Event) => setBreadcrumbOverride((e as CustomEvent<string | null>).detail || null);
+    window.addEventListener("baiyer:breadcrumb", h);
+    return () => window.removeEventListener("baiyer:breadcrumb", h);
+  }, []);
+
+  useEffect(() => { setDrawerAbierto(false); setBreadcrumbOverride(null); }, [pathname]);
 
   // En mobile el riel se reemplaza por un drawer; en desktop se expande al hover
   const abierto = esMobile ? drawerAbierto : expandido;
@@ -227,7 +237,7 @@ export default function AppShell({ children, empresa, planLabel, planLimitLabel,
         />
       )}
 
-      {/* Contenido — el margen sólo reserva el riel, así el hover no genera reflow */}
+      {/* Contenido, el margen sólo reserva el riel, así el hover no genera reflow */}
       <div style={{ marginLeft: anchoVisible, display: "flex", flexDirection: "column", minHeight: "100vh", minWidth: 0 }}>
         <header style={{
           borderBottom: "1px solid var(--n-200)",

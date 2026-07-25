@@ -122,7 +122,7 @@ export default async function LandingPage({
 
         <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
           <Link href="/cotizar" className="btn-swiss-primary" style={{ textDecoration: "none" }}>
-            Probar ahora — sin registro
+            Probar ahora, sin registro
           </Link>
           <Link href="/register" className="btn-swiss-secondary" style={{ textDecoration: "none" }}>
             Crear cuenta gratis

@@ -25,7 +25,7 @@ async def obtener_contacto(req: ContactoRequest):
 
     mensaje = armar_mensaje_cotizacion(req.nombre_item, req.proveedor, req.cantidad)
 
-    datos = await extraer_contacto(req.url)
+    datos = await extraer_contacto(req.url, proveedor=req.proveedor)
 
     # Si ya venía un email en el resultado, priorizarlo
     email = req.email_existente if (req.email_existente and "@" in req.email_existente) else datos.get("email")

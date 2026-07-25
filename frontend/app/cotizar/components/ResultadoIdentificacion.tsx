@@ -85,7 +85,7 @@ export default function ResultadoIdentificacion({ resultado, onConfirmar, onCorr
         alignItems: "center",
         fontFamily: "var(--font-mono)",
       }}>
-        <span>Item identificado — confianza: <strong>{resultado.confianza}</strong></span>
+        <span>Item identificado, confianza: <strong>{resultado.confianza}</strong></span>
         <span style={{ width: 8, height: 8, background: confColor, display: "inline-block" }} />
       </div>
 
@@ -128,10 +128,10 @@ export default function ResultadoIdentificacion({ resultado, onConfirmar, onCorr
           ))}
         </div>
 
-        {/* Categorías — orientan qué fuentes se consultan en la búsqueda */}
+        {/* Categorías, orientan qué fuentes se consultan en la búsqueda */}
         <div style={{ marginBottom: 16 }}>
           <div className="label" style={{ color: "var(--text-muted)", marginBottom: 8 }}>
-            Categorías — selecciona una o más para orientar la búsqueda
+            Categorías, selecciona una o más para orientar la búsqueda
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {CATEGORIAS.map(c => {
@@ -158,7 +158,7 @@ export default function ResultadoIdentificacion({ resultado, onConfirmar, onCorr
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <div className="label" style={{ color: "var(--text-muted)", marginBottom: 8 }}>Terminos de busqueda — Espanol</div>
+          <div className="label" style={{ color: "var(--text-muted)", marginBottom: 8 }}>Terminos de busqueda, Espanol</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {resultado.terminos_busqueda_es.map((t, i) => (
               <span key={i} className="label" style={{
@@ -172,7 +172,7 @@ export default function ResultadoIdentificacion({ resultado, onConfirmar, onCorr
         </div>
 
         <div>
-          <div className="label" style={{ color: "var(--text-muted)", marginBottom: 8 }}>Search terms — English</div>
+          <div className="label" style={{ color: "var(--text-muted)", marginBottom: 8 }}>Search terms, English</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {resultado.terminos_busqueda_en.map((t, i) => (
               <span key={i} className="label" style={{
@@ -189,13 +189,13 @@ export default function ResultadoIdentificacion({ resultado, onConfirmar, onCorr
       {/* Nombre de lista / proyecto (opcional) */}
       <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: "12px 16px", marginBottom: 16 }}>
         <div className="label" style={{ color: "var(--text-muted)", marginBottom: 6 }}>
-          Nombre de lista de cotización o proyecto — opcional
+          Nombre de lista de cotización o proyecto, opcional
         </div>
         <input
           type="text"
           value={nombreLista}
           onChange={e => setNombreLista(e.target.value)}
-          placeholder='Ej: "Mantención bodega julio" — se usa si agrupas varios ítems'
+          placeholder='Ej: "Mantención bodega julio", se usa si agrupas varios ítems'
           style={{
             width: "100%", boxSizing: "border-box",
             background: "var(--bg-base)", border: "1px solid var(--border-default)",

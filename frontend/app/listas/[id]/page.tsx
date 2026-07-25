@@ -222,7 +222,7 @@ export default function ListaDetallePage() {
       const defItems = lista.items.filter(it => it.definitivo);
       const totalStr = fmtCLP(defItems.reduce((s, it) => s + (it.definitivo!.precio_clp ?? 0) * (it.cantidad || 1), 0));
       const itemLines = defItems.map(it =>
-        `- ${it.nombre} ×${it.cantidad || 1}: ${it.definitivo!.proveedor} (${it.definitivo!.precio_clp != null ? fmtCLP(it.definitivo!.precio_clp * (it.cantidad || 1)) : "—"})${justificaciones[it.cotizacion_id] ? ` — ${justificaciones[it.cotizacion_id]}` : ""}`
+        `- ${it.nombre} ×${it.cantidad || 1}: ${it.definitivo!.proveedor} (${it.definitivo!.precio_clp != null ? fmtCLP(it.definitivo!.precio_clp * (it.cantidad || 1)) : "—"})${justificaciones[it.cotizacion_id] ? `, ${justificaciones[it.cotizacion_id]}` : ""}`
       ).join("\n");
 
       const subject = encodeURIComponent(`Solicitud de aprobación: ${lista.nombre}`);
@@ -231,11 +231,11 @@ export default function ListaDetallePage() {
         `Lista: ${lista.nombre}\nTotal: ${totalStr}\n\n${itemLines}\n\n` +
         `Para aprobar:\n${data.magic_link_aprobar}\n\n` +
         `Para rechazar (puedes agregar comentarios):\n${data.magic_link_rechazar}\n\n` +
-        `Este enlace expira el ${new Date(data.expira_at).toLocaleDateString("es-CL")}.\n\nBaiyer — Procurement Inteligente`
+        `Este enlace expira el ${new Date(data.expira_at).toLocaleDateString("es-CL")}.\n\nBaiyer, Procurement Inteligente`
       );
 
       window.open(`mailto:${aprobadorEmail.trim()}?subject=${subject}&body=${body}`, "_self");
-      setToast("Solicitud creada — se abrió tu correo para enviar");
+      setToast("Solicitud creada, se abrió tu correo para enviar");
       setTimeout(() => setToast(""), 4000);
       setMostrarAprobacion(false);
       await cargar(userId);
@@ -255,7 +255,7 @@ export default function ListaDetallePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userId }),
       });
-      setToast("Lista desbloqueada — puedes modificarla y re-solicitar");
+      setToast("Lista desbloqueada, puedes modificarla y re-solicitar");
       setTimeout(() => setToast(""), 3500);
       await cargar(userId);
     } catch {
@@ -525,7 +525,7 @@ export default function ListaDetallePage() {
                 <div style={{ minWidth: 0 }}>
                   {d.url ? (
                     <a href={d.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: "var(--brand)", textDecoration: "none", fontWeight: 500 }}>
-                      {d.proveedor} — comprar aquí ↗
+                      {d.proveedor}, comprar aquí ↗
                     </a>
                   ) : (
                     <span style={{ fontSize: 14 }}>{d.proveedor}</span>
@@ -586,7 +586,7 @@ export default function ListaDetallePage() {
           {definitivos.map(it => (
             <div key={it.cotizacion_id} style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: "var(--n-900)", marginBottom: 5 }}>
-                {it.nombre} — {it.definitivo?.proveedor}
+                {it.nombre}, {it.definitivo?.proveedor}
                 {it.definitivo?.precio_clp != null && (
                   <span style={{
                     color: "var(--n-500)", fontWeight: 400, marginLeft: 6,

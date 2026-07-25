@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Sparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import FormularioCotizar from "./components/FormularioCotizar";
 import ResultadoIdentificacion from "./components/ResultadoIdentificacion";
@@ -35,6 +36,14 @@ interface ResultadoIA {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// Saludo según la hora: "este día" (mañana) · "esta tarde" · "esta noche"
+const momentoDelDia = (): string => {
+  const h = new Date().getHours();
+  if (h < 12) return "este día";
+  if (h < 20) return "esta tarde";
+  return "esta noche";
+};
+
 export default function CotizarPage() {
   const [etapa, setEtapa] = useState<Etapa>("formulario");
   const [resultado, setResultado] = useState<ResultadoIA | null>(null);
@@ -46,6 +55,7 @@ export default function CotizarPage() {
   const [guardando, setGuardando] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [industriaEmpresa, setIndustriaEmpresa] = useState<string | null>(null);
+  const [nombreUsuario, setNombreUsuario] = useState<string | null>(null);
   const [lastDescripcion, setLastDescripcion] = useState("");
   const router = useRouter();
 
@@ -54,6 +64,8 @@ export default function CotizarPage() {
     supabase.auth.getUser().then(({ data }) => {
       setUserId(data.user?.id ?? null);
       setIndustriaEmpresa((data.user?.user_metadata?.industria as string) ?? null);
+      const nombre = (data.user?.user_metadata?.nombre_usuario as string) ?? "";
+      setNombreUsuario(nombre ? nombre.split(/\s+/)[0] : null);
     });
   }, []);
 
@@ -219,28 +231,7 @@ export default function CotizarPage() {
 
   // ── Procesando ──────────────────────────────────────────────────────────────
   if (etapa === "procesando") {
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 20px" }}>
-        <div style={{ textAlign: "center", maxWidth: 320 }}>
-          <div className="section-rule" style={{ margin: "0 auto 24px" }} />
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8, letterSpacing: "-0.01em" }}>
-            Identificando con IA
-          </div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 28, lineHeight: 1.6 }}>
-            Analizando imagen y descripcion · Generando terminos de busqueda
-          </div>
-          <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
-            {[0, 1, 2].map(i => (
-              <div key={i} style={{
-                width: 6, height: 6,
-                background: "var(--accent)",
-                opacity: 0.3 + i * 0.35,
-              }} />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
+    return <PantallaProcesando />;
   }
 
   // ── Guardado ────────────────────────────────────────────────────────────────
@@ -274,48 +265,81 @@ export default function CotizarPage() {
     );
   }
 
-  // ── Formulario / Resultado ───────────────────────────────────────────────────
-  return (
-    <div style={{ maxWidth: 640 }}>
+  // ── Formulario (composer centrado estilo Claude) ─────────────────────────────
+  if (etapa === "formulario") {
+    return (
+      <div style={{
+        minHeight: "calc(100vh - 120px)",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        padding: "40px 20px",
+      }}>
+        <div style={{ width: "100%", maxWidth: 720 }}>
+          {/* Hero centrado */}
+          <div style={{ textAlign: "center", marginBottom: 28 }}>
+            <h1 style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+              fontSize: 34, lineHeight: 1.15, fontWeight: 600, color: "var(--n-900)",
+              margin: "0 0 10px", letterSpacing: "-0.02em",
+            }}>
+              <Sparkles size={28} strokeWidth={1.5} style={{ color: "var(--brand)", flexShrink: 0 }} />
+              {`¿Qué quieres cotizar ${momentoDelDia()}${nombreUsuario ? `, ${nombreUsuario}` : ""}?`}
+            </h1>
+            <p style={{ fontSize: 15, color: "var(--n-600)", margin: 0, lineHeight: 1.6 }}>
+              Busca un ítem o material específico, o describe un proyecto completo, la IA arma la lista y cotiza todo.
+            </p>
+          </div>
 
-      {/* Page header */}
-      <div style={{ marginBottom: 28 }}>
-        <div className="section-rule" style={{ marginBottom: 16 }} />
-        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-          COTIZADOR INTELIGENTE
-        </span>
-        <h1 style={{ fontSize: 26, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.02em" }}>
-          {etapa === "resultado"
-            ? (resultadosMulti ? `${resultadosMulti.length} ítems identificados` : "Item identificado")
-            : "¿Qué quieres comprar hoy?"}
-        </h1>
-        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>
-          {etapa === "resultado"
-            ? "Revisa la identificacion. Puedes confirmar o corregir."
-            : "Cuéntalo con tus palabras — la IA entiende qué ítems necesitas, cuántos, y lanza la cotización de todos."}
-        </p>
+          {/* Error */}
+          {error && (
+            <div style={{
+              background: "var(--fill-error)", border: "1px solid var(--danger)",
+              padding: "10px 14px", borderRadius: "var(--r-md)",
+              fontSize: 13, color: "var(--danger)", marginBottom: 16, textAlign: "center",
+            }}>
+              {error}
+            </div>
+          )}
+
+          <FormularioCotizar
+            onSubmit={handleIdentificar}
+            loading={false}
+            initialDescripcion={lastDescripcion}
+          />
+        </div>
       </div>
+    );
+  }
+
+  // ── Resultado ────────────────────────────────────────────────────────────────
+  return (
+    <div style={{ maxWidth: 720, margin: "0 auto" }}>
+
+      {/* Page header (solo ítem único; la lista multi trae su propio título editable) */}
+      {!resultadosMulti && (
+        <div style={{ marginBottom: 28, textAlign: "center" }}>
+          <h1 style={{ fontSize: 26, fontWeight: 600, color: "var(--n-900)", margin: "0 0 6px", letterSpacing: "-0.015em" }}>
+            Ítem identificado
+          </h1>
+          <p style={{ fontSize: 14, color: "var(--n-600)", margin: 0 }}>
+            Revisa la identificación. Puedes confirmar o corregir.
+          </p>
+        </div>
+      )}
 
       {/* Error */}
       {error && (
         <div style={{
           background: "var(--fill-error)",
-          border: "1px solid var(--border-accent)",
+          border: "1px solid var(--danger)",
           padding: "10px 14px",
-          fontSize: 11,
-          color: "var(--text-error)",
+          borderRadius: "var(--r-md)",
+          fontSize: 13,
+          color: "var(--danger)",
           marginBottom: 20,
         }}>
           {error}
         </div>
-      )}
-
-      {etapa === "formulario" && (
-        <FormularioCotizar
-          onSubmit={handleIdentificar}
-          loading={false}
-          initialDescripcion={lastDescripcion}
-        />
       )}
 
       {etapa === "resultado" && resultadosMulti && (
@@ -338,6 +362,69 @@ export default function CotizarPage() {
           isLoggedIn={!!userId}
         />
       )}
+    </div>
+  );
+}
+
+// ── Pantalla de carga animada mientras la IA identifica ─────────────────────
+const PASOS_IA = [
+  "Analizando tu descripción",
+  "Identificando los ítems",
+  "Detectando cantidades",
+  "Generando términos de búsqueda",
+];
+
+function PantallaProcesando() {
+  const [paso, setPaso] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setPaso(p => (p + 1) % PASOS_IA.length), 1600);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <div style={{
+      minHeight: "calc(100vh - 120px)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 20px",
+    }}>
+      <div style={{ textAlign: "center", maxWidth: 360 }}>
+        {/* Ícono con halo pulsante */}
+        <div style={{ position: "relative", width: 64, height: 64, margin: "0 auto 24px" }}>
+          <span style={{
+            position: "absolute", inset: 0, borderRadius: "50%",
+            background: "var(--brand-100)", animation: "haloPulse 1.8s ease-out infinite",
+          }} />
+          <span style={{
+            position: "relative", width: 64, height: 64, borderRadius: "50%",
+            background: "var(--brand-50)", color: "var(--brand)",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            animation: "breathe 2.4s ease-in-out infinite",
+          }}>
+            <Sparkles size={30} strokeWidth={1.5} />
+          </span>
+        </div>
+
+        <div style={{ fontSize: 20, fontWeight: 600, color: "var(--n-900)", marginBottom: 8, letterSpacing: "-0.015em" }}>
+          Identificando con IA
+        </div>
+
+        {/* Mensaje rotativo */}
+        <div key={paso} style={{
+          fontSize: 14, color: "var(--n-600)", marginBottom: 24, minHeight: 22,
+          animation: "fadeUp .35s ease",
+        }}>
+          {PASOS_IA[paso]}…
+        </div>
+
+        {/* Puntos en onda */}
+        <div style={{ display: "flex", gap: 7, justifyContent: "center" }}>
+          {[0, 1, 2].map(i => (
+            <span key={i} style={{
+              width: 8, height: 8, borderRadius: "50%", background: "var(--brand)",
+              animation: `dotWave 1.3s ease-in-out ${i * 0.16}s infinite`,
+            }} />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

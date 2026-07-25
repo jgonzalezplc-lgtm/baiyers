@@ -1,11 +1,13 @@
 "use client";
 /**
  * Identificación de VARIOS ítems (lista de cotización).
- * Lista expandible tipo accordion (multi-abierto). Cada bullet muestra nombre
- * completo + cantidad; al expandir se editan categorías y términos de búsqueda.
- * El usuario puede agregar ítems que el modelo no haya incluido.
+ * Lista expandible tipo accordion (multi-abierto) con animación suave tipo iOS.
+ * Cada bullet muestra nombre completo + cantidad; al expandir se editan
+ * categorías y términos de búsqueda. El usuario puede agregar ítems que el
+ * modelo no haya incluido.
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { ChevronRight, Plus, X, Undo2, Sparkles } from "lucide-react";
 import { CATEGORIAS } from "./ResultadoIdentificacion";
 
 export interface ItemIdentificado {
@@ -53,6 +55,10 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
   const [nuevoTermino, setNuevoTermino] = useState<Record<number, string>>({});
   const [nuevaCat, setNuevaCat] = useState<Record<number, string>>({});
 
+  // Categorías: mostrar solo las activas; "+" despliega las demás
+  const [catsAbierto, setCatsAbierto] = useState<Record<number, boolean>>({});
+  const toggleCatsAbierto = (i: number) => setCatsAbierto(prev => ({ ...prev, [i]: !prev[i] }));
+
   const toggleCat = (idx: number, key: string) => {
     setCats(prev => prev.map((s, i) => {
       if (i !== idx) return s;
@@ -66,14 +72,9 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
     const raw = (nuevaCat[idx] ?? "").trim();
     if (!raw) return;
     const key = raw.toLowerCase().replace(/\s+/g, "_").normalize("NFD").replace(/[̀-ͯ]/g, "");
-    setCats(prev => prev.map((s, i) => {
-      if (i !== idx) return s;
-      return new Set(s).add(key);
-    }));
+    setCats(prev => prev.map((s, i) => i === idx ? new Set(s).add(key) : s));
     setNuevaCat(prev => ({ ...prev, [idx]: "" }));
   };
-
-  const catLabel = (key: string) => CATEGORIAS.find(c => c.key === key)?.label ?? key;
 
   const quitarTermino = (idx: number, tIdx: number) => {
     setTerminos(prev => prev.map((ts, i) => i === idx ? ts.filter((_, j) => j !== tIdx) : ts));
@@ -108,265 +109,296 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
 
   const totalIncluidos = incluidos.filter(Boolean).length;
 
+  // Sincroniza el nombre de la lista con el breadcrumb superior (AppShell)
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("baiyer:breadcrumb", { detail: nombreLista.trim() || null }));
+  }, [nombreLista]);
+  useEffect(() => () => {
+    window.dispatchEvent(new CustomEvent("baiyer:breadcrumb", { detail: null }));
+  }, []);
+
+  // ── Estilos reutilizables ──
+  const chipInput: React.CSSProperties = {
+    background: "var(--surface)", border: "1px dashed var(--n-300)",
+    borderRadius: "var(--r-pill)", padding: "5px 12px", fontSize: 13,
+    color: "var(--n-900)", fontFamily: "var(--font-sans)", outline: "none",
+  };
+
   return (
     <div>
-      {/* Aviso */}
-      <div style={{
-        background: "var(--bg-inverse)", color: "var(--text-inverse)",
-        padding: "10px 16px", marginBottom: 16, fontSize: 11,
-        fontFamily: "var(--font-mono)",
-      }}>
-        {esProyecto
-          ? `Proyecto detectado — la IA armó la lista de ${allItems.length} materiales. Revisa, ajusta cantidades y quita lo que no necesites.`
-          : `${allItems.length} ítems identificados — se cotizarán en paralelo como lista`}
-      </div>
-
-      {/* Nombre de la lista */}
-      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: "12px 16px", marginBottom: 0 }}>
-        <div className="label" style={{ color: "var(--text-muted)", marginBottom: 6 }}>
-          Nombre de la lista de cotización / proyecto
-        </div>
+      {/* Título editable estilo Notion */}
+      <div style={{ marginBottom: 8 }}>
         <input
           type="text"
           value={nombreLista}
           onChange={e => setNombreLista(e.target.value)}
-          placeholder={`Ej: "Compra materiales ${new Date().toLocaleDateString("es-CL", { month: "long" })}"`}
+          placeholder="Lista sin nombre"
+          aria-label="Nombre de la lista"
           style={{
             width: "100%", boxSizing: "border-box",
-            background: "var(--bg-base)", border: "1px solid var(--border-default)",
-            padding: "8px 12px", fontSize: 11, color: "var(--text-primary)",
-            fontFamily: "var(--font-mono)", outline: "none",
+            background: "transparent", border: "none", outline: "none",
+            padding: "4px 6px", borderRadius: "var(--r-md)",
+            fontFamily: "var(--font-sans)", fontSize: 32, fontWeight: 700,
+            letterSpacing: "-0.02em", color: "var(--n-900)", textAlign: "center",
           }}
+          onFocus={e => { e.currentTarget.style.background = "var(--surface-2)"; }}
+          onBlur={e => { e.currentTarget.style.background = "transparent"; }}
         />
+        <p style={{ textAlign: "center", fontSize: 14, color: "var(--n-500)", margin: "2px 0 0" }}>
+          {esProyecto
+            ? `Proyecto detectado · ${allItems.length} materiales. Ajusta cantidades y quita lo que no necesites.`
+            : `${allItems.length} ítems identificados · se cotizarán en paralelo.`}
+        </p>
+      </div>
+
+      {/* Aviso */}
+      <div style={{
+        background: "var(--brand-50)", border: "1px solid var(--brand-100)",
+        color: "var(--brand-700)", borderRadius: "var(--r-md)",
+        padding: "12px 16px", margin: "16px 0", fontSize: 13.5, lineHeight: 1.55,
+        display: "flex", gap: 10, alignItems: "flex-start",
+      }}>
+        <Sparkles size={17} strokeWidth={1.75} style={{ flexShrink: 0, marginTop: 1 }} />
+        <span>Haz clic en el título para renombrar la lista. Abre cada ítem para revisar categorías y términos de búsqueda.</span>
       </div>
 
       {/* Lista de ítems (accordion) */}
-      <div style={{ border: "1px solid var(--border-default)", borderTop: "none", marginBottom: 16 }}>
+      <div style={{
+        border: "1px solid var(--n-200)", borderRadius: "var(--r-lg)",
+        overflow: "hidden", marginBottom: 16, background: "var(--surface)",
+      }}>
         {allItems.map((it, i) => {
           const abierto = abiertos.has(i);
           const excluido = !incluidos[i];
           return (
-            <div key={i} style={{ borderTop: i > 0 ? "1px solid var(--border-default)" : undefined }}>
+            <div key={i} style={{ borderTop: i > 0 ? "1px solid var(--n-200)" : undefined }}>
               {/* Bullet header */}
               <button
                 onClick={() => toggleAbierto(i)}
                 style={{
-                  width: "100%", display: "flex", alignItems: "center", gap: 10,
-                  padding: "10px 16px", border: "none", cursor: "pointer",
-                  background: abierto ? "var(--bg-surface)" : "var(--bg-base)",
-                  fontFamily: "var(--font-mono)", textAlign: "left",
-                  opacity: excluido ? 0.4 : 1,
+                  width: "100%", display: "flex", alignItems: "center", gap: 12,
+                  padding: "13px 16px", border: "none", cursor: "pointer",
+                  background: abierto ? "var(--surface-2)" : "var(--surface)",
+                  textAlign: "left", fontFamily: "var(--font-sans)",
+                  opacity: excluido ? 0.45 : 1,
+                  transition: "background .15s ease",
                 }}
               >
+                <ChevronRight
+                  size={17} strokeWidth={2}
+                  style={{
+                    color: "var(--n-400)", flexShrink: 0,
+                    transition: "transform .3s cubic-bezier(.4,0,.2,1)",
+                    transform: abierto ? "rotate(90deg)" : "rotate(0deg)",
+                  }}
+                />
                 <span style={{
-                  fontSize: 10, color: "var(--text-muted)", flexShrink: 0,
-                  transition: "transform 0.15s",
-                  transform: abierto ? "rotate(90deg)" : "rotate(0deg)",
-                }}>
-                  ▶
-                </span>
-                <span style={{
-                  fontSize: 13, fontWeight: 700, color: "var(--text-primary)",
+                  fontSize: 14.5, fontWeight: 600, color: "var(--n-900)",
                   flex: 1, minWidth: 0,
                   textDecoration: excluido ? "line-through" : "none",
                 }}>
                   {i + 1}. {it.nombre_tecnico}
                 </span>
-                <span className="label" style={{
-                  flexShrink: 0, padding: "2px 6px",
-                  color: "var(--text-muted)",
-                  border: "1px solid var(--border-default)",
+                <span style={{
+                  flexShrink: 0, padding: "3px 9px", borderRadius: "var(--r-pill)",
+                  fontSize: 12.5, fontWeight: 600, color: "var(--n-600)",
+                  background: "var(--n-100)",
+                  fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums",
                 }}>
                   ×{cants[i]}
                 </span>
               </button>
 
-              {/* Panel expandido */}
-              {abierto && (
-                <div style={{ padding: "0 16px 16px", background: "var(--bg-surface)" }}>
-                  {/* Cantidad + quitar */}
-                  <div style={{ display: "flex", gap: 12, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      <span className="label" style={{ color: "var(--text-muted)" }}>Cantidad</span>
-                      <input
-                        type="number" min={1} value={cants[i]}
-                        onChange={e => {
-                          const v = parseFloat(e.target.value) || 1;
-                          setCants(prev => prev.map((c, j) => j === i ? v : c));
-                        }}
-                        style={{
-                          width: 60, background: "var(--bg-base)", border: "1px solid var(--border-default)",
-                          padding: "4px 8px", fontSize: 12, color: "var(--text-primary)",
-                          fontFamily: "var(--font-mono)", outline: "none", textAlign: "right",
-                        }}
-                      />
-                    </span>
-                    {it.marca && <span className="label" style={{ color: "var(--text-secondary)" }}>Marca: <strong>{it.marca}</strong></span>}
-                    {it.numero_parte && <span className="label" style={{ color: "var(--text-secondary)" }}>N/P: <strong>{it.numero_parte}</strong></span>}
-                    <button
-                      onClick={() => setIncluidos(prev => prev.map((v, j) => j === i ? !v : v))}
-                      disabled={incluidos[i] && totalIncluidos <= 1}
-                      className="label"
-                      style={{
-                        marginLeft: "auto",
-                        color: incluidos[i] ? "var(--text-error)" : "var(--text-success)",
-                        border: `1px solid ${incluidos[i] ? "var(--border-accent)" : "var(--palette-green-500)"}`,
-                        background: "none", padding: "3px 8px", cursor: "pointer",
-                        fontFamily: "var(--font-mono)", whiteSpace: "nowrap",
-                      }}
-                    >
-                      {incluidos[i] ? "× Quitar" : "↩ Incluir"}
-                    </button>
-                  </div>
-
-                  {/* Categorías */}
-                  <div style={{ marginBottom: 14 }}>
-                    <div className="label" style={{ color: "var(--text-muted)", marginBottom: 6 }}>Categorías</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
-                      {CATEGORIAS.map(c => {
-                        const activa = cats[i].has(c.key);
-                        return (
-                          <button
-                            key={c.key}
-                            onClick={() => toggleCat(i, c.key)}
-                            className="label"
-                            style={{
-                              color: activa ? "var(--text-inverse)" : "var(--text-secondary)",
-                              background: activa ? "var(--bg-inverse)" : "var(--bg-base)",
-                              border: `1px solid ${activa ? "var(--border-strong)" : "var(--border-default)"}`,
-                              padding: "4px 10px", cursor: "pointer", fontFamily: "var(--font-mono)",
-                            }}
-                          >
-                            {activa ? "✓ " : ""}{c.label}
-                          </button>
-                        );
-                      })}
-                      {/* Categorías custom (no están en CATEGORIAS) */}
-                      {Array.from(cats[i]).filter(k => !CATEGORIAS.some(c => c.key === k)).map(k => (
-                        <span key={k} style={{
-                          display: "inline-flex", alignItems: "center", gap: 4,
-                          fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
-                          color: "var(--text-inverse)", background: "var(--accent)",
-                          padding: "4px 4px 4px 10px", fontFamily: "var(--font-mono)",
-                        }}>
-                          {k}
-                          <button
-                            onClick={() => toggleCat(i, k)}
-                            style={{
-                              background: "none", border: "none", cursor: "pointer",
-                              color: "var(--text-inverse)", fontSize: 12, padding: "0 2px",
-                              fontFamily: "var(--font-mono)", lineHeight: 1, opacity: 0.7,
-                            }}
-                          >×</button>
-                        </span>
-                      ))}
-                      {/* Input agregar categoría */}
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+              {/* Panel expandido (animación iOS) */}
+              <div className={`acc-panel${abierto ? " open" : ""}`}>
+                <div className="acc-inner">
+                  <div style={{ padding: "4px 16px 18px", background: "var(--surface-2)" }}>
+                    {/* Cantidad + quitar */}
+                    <div style={{ display: "flex", gap: 14, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 13, color: "var(--n-600)" }}>Cantidad</span>
                         <input
-                          type="text"
-                          value={nuevaCat[i] ?? ""}
-                          onChange={e => setNuevaCat(prev => ({ ...prev, [i]: e.target.value }))}
-                          onKeyDown={e => { if (e.key === "Enter") agregarCat(i); }}
-                          placeholder="+ agregar"
+                          type="number" min={1} value={cants[i]}
+                          onChange={e => {
+                            const v = parseFloat(e.target.value) || 1;
+                            setCants(prev => prev.map((c, j) => j === i ? v : c));
+                          }}
                           style={{
-                            width: 100, background: "var(--bg-base)", border: "1px dashed var(--border-default)",
-                            padding: "4px 8px", fontSize: 10, color: "var(--text-primary)",
-                            fontFamily: "var(--font-mono)", outline: "none",
-                            fontWeight: 700, letterSpacing: "0.04em",
+                            width: 64, background: "var(--surface)", border: "1px solid var(--n-300)",
+                            borderRadius: "var(--r-sm)", padding: "6px 8px", fontSize: 13,
+                            color: "var(--n-900)", fontFamily: "var(--font-mono)",
+                            fontVariantNumeric: "tabular-nums", outline: "none", textAlign: "right",
                           }}
                         />
-                        {(nuevaCat[i] ?? "").trim() && (
-                          <button
-                            onClick={() => agregarCat(i)}
-                            style={{
-                              background: "var(--bg-inverse)", border: "none", cursor: "pointer",
-                              color: "var(--text-inverse)", fontSize: 10, padding: "4px 8px",
-                              fontFamily: "var(--font-mono)", fontWeight: 700,
-                            }}
-                          >+</button>
-                        )}
                       </span>
+                      {it.marca && <span style={{ fontSize: 13, color: "var(--n-600)" }}>Marca: <strong style={{ color: "var(--n-900)" }}>{it.marca}</strong></span>}
+                      {it.numero_parte && <span style={{ fontSize: 13, color: "var(--n-600)" }}>N/P: <strong style={{ color: "var(--n-900)" }}>{it.numero_parte}</strong></span>}
+                      <button
+                        onClick={() => setIncluidos(prev => prev.map((v, j) => j === i ? !v : v))}
+                        disabled={incluidos[i] && totalIncluidos <= 1}
+                        style={{
+                          marginLeft: "auto",
+                          display: "inline-flex", alignItems: "center", gap: 6,
+                          color: incluidos[i] ? "var(--danger)" : "var(--success)",
+                          border: `1px solid ${incluidos[i] ? "var(--danger)" : "var(--success)"}`,
+                          background: "var(--surface)", padding: "5px 12px", cursor: "pointer",
+                          borderRadius: "var(--r-md)", fontSize: 13, fontWeight: 500,
+                          fontFamily: "var(--font-sans)", whiteSpace: "nowrap",
+                          opacity: incluidos[i] && totalIncluidos <= 1 ? 0.4 : 1,
+                        }}
+                      >
+                        {incluidos[i] ? <><X size={14} strokeWidth={2} /> Quitar</> : <><Undo2 size={14} strokeWidth={2} /> Incluir</>}
+                      </button>
                     </div>
-                  </div>
 
-                  {/* Términos de búsqueda */}
-                  <div>
-                    <div className="label" style={{ color: "var(--text-muted)", marginBottom: 6 }}>Términos de búsqueda</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
-                      {terminos[i].map((t, tIdx) => (
-                        <span key={tIdx} style={{
-                          display: "inline-flex", alignItems: "center", gap: 4,
-                          fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
-                          color: "var(--text-secondary)", background: "var(--bg-base)",
-                          border: "1px solid var(--border-default)", padding: "3px 4px 3px 8px",
-                          fontFamily: "var(--font-mono)",
-                        }}>
-                          {t}
-                          <button
-                            onClick={() => quitarTermino(i, tIdx)}
-                            style={{
-                              background: "none", border: "none", cursor: "pointer",
-                              color: "var(--text-muted)", fontSize: 12, padding: "0 2px",
-                              fontFamily: "var(--font-mono)", lineHeight: 1,
-                            }}
-                            title="Quitar término"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                      {/* Input para agregar término */}
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                    {/* Categorías: activas visibles; "+" despliega las demás */}
+                    {(() => {
+                      const disponibles = CATEGORIAS.filter(c => !cats[i].has(c.key));
+                      const custom = Array.from(cats[i]).filter(k => !CATEGORIAS.some(c => c.key === k));
+                      const catsOpen = !!catsAbierto[i];
+                      return (
+                        <div style={{ marginBottom: 16 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--n-700)", marginBottom: 8 }}>Categorías</div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                            {/* Activas (predefinidas) */}
+                            {CATEGORIAS.filter(c => cats[i].has(c.key)).map(c => (
+                              <button
+                                key={c.key}
+                                onClick={() => toggleCat(i, c.key)}
+                                style={{
+                                  display: "inline-flex", alignItems: "center", gap: 6,
+                                  color: "#fff", background: "var(--brand)", border: "1px solid var(--brand)",
+                                  borderRadius: "var(--r-pill)", padding: "5px 10px 5px 12px",
+                                  cursor: "pointer", fontSize: 13, fontWeight: 500, fontFamily: "var(--font-sans)",
+                                }}
+                              >
+                                {c.label}
+                                <X size={13} strokeWidth={2.5} style={{ opacity: 0.8 }} />
+                              </button>
+                            ))}
+                            {/* Activas custom */}
+                            {custom.map(k => (
+                              <button
+                                key={k}
+                                onClick={() => toggleCat(i, k)}
+                                style={{
+                                  display: "inline-flex", alignItems: "center", gap: 6,
+                                  color: "#fff", background: "var(--brand)", border: "1px solid var(--brand)",
+                                  borderRadius: "var(--r-pill)", padding: "5px 10px 5px 12px",
+                                  cursor: "pointer", fontSize: 13, fontWeight: 500, fontFamily: "var(--font-sans)",
+                                }}
+                              >
+                                {k}
+                                <X size={13} strokeWidth={2.5} style={{ opacity: 0.8 }} />
+                              </button>
+                            ))}
+                            {/* Botón desplegar / colapsar */}
+                            {disponibles.length > 0 && (
+                              <button
+                                onClick={() => toggleCatsAbierto(i)}
+                                style={{
+                                  display: "inline-flex", alignItems: "center", gap: 5,
+                                  color: "var(--brand)", background: "var(--brand-50)",
+                                  border: "1px solid var(--brand-100)", borderRadius: "var(--r-pill)",
+                                  padding: "5px 12px", cursor: "pointer", fontSize: 13, fontWeight: 500,
+                                  fontFamily: "var(--font-sans)",
+                                }}
+                              >
+                                <Plus size={14} strokeWidth={2.25} style={{
+                                  transition: "transform .3s cubic-bezier(.4,0,.2,1)",
+                                  transform: catsOpen ? "rotate(45deg)" : "rotate(0deg)",
+                                }} />
+                                {catsOpen ? "Menos" : `${disponibles.length} más`}
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Panel animado con las categorías disponibles + agregar */}
+                          <div className={`acc-panel${catsOpen ? " open" : ""}`}>
+                            <div className="acc-inner">
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", paddingTop: 8 }}>
+                                {disponibles.map(c => (
+                                  <button
+                                    key={c.key}
+                                    onClick={() => toggleCat(i, c.key)}
+                                    style={{
+                                      color: "var(--n-600)", background: "var(--surface)",
+                                      border: "1px solid var(--n-300)", borderRadius: "var(--r-pill)",
+                                      padding: "5px 12px", cursor: "pointer", fontSize: 13, fontWeight: 500,
+                                      fontFamily: "var(--font-sans)",
+                                    }}
+                                  >
+                                    {c.label}
+                                  </button>
+                                ))}
+                                <input
+                                  type="text"
+                                  value={nuevaCat[i] ?? ""}
+                                  onChange={e => setNuevaCat(prev => ({ ...prev, [i]: e.target.value }))}
+                                  onKeyDown={e => { if (e.key === "Enter") agregarCat(i); }}
+                                  placeholder="+ agregar"
+                                  style={{ ...chipInput, width: 110 }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Términos de búsqueda */}
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: "var(--n-700)", marginBottom: 8 }}>Términos de búsqueda</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                        {terminos[i].map((t, tIdx) => (
+                          <span key={tIdx} style={{
+                            display: "inline-flex", alignItems: "center", gap: 6,
+                            fontSize: 13, color: "var(--n-700)", background: "var(--surface)",
+                            border: "1px solid var(--n-200)", borderRadius: "var(--r-pill)",
+                            padding: "5px 8px 5px 12px",
+                          }}>
+                            {t}
+                            <button
+                              onClick={() => quitarTermino(i, tIdx)}
+                              title="Quitar término"
+                              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--n-400)", display: "inline-flex", padding: 0 }}
+                            ><X size={13} strokeWidth={2.5} /></button>
+                          </span>
+                        ))}
                         <input
                           type="text"
                           value={nuevoTermino[i] ?? ""}
                           onChange={e => setNuevoTermino(prev => ({ ...prev, [i]: e.target.value }))}
                           onKeyDown={e => { if (e.key === "Enter") agregarTermino(i); }}
                           placeholder="+ agregar"
-                          style={{
-                            width: 110, background: "var(--bg-base)", border: "1px dashed var(--border-default)",
-                            padding: "3px 8px", fontSize: 10, color: "var(--text-primary)",
-                            fontFamily: "var(--font-mono)", outline: "none",
-                            fontWeight: 700, letterSpacing: "0.04em",
-                          }}
+                          style={{ ...chipInput, width: 120 }}
                         />
-                        {(nuevoTermino[i] ?? "").trim() && (
-                          <button
-                            onClick={() => agregarTermino(i)}
-                            style={{
-                              background: "var(--bg-inverse)", border: "none", cursor: "pointer",
-                              color: "var(--text-inverse)", fontSize: 10, padding: "3px 8px",
-                              fontFamily: "var(--font-mono)", fontWeight: 700,
-                            }}
-                          >
-                            +
-                          </button>
-                        )}
-                      </span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              )}
+              </div>
             </div>
           );
         })}
 
         {/* Botón agregar ítem */}
-        <div style={{ borderTop: "1px solid var(--border-default)" }}>
+        <div style={{ borderTop: "1px solid var(--n-200)" }}>
           {!mostrarFormAgregar ? (
             <button
               onClick={() => setMostrarFormAgregar(true)}
               style={{
-                width: "100%", display: "flex", alignItems: "center", gap: 10,
-                padding: "10px 16px", border: "none", cursor: "pointer",
-                background: "var(--bg-base)", fontFamily: "var(--font-mono)", textAlign: "left",
+                width: "100%", display: "flex", alignItems: "center", gap: 8,
+                padding: "13px 16px", border: "none", cursor: "pointer",
+                background: "var(--surface)", fontFamily: "var(--font-sans)", textAlign: "left",
+                color: "var(--brand)", fontSize: 14, fontWeight: 500,
               }}
             >
-              <span style={{ fontSize: 12, color: "var(--accent)", fontWeight: 700 }}>+</span>
-              <span style={{ fontSize: 12, color: "var(--accent)", fontWeight: 700 }}>Agregar ítem</span>
+              <Plus size={17} strokeWidth={2} />
+              Agregar ítem
             </button>
           ) : (
-            <div style={{ padding: "10px 16px", background: "var(--bg-surface)", display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ padding: "12px 16px", background: "var(--surface-2)", display: "flex", gap: 8, alignItems: "center" }}>
               <input
                 type="text"
                 value={nuevoNombre}
@@ -375,19 +407,19 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
                 placeholder="Nombre del ítem…"
                 autoFocus
                 style={{
-                  flex: 1, background: "var(--bg-base)", border: "1px solid var(--border-default)",
-                  padding: "8px 12px", fontSize: 12, color: "var(--text-primary)",
-                  fontFamily: "var(--font-mono)", outline: "none",
+                  flex: 1, background: "var(--surface)", border: "1px solid var(--n-300)",
+                  borderRadius: "var(--r-md)", padding: "9px 12px", fontSize: 14,
+                  color: "var(--n-900)", fontFamily: "var(--font-sans)", outline: "none",
                 }}
               />
-              <button onClick={agregarItem} disabled={!nuevoNombre.trim()} className="btn-swiss-primary" style={{ padding: "8px 14px", whiteSpace: "nowrap" }}>
+              <button onClick={agregarItem} disabled={!nuevoNombre.trim()} className="btn-swiss-primary" style={{ whiteSpace: "nowrap" }}>
                 Agregar
               </button>
               <button onClick={() => { setMostrarFormAgregar(false); setNuevoNombre(""); }} style={{
                 background: "none", border: "none", cursor: "pointer",
-                color: "var(--text-muted)", fontSize: 14, fontFamily: "var(--font-mono)", padding: "4px 8px",
+                color: "var(--n-500)", display: "inline-flex", padding: 6,
               }}>
-                ×
+                <X size={18} strokeWidth={2} />
               </button>
             </div>
           )}
@@ -395,8 +427,8 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
       </div>
 
       {/* Acciones */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8 }}>
-        <button onClick={onCorregir} className="btn-swiss-secondary" style={{ padding: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 10 }}>
+        <button onClick={onCorregir} className="btn-swiss-secondary">
           Corregir
         </button>
         <button
@@ -415,10 +447,9 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
             );
           }}
           disabled={guardando}
-          className={guardando ? "btn-swiss-secondary" : "btn-swiss-primary"}
-          style={{ padding: 12 }}
+          className="btn-swiss-primary"
         >
-          {guardando ? "Creando lista..." : `Crear lista y cotizar ${totalIncluidos} ítems →`}
+          {guardando ? "Creando lista…" : `Crear lista y cotizar ${totalIncluidos} ítems →`}
         </button>
       </div>
     </div>

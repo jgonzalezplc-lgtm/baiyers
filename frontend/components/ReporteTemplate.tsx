@@ -174,7 +174,7 @@ function ReportePDF({ datos }: { datos: ReporteDatos }) {
                       Rating: {p.rating_promedio as number}/5 ({p.total_ratings as number} evaluaciones) · OCs: {p.total_ocs_historial as number}
                     </Text>
                   )}
-                  {p.es_nuevo && <Text style={{ ...styles.provDetail, color: "#f59e0b" }}>Proveedor nuevo — sin historial previo</Text>}
+                  {p.es_nuevo && <Text style={{ ...styles.provDetail, color: "#f59e0b" }}>Proveedor nuevo, sin historial previo</Text>}
                 </View>
               );
             })}

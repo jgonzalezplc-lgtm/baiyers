@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Claria MCP — Documentacion",
+  title: "Claria MCP, Documentacion",
   description: "Integra Claude, ChatGPT y otros LLMs con Claria Cotizador Inteligente via Model Context Protocol (MCP).",
 };
 
@@ -173,7 +173,7 @@ export default function MCPDocsPage() {
 
         {/* Quick start */}
         <div style={{ background: "var(--surface)", border: "1px solid var(--brand)33", borderRadius: 12, padding: "24px", marginBottom: 32 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--n-900)", margin: "0 0 16px" }}>Inicio rapido — Claude Desktop</h2>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--n-900)", margin: "0 0 16px" }}>Inicio rapido, Claude Desktop</h2>
           <p style={{ fontSize: 11, color: "var(--n-600)", marginBottom: 16 }}>
             Agrega esto a tu archivo <code style={{ background: "var(--n-200)", padding: "1px 6px", borderRadius: 3, color: "var(--n-500)" }}>claude_desktop_config.json</code>:
           </p>

@@ -54,7 +54,7 @@ export default function ListasPage() {
           <EmptyState
             icon={ListChecks}
             title="Aún no tienes listas"
-            description={'Escribe varios ítems separados por ";" en Nueva cotización — por ejemplo: martillo; taladro; madera.'}
+            description={'Escribe varios ítems separados por ";" en Nueva cotización, por ejemplo: martillo; taladro; madera.'}
             action={<Link href="/cotizar" className="btn-swiss-primary" style={{ textDecoration: "none" }}>Crear mi primera lista</Link>}
           />
         </Table>

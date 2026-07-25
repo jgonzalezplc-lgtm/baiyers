@@ -405,7 +405,7 @@ export default function CalendarioPage() {
               Marcar llegada efectiva
             </h3>
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 16 }}>
-              {String(llegadaModal.datos.numero_oc)} — {String(llegadaModal.datos.proveedor)}
+              {String(llegadaModal.datos.numero_oc)}, {String(llegadaModal.datos.proveedor)}
             </div>
             <label className="label" style={{ color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
               Fecha de llegada

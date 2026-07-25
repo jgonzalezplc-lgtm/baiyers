@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Claria API Docs — Documentacion para ERPs",
+  title: "Claria API Docs, Documentacion para ERPs",
   description: "Integra Defontana, SAP, Bsale y Odoo con Claria Cotizador Inteligente via API REST.",
 };
 
@@ -12,7 +12,7 @@ const SIDEBAR = [
   { id: "auth", label: "Autenticacion" },
   { id: "cotizar", label: "POST /cotizar" },
   { id: "batch", label: "POST /cotizar/batch" },
-  { id: "oc", label: "OC — Ordenes de Compra" },
+  { id: "oc", label: "OC, Ordenes de Compra" },
   { id: "proveedores", label: "Proveedores" },
   { id: "estadisticas", label: "Estadisticas" },
   { id: "webhooks", label: "Webhooks" },
@@ -166,7 +166,7 @@ Content-Type: application/json
 
         {/* OC */}
         <section id="oc" style={{ marginBottom: 48 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--n-900)", marginBottom: 12 }}>OC — Ordenes de Compra</h2>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--n-900)", marginBottom: 12 }}>OC, Ordenes de Compra</h2>
 
           <div style={{ marginBottom: 20 }}>
             <h3 style={{ fontSize: 13, fontWeight: 700, color: "var(--n-900)", marginBottom: 8 }}>POST /oc/emitir</h3>

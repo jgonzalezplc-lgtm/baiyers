@@ -263,7 +263,7 @@ export function Label({ children, style }: { children: ReactNode; style?: CSSPro
   return <span style={{ fontSize: 12, fontWeight: 500, color: "var(--n-500)", lineHeight: 1.5, ...style }}>{children}</span>;
 }
 
-/** Montos y códigos — mono + cifras tabulares. */
+/** Montos y códigos, mono + cifras tabulares. */
 export function Mono({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   return <span style={{ fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums", ...style }}>{children}</span>;
 }
@@ -283,7 +283,7 @@ export function PageHeader({
   );
 }
 
-/** Legacy — antes era una barra roja. Ahora no dibuja nada (el header ya separa). */
+/** Legacy, antes era una barra roja. Ahora no dibuja nada (el header ya separa). */
 export function SectionRule() { return null; }
 
 export function Divider({ style }: { style?: CSSProperties }) {
@@ -414,7 +414,7 @@ export function SummaryPanel({ children, style }: { children: ReactNode; style?:
   );
 }
 
-/** Bloque destacado — p.ej. "mejor precio". */
+/** Bloque destacado, p.ej. "mejor precio". */
 export function Highlight({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   return (
     <div style={{
