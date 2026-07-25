@@ -80,7 +80,6 @@ export default function FiltrosProveedores({ filtroPrecio, filtroPais, orden, to
           fontFamily: "var(--font-mono)",
           cursor: "pointer",
           outline: "none",
-          textTransform: "uppercase",
           letterSpacing: "0.05em",
         }}
       >

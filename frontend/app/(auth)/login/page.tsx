@@ -92,38 +92,54 @@ export default function LoginPage() {
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      background: "var(--bg-base)",
+      background: "var(--canvas)",
+      padding: 20,
     }}>
       <div style={{
         width: "100%",
-        maxWidth: 380,
-        padding: "40px 36px",
-        background: "var(--bg-surface)",
-        border: "1px solid var(--border-default)",
+        maxWidth: 400,
+        padding: 32,
+        background: "var(--surface)",
+        border: "1px solid var(--n-200)",
+        borderRadius: "var(--r-xl)",
+        boxShadow: "var(--shadow-card)",
       }}>
-        {/* Header */}
-        <div className="label" style={{ color: "var(--accent)", marginBottom: 6 }}>
-          Claria
+        {/* Marca */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+          <span style={{
+            width: 30, height: 30, borderRadius: 8,
+            background: "var(--brand)", color: "#fff",
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            fontSize: 16, fontWeight: 700,
+          }}>B</span>
+          <span style={{ fontSize: 16, fontWeight: 600, color: "var(--n-900)", letterSpacing: "-0.015em" }}>Baiyer</span>
         </div>
+
         <h1 style={{
-          fontSize: 20,
-          fontWeight: 700,
-          color: "var(--text-primary)",
-          margin: "0 0 28px",
-          letterSpacing: "-0.02em",
+          fontSize: 22,
+          fontWeight: 600,
+          color: "var(--n-900)",
+          margin: "0 0 6px",
+          letterSpacing: "-0.015em",
         }}>
-          {modo === "login" ? "Iniciar sesion" : "Recuperar contrasena"}
+          {modo === "login" ? "Iniciar sesión" : "Recuperar contraseña"}
         </h1>
+        <p style={{ fontSize: 14, color: "var(--n-600)", margin: "0 0 24px" }}>
+          {modo === "login"
+            ? "Entra a tu cuenta para seguir cotizando."
+            : "Te enviamos un enlace para restablecerla."}
+        </p>
 
         {/* Error */}
         {error && (
           <div style={{
-            background: "var(--fill-error)",
-            border: "1px solid var(--border-accent)",
+            background: "var(--st-rechazada-bg)",
+            border: "1px solid #c8623f",
+            borderRadius: "var(--r-md)",
             padding: "10px 12px",
-            fontSize: 11,
-            color: "var(--text-error)",
-            marginBottom: 20,
+            fontSize: 13.5,
+            color: "var(--danger)",
+            marginBottom: 18,
           }}>
             {error}
           </div>
@@ -132,16 +148,17 @@ export default function LoginPage() {
         {modo === "recovery" && recoveryEnviado ? (
           <div>
             <div style={{
-              background: "var(--fill-success)",
-              border: "1px solid var(--palette-green-500)",
-              padding: "14px",
-              fontSize: 12,
-              color: "var(--text-success)",
+              background: "var(--st-aprobada-bg)",
+              border: "1px solid var(--success)",
+              borderRadius: "var(--r-md)",
+              padding: 14,
+              fontSize: 13.5,
+              color: "var(--st-aprobada-fg)",
               marginBottom: 20,
               lineHeight: 1.6,
             }}>
               Correo enviado a <strong>{email}</strong>. Revisa tu bandeja de entrada
-              y sigue el enlace para restablecer tu contrasena.
+              y sigue el enlace para restablecer tu contraseña.
             </div>
             <BtnSecondary
               onClick={() => { setModo("login"); setRecoveryEnviado(false); }}
@@ -164,21 +181,20 @@ export default function LoginPage() {
               {modo === "login" && (
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <span className="label">Contrasena</span>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: "var(--n-700)" }}>Contraseña</span>
                     <button
                       onClick={() => { setModo("recovery"); setError(""); }}
                       style={{
-                        fontSize: 10,
-                        color: "var(--accent)",
+                        fontSize: 13,
+                        color: "var(--brand)",
                         background: "none",
                         border: "none",
                         cursor: "pointer",
-                        fontFamily: "var(--font-mono)",
+                        fontFamily: "var(--font-sans)",
                         padding: 0,
-                        letterSpacing: "0.05em",
                       }}
                     >
-                      Olvide mi contrasena
+                      Olvidé mi contraseña
                     </button>
                   </div>
                   <input
@@ -187,11 +203,12 @@ export default function LoginPage() {
                     onChange={e => setPassword(e.target.value)}
                     onKeyDown={e => e.key === "Enter" && handleLogin()}
                     placeholder="••••••••"
-                    className="w-full px-4 py-3 bg-[var(--bg-surface)] border border-[var(--border-default)]
-                               text-[var(--text-primary)] font-mono text-sm
-                               focus:outline-none focus:border-[var(--border-strong)]
-                               placeholder:text-[var(--text-muted)]"
-                    style={{ borderRadius: "var(--radius-default)" }}
+                    style={{
+                      width: "100%", height: 42, padding: "0 12px",
+                      background: "var(--surface)", color: "var(--n-900)",
+                      border: "1px solid var(--n-300)", borderRadius: "var(--r-md)",
+                      fontFamily: "var(--font-sans)", fontSize: 14, outline: "none",
+                    }}
                   />
                 </div>
               )}
@@ -201,17 +218,17 @@ export default function LoginPage() {
               <BtnPrimary
                 onClick={modo === "login" ? handleLogin : handleRecovery}
                 disabled={loading}
-                className="w-full justify-center"
+                style={{ width: "100%" }}
               >
-                {loading ? "..." : modo === "login" ? "Ingresar" : "Enviar correo de recuperacion"}
+                {loading ? "…" : modo === "login" ? "Ingresar" : "Enviar correo de recuperación"}
               </BtnPrimary>
 
               {modo === "recovery" && (
                 <BtnSecondary
                   onClick={() => { setModo("login"); setError(""); }}
-                  className="w-full"
+                  style={{ width: "100%" }}
                 >
-                  Volver al login
+                  Volver al inicio de sesión
                 </BtnSecondary>
               )}
             </div>
@@ -221,25 +238,24 @@ export default function LoginPage() {
         {modo === "login" && (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0" }}>
-              <div style={{ flex: 1, height: 1, background: "var(--border-default)" }} />
-              <span className="label" style={{ color: "var(--text-muted)" }}>o</span>
-              <div style={{ flex: 1, height: 1, background: "var(--border-default)" }} />
+              <div style={{ flex: 1, height: 1, background: "var(--n-200)" }} />
+              <span style={{ fontSize: 12.5, color: "var(--n-500)" }}>o</span>
+              <div style={{ flex: 1, height: 1, background: "var(--n-200)" }} />
             </div>
             <button onClick={handleGoogle} className="btn-swiss-secondary"
-              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12, marginBottom: 8 }}>
+              style={{ width: "100%", marginBottom: 8 }}>
               <GoogleIcon /> Continuar con Google
             </button>
             {/* Outlook oculto hasta configurar Azure AD (cuenta Microsoft de trabajo). Reactivar: false → true */}
             {false && (
-              <button onClick={handleOutlook} className="btn-swiss-secondary"
-                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12 }}>
+              <button onClick={handleOutlook} className="btn-swiss-secondary" style={{ width: "100%" }}>
                 <OutlookIcon /> Continuar con Outlook
               </button>
             )}
-            <p style={{ textAlign: "center", fontSize: 11, color: "var(--text-muted)", marginTop: 20 }}>
-              No tienes cuenta?{" "}
-              <Link href="/register" style={{ color: "var(--accent)", textDecoration: "none" }}>
-                Registrate gratis
+            <p style={{ textAlign: "center", fontSize: 13.5, color: "var(--n-600)", marginTop: 20 }}>
+              ¿No tienes cuenta?{" "}
+              <Link href="/register" style={{ color: "var(--brand)", textDecoration: "none", fontWeight: 500 }}>
+                Regístrate gratis
               </Link>
             </p>
           </>

@@ -3,7 +3,7 @@
  * Gantt dinámico (Fase 5, Smart Procurement).
  * - 3 escenarios: mínimo costo / entrega rápida / equilibrio
  * - Timeline editable: cambiar proveedor de un ítem recalcula el cronograma al vuelo
- * - Código de colores: ítem en ruta crítica (rojo #c0392b), con buffer (verde)
+ * - Código de colores: ítem en ruta crítica (#9a3f28), con buffer (verde)
  * - Zoom in/out
  */
 import { useEffect, useMemo, useState } from "react";
@@ -163,7 +163,7 @@ export default function GanttChart({ proyectoId, userId }: { proyectoId: string;
                 {/* fase entrega */}
                 <div style={{
                   position: "absolute", left: fases * pxDia, width: s.elegida.plazo_dias * pxDia, top: 3, bottom: 3,
-                  background: esCritico ? "#c0392b" : "#1a6e45",
+                  background: esCritico ? "#9a3f28" : "#256b39",
                   display: "flex", alignItems: "center", paddingLeft: 5, overflow: "hidden",
                 }} title={`Entrega: ${s.elegida.plazo_dias}d${esCritico ? " (ruta crítica)" : ` (buffer ${buffer}d)`}`}>
                   <span className="label" style={{ color: "#fff", whiteSpace: "nowrap", fontWeight: 700 }}>

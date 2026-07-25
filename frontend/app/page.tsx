@@ -220,7 +220,6 @@ export default async function LandingPage({
                   fontSize: 10,
                   fontWeight: 500,
                   letterSpacing: "0.12em",
-                  textTransform: "uppercase",
                   border: `1px solid ${p.highlight ? "var(--accent)" : "var(--border-strong)"}`,
                   background: p.highlight ? "var(--accent)" : "transparent",
                   color: p.highlight ? "#fff" : "var(--text-primary)",

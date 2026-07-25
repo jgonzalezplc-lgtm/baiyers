@@ -1,9 +1,16 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ListChecks } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  PageHeader, Table, TableHead, TableRow, EmptyState, Spinner, BtnPrimary, fmtCLP,
+} from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+const COLS = "1fr 90px 120px 120px 130px";
 
 interface ListaResumen {
   id: string;
@@ -18,6 +25,7 @@ interface ListaResumen {
 export default function ListasPage() {
   const [listas, setListas] = useState<ListaResumen[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     createClient().auth.getUser().then(({ data }) => {
@@ -33,66 +41,64 @@ export default function ListasPage() {
 
   return (
     <>
-      <div style={{ marginBottom: 24 }}>
-        <div className="section-rule" style={{ marginBottom: 14 }} />
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.02em" }}>
-          Listas de cotización
-        </h1>
-        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>
-          Varios ítems cotizados en paralelo. Crea una nueva separando ítems con &quot;;&quot; en{" "}
-          <Link href="/cotizar" style={{ color: "var(--accent)" }}>Nueva cotización</Link>.
-        </p>
-      </div>
+      <PageHeader
+        title="Listas de cotización"
+        subtitle="Varios ítems cotizados en paralelo."
+        actions={<BtnPrimary onClick={() => router.push("/cotizar")}>Nueva cotización</BtnPrimary>}
+      />
 
       {loading ? (
-        <div style={{ padding: "40px 0", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>Cargando…</div>
+        <Spinner />
       ) : listas.length === 0 ? (
-        <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: "48px 20px", textAlign: "center" }}>
-          <div className="label" style={{ color: "var(--text-muted)", marginBottom: 8 }}>Sin listas</div>
-          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>
-            Escribe varios ítems separados por &quot;;&quot; en Nueva cotización, ej: <em>martillo; taladro; madera</em>
-          </div>
-          <Link href="/cotizar" className="btn-swiss-primary" style={{ textDecoration: "none" }}>Nueva cotización</Link>
-        </div>
+        <Table>
+          <EmptyState
+            icon={ListChecks}
+            title="Aún no tienes listas"
+            description={'Escribe varios ítems separados por ";" en Nueva cotización — por ejemplo: martillo; taladro; madera.'}
+            action={<Link href="/cotizar" className="btn-swiss-primary" style={{ textDecoration: "none" }}>Crear mi primera lista</Link>}
+          />
+        </Table>
       ) : (
-        <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-surface)" }}>
-          <div style={{
-            display: "grid", gridTemplateColumns: "1fr 110px 130px 130px 130px",
-            padding: "9px 16px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-base)",
-          }}>
-            {["Lista", "Ítems", "Comparados", "Definitivos", "Total"].map(h => (
-              <div key={h} style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em" }}>{h}</div>
-            ))}
-          </div>
+        <Table>
+          <TableHead cols={COLS}>
+            <div>Lista</div>
+            <div>Ítems</div>
+            <div>Comparados</div>
+            <div>Definitivos</div>
+            <div style={{ textAlign: "right" }}>Total</div>
+          </TableHead>
           {listas.map((l, i) => (
-            <Link key={l.id} href={`/listas/${l.id}`} style={{ textDecoration: "none" }}>
-              <div style={{
-                display: "grid", gridTemplateColumns: "1fr 110px 130px 130px 130px",
-                padding: "13px 16px", alignItems: "center", cursor: "pointer",
-                borderBottom: i < listas.length - 1 ? "1px solid var(--border-subtle)" : "none",
-              }}>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{l.nombre}</div>
-                  {l.created_at && (
-                    <div className="label" style={{ color: "var(--text-muted)", marginTop: 2 }}>
-                      {new Date(l.created_at).toLocaleDateString("es-CL")}
-                    </div>
-                  )}
-                </div>
-                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{l.n_items}</div>
-                <div style={{ fontSize: 12, color: l.n_comparados === l.n_items ? "var(--text-success)" : "var(--text-secondary)" }}>
-                  {l.n_comparados}/{l.n_items}
-                </div>
-                <div style={{ fontSize: 12, color: l.n_definitivos === l.n_items ? "var(--text-success)" : "var(--text-secondary)" }}>
-                  {l.n_definitivos}/{l.n_items}
-                </div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>
-                  {l.monto_total ? `$${Math.round(l.monto_total).toLocaleString("es-CL")}` : "—"}
-                </div>
+            <TableRow
+              key={l.id}
+              cols={COLS}
+              zebra={i % 2 === 1}
+              last={i === listas.length - 1}
+              onClick={() => router.push(`/listas/${l.id}`)}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 600, color: "var(--n-900)" }}>{l.nombre}</div>
+                {l.created_at && (
+                  <div style={{ fontSize: 12.5, color: "var(--n-500)", marginTop: 1 }}>
+                    {new Date(l.created_at).toLocaleDateString("es-CL", { day: "numeric", month: "short", year: "numeric" })}
+                  </div>
+                )}
               </div>
-            </Link>
+              <div style={{ color: "var(--n-600)" }}>{l.n_items}</div>
+              <div style={{ color: l.n_comparados === l.n_items ? "var(--success)" : "var(--n-600)", fontWeight: l.n_comparados === l.n_items ? 600 : 400 }}>
+                {l.n_comparados}/{l.n_items}
+              </div>
+              <div style={{ color: l.n_definitivos === l.n_items ? "var(--success)" : "var(--n-600)", fontWeight: l.n_definitivos === l.n_items ? 600 : 400 }}>
+                {l.n_definitivos}/{l.n_items}
+              </div>
+              <div style={{
+                fontWeight: 600, color: "var(--n-900)", textAlign: "right",
+                fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums",
+              }}>
+                {l.monto_total ? fmtCLP(l.monto_total) : "—"}
+              </div>
+            </TableRow>
           ))}
-        </div>
+        </Table>
       )}
     </>
   );

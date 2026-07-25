@@ -28,7 +28,7 @@ export default function DocsPage() {
       <div style={{ width: 220, flexShrink: 0, background: "#0a0a18", borderRight: "1px solid #1a1a2e", padding: "28px 0", position: "sticky", top: 0, height: "100vh", overflowY: "auto" }}>
         <div style={{ padding: "0 20px 20px" }}>
           <a href="/" style={{ fontSize: 16, fontWeight: 800, color: "#6366f1", textDecoration: "none", display: "block", marginBottom: 2 }}>Claria</a>
-          <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em" }}>API v1 · Docs</div>
+          <div style={{ fontSize: 9, color: "#475569", letterSpacing: "0.1em" }}>API v1 · Docs</div>
         </div>
         <nav>
           {SIDEBAR.map(item => (
@@ -58,15 +58,15 @@ export default function DocsPage() {
           </p>
           <div style={{ display: "flex", gap: 16 }}>
             <div style={{ background: "#0a0a18", border: "1px solid #1a1a2e", borderRadius: 8, padding: "12px 16px" }}>
-              <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", marginBottom: 4 }}>Base URL</div>
+              <div style={{ fontSize: 9, color: "#475569", marginBottom: 4 }}>Base URL</div>
               <code style={{ fontSize: 11, color: "#6366f1", fontFamily: "monospace" }}>{API_URL}/api/v1</code>
             </div>
             <div style={{ background: "#0a0a18", border: "1px solid #1a1a2e", borderRadius: 8, padding: "12px 16px" }}>
-              <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", marginBottom: 4 }}>Formato</div>
+              <div style={{ fontSize: 9, color: "#475569", marginBottom: 4 }}>Formato</div>
               <code style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>REST · JSON</code>
             </div>
             <div style={{ background: "#0a0a18", border: "1px solid #1a1a2e", borderRadius: 8, padding: "12px 16px" }}>
-              <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", marginBottom: 4 }}>Auth</div>
+              <div style={{ fontSize: 9, color: "#475569", marginBottom: 4 }}>Auth</div>
               <code style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>X-Claria-Key header</code>
             </div>
           </div>
@@ -443,7 +443,7 @@ function Pre({ children }: { children: string }) {
 }
 
 function Label({ children }: { children: string }) {
-  return <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{children}</div>;
+  return <div style={{ fontSize: 9, color: "#475569", letterSpacing: "0.1em", marginBottom: 6 }}>{children}</div>;
 }
 
 function Badge({ children, color }: { children: string; color: string }) {

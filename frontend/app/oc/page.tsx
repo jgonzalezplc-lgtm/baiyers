@@ -88,7 +88,6 @@ export default function OCPage() {
             color: filtroEstado === e ? "#fff" : "var(--text-muted)",
             cursor: "pointer",
             fontFamily: "var(--font-mono)",
-            textTransform: "uppercase",
           }}>
             {e}
           </button>

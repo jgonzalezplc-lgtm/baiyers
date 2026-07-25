@@ -8,7 +8,7 @@ import {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-const COLORES_PIE = ["#c0392b","#e67e22","#27ae60","#2980b9","#8e44ad","#16a085","#f39c12","#d35400","#1abc9c","#2c3e50"];
+const COLORES_PIE = ["#136b76","#3d8f98","#8a6212","#5a4a9a","#2f6b3c","#1f5fb0","#9a3f28","#7a5a3a","#6fb0b7","#5f594f"];
 
 interface Resumen {
   total_ocs_mes: number;
@@ -54,7 +54,7 @@ interface ProveedorHistorico {
   tasa_respuesta: number;
 }
 
-const NIVEL_COLORS = { verde: "#16a085", amarillo: "#f39c12", rojo: "#c0392b" };
+const NIVEL_COLORS = { verde: "var(--success)", amarillo: "var(--warning)", rojo: "var(--danger)" };
 
 const fmt = (n: number) => `$${Math.round(n).toLocaleString("es-CL")}`;
 
@@ -212,14 +212,14 @@ export default function EstadisticasPage() {
             <AreaChart data={gastos}>
               <defs>
                 <linearGradient id="colorGasto" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#c0392b" stopOpacity={0.2}/>
-                  <stop offset="95%" stopColor="#c0392b" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="#136b76" stopOpacity={0.2}/>
+                  <stop offset="95%" stopColor="#136b76" stopOpacity={0}/>
                 </linearGradient>
               </defs>
               <XAxis dataKey="label" tick={{ fontSize: 9, fill: "var(--text-muted)" as string }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 9, fill: "var(--text-muted)" as string }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v/1000000).toFixed(1)}M`} />
               <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [fmt(v), "Gasto"]} />
-              <Area type="monotone" dataKey="total" stroke="#c0392b" strokeWidth={2} fill="url(#colorGasto)" />
+              <Area type="monotone" dataKey="total" stroke="#136b76" strokeWidth={2} fill="url(#colorGasto)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -234,7 +234,7 @@ export default function EstadisticasPage() {
               <XAxis type="number" tick={{ fontSize: 9, fill: "var(--text-muted)" as string }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v/1000000).toFixed(1)}M`} />
               <YAxis type="category" dataKey="proveedor" tick={{ fontSize: 9, fill: "var(--text-secondary)" as string }} axisLine={false} tickLine={false} width={80} />
               <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [fmt(v), "Total"]} />
-              <Bar dataKey="total" fill="#c0392b" radius={[0,2,2,0]} />
+              <Bar dataKey="total" fill="#136b76" radius={[0,2,2,0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

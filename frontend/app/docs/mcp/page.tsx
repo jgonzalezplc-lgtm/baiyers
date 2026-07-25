@@ -236,7 +236,7 @@ export default function MCPDocsPage() {
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
                 <div style={{ padding: "16px 20px", borderRight: "1px solid #0d0d1a" }}>
-                  <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Parametros</div>
+                  <div style={{ fontSize: 9, color: "#475569", letterSpacing: "0.1em", marginBottom: 10 }}>Parametros</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {tool.params.map(p => (
                       <div key={p.name}>
@@ -251,7 +251,7 @@ export default function MCPDocsPage() {
                   </div>
                 </div>
                 <div style={{ padding: "16px 20px" }}>
-                  <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>Ejemplo</div>
+                  <div style={{ fontSize: 9, color: "#475569", letterSpacing: "0.1em", marginBottom: 10 }}>Ejemplo</div>
                   <pre style={{ fontSize: 9, color: "#94a3b8", fontFamily: "monospace", margin: 0, overflow: "auto", background: "#060610", borderRadius: 6, padding: "10px" }}>{tool.example}</pre>
                 </div>
               </div>

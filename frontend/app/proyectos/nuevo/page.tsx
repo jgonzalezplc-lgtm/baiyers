@@ -30,7 +30,6 @@ const labelStyle = {
   display: "block" as const,
   fontSize: 9,
   color: "var(--text-muted)",
-  textTransform: "uppercase" as const,
   letterSpacing: "0.1em",
   fontWeight: 700,
   marginBottom: 6,

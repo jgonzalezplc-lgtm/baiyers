@@ -3,7 +3,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { ArrowLeft, Check, Send, Wand2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { Card, Badge, BtnPrimary, BtnSecondary, SummaryPanel, Input, Spinner } from "@/components/ui";
 
 const InformeLista = dynamic(() => import("@/components/InformeLista"), { ssr: false });
 
@@ -262,8 +264,8 @@ export default function ListaDetallePage() {
     }
   };
 
-  if (loading) return <div style={{ padding: "60px 0", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>Cargando…</div>;
-  if (!lista) return <div style={{ padding: "60px 0", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>Lista no encontrada.</div>;
+  if (loading) return <Spinner />;
+  if (!lista) return <Spinner label="Lista no encontrada." />;
 
   const definitivos = lista.items.filter(it => it.definitivo);
   const totalCLP = definitivos.reduce((a, it) => a + (it.definitivo?.precio_clp ?? 0) * (it.cantidad || 1), 0);
@@ -274,25 +276,26 @@ export default function ListaDetallePage() {
       {toast && (
         <div style={{
           position: "fixed", top: 20, right: 20, zIndex: 999,
-          background: "var(--bg-inverse)", color: "var(--text-inverse)",
-          padding: "12px 20px", fontSize: 11, fontWeight: 700, border: "1px solid var(--border-strong)",
+          background: "var(--n-900)", color: "var(--canvas)",
+          padding: "11px 16px", fontSize: 13.5, fontWeight: 500,
+          borderRadius: "var(--r-md)", boxShadow: "var(--shadow-pop)",
         }}>{toast}</div>
       )}
 
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-          <Link href="/listas" style={{ fontSize: 10, color: "var(--text-muted)", textDecoration: "none", fontFamily: "var(--font-mono)" }}>
-            ← Listas de cotización
-          </Link>
-        </div>
-        <div className="section-rule" style={{ marginBottom: 14 }} />
+        <Link href="/listas" style={{
+          display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
+          fontSize: 13, color: "var(--n-500)", textDecoration: "none",
+        }}>
+          <ArrowLeft size={15} strokeWidth={1.75} /> Listas de cotización
+        </Link>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.02em" }}>
+            <h1 style={{ fontSize: 26, lineHeight: 1.2, fontWeight: 600, color: "var(--n-900)", margin: "0 0 6px", letterSpacing: "-0.015em" }}>
               {lista.nombre}
             </h1>
-            <div className="label" style={{ color: "var(--text-muted)" }}>
+            <div style={{ fontSize: 13.5, color: "var(--n-600)" }}>
               {lista.items.length} ítems · {lista.items.filter(i => i.comparado).length} comparados · {definitivos.length} definitivos
             </div>
           </div>
@@ -301,69 +304,74 @@ export default function ListaDetallePage() {
       </div>
 
       {/* Resumen */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", border: "1px solid var(--border-default)", marginBottom: 24 }}>
+      <div style={{
+        display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+        gap: 12, marginBottom: 20,
+      }}>
         {[
-          { label: "Definitivos elegidos", val: `${definitivos.length}/${lista.items.length}`, color: completa ? "var(--text-success)" : undefined },
-          { label: "Total seleccionados (CLP)", val: totalCLP ? fmtCLP(totalCLP) : "—" },
-          { label: "Proveedores distintos", val: new Set(definitivos.map(it => it.definitivo?.proveedor)).size || "—" },
+          { label: "Definitivos elegidos", val: `${definitivos.length}/${lista.items.length}`, color: completa ? "var(--success)" : undefined },
+          { label: "Total seleccionados", val: totalCLP ? fmtCLP(totalCLP) : "—", mono: true },
+          { label: "Proveedores distintos", val: String(new Set(definitivos.map(it => it.definitivo?.proveedor)).size || "—") },
         ].map((s, i) => (
-          <div key={i} style={{ background: "var(--bg-surface)", borderRight: i < 2 ? "1px solid var(--border-default)" : "none", padding: "16px 20px" }}>
-            <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 8 }}>{s.label}</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: s.color ?? "var(--text-primary)", letterSpacing: "-0.02em" }}>{s.val}</div>
-          </div>
+          <Card key={i} padding={16}>
+            <div style={{ fontSize: 12.5, color: "var(--n-500)", marginBottom: 6 }}>{s.label}</div>
+            <div style={{
+              fontSize: 24, fontWeight: 600, letterSpacing: "-0.015em",
+              color: s.color ?? "var(--n-900)",
+              fontFamily: s.mono ? "var(--font-mono)" : undefined,
+              fontVariantNumeric: s.mono ? "tabular-nums" : undefined,
+            }}>{s.val}</div>
+          </Card>
         ))}
       </div>
 
       {/* Banner de estado de aprobación */}
-      {lista.aprobacion && (
-        <div style={{
-          border: `1px solid ${lista.aprobacion.estado === "aprobado" ? "var(--palette-green-500)" : lista.aprobacion.estado === "rechazado" ? "var(--border-accent)" : "var(--border-default)"}`,
-          background: lista.aprobacion.estado === "aprobado" ? "var(--fill-success)" : lista.aprobacion.estado === "rechazado" ? "var(--fill-error)" : "var(--bg-surface)",
-          padding: "14px 18px", marginBottom: 20,
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-            <div>
-              <span className="label" style={{
-                fontWeight: 800,
-                color: lista.aprobacion.estado === "aprobado" ? "var(--text-success)" : lista.aprobacion.estado === "rechazado" ? "var(--text-error)" : "var(--text-primary)",
-              }}>
-                {lista.aprobacion.estado === "aprobado" ? "Autorizado" : lista.aprobacion.estado === "rechazado" ? "Rechazada" : "Esperando autorización"}
-              </span>
-              {lista.aprobacion.aprobador_email && (
-                <span className="label" style={{ color: "var(--text-muted)", marginLeft: 8 }}>
-                  — {lista.aprobacion.aprobador_email}
-                </span>
+      {lista.aprobacion && (() => {
+        const est = lista.aprobacion.estado;
+        const badge = est === "aprobado" ? "aprobada" : est === "rechazado" ? "rechazada" : "cotizando";
+        const texto = est === "aprobado" ? "Autorizada" : est === "rechazado" ? "Rechazada" : "Esperando autorización";
+        return (
+          <Card padding={16} style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Badge status={badge}>{texto}</Badge>
+                {lista.aprobacion.aprobador_email && (
+                  <span style={{ fontSize: 13.5, color: "var(--n-600)" }}>{lista.aprobacion.aprobador_email}</span>
+                )}
+              </div>
+              {est === "rechazado" && (
+                <BtnSecondary onClick={reiniciarAprobacion} size="sm">
+                  Modificar y volver a solicitar
+                </BtnSecondary>
               )}
             </div>
-            {lista.aprobacion.estado === "rechazado" && (
-              <button onClick={reiniciarAprobacion} className="label" style={{
-                color: "var(--accent)", background: "none", cursor: "pointer",
-                border: "1px solid var(--border-accent)", padding: "4px 12px", fontFamily: "var(--font-mono)",
-              }}>
-                Modificar y re-solicitar
-              </button>
+            {est === "rechazado" && lista.aprobacion.comentario_rechazo && (
+              <SummaryPanel style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12.5, color: "var(--n-500)", marginBottom: 4 }}>Comentario del autorizador</div>
+                <div style={{ fontSize: 14, color: "var(--n-900)", lineHeight: 1.6 }}>
+                  {lista.aprobacion.comentario_rechazo}
+                </div>
+              </SummaryPanel>
             )}
-          </div>
-          {lista.aprobacion.estado === "rechazado" && lista.aprobacion.comentario_rechazo && (
-            <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--bg-base)", border: "1px solid var(--border-default)", fontSize: 12, color: "var(--text-primary)", lineHeight: 1.5 }}>
-              <span className="label" style={{ color: "var(--text-muted)", fontWeight: 700 }}>COMENTARIO:</span>{" "}
-              {lista.aprobacion.comentario_rechazo}
-            </div>
-          )}
-        </div>
-      )}
+          </Card>
+        );
+      })()}
 
       {/* Ítems con sus comparados */}
       {lista.items.map((it, idx) => (
-        <div key={it.cotizacion_id} style={{ border: "1px solid var(--border-default)", background: "var(--bg-surface)", marginBottom: 18 }}>
+        <div key={it.cotizacion_id} style={{
+          border: "1px solid var(--n-200)", background: "var(--surface)",
+          borderRadius: "var(--r-lg)", marginBottom: 16, overflow: "hidden",
+          boxShadow: "var(--shadow-card)",
+        }}>
           <div style={{
-            display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8,
-            padding: "10px 16px", borderBottom: "1px solid var(--border-default)", background: "var(--bg-base)",
+            display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10,
+            padding: "12px 16px", borderBottom: "1px solid var(--n-200)", background: "var(--canvas)",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span className="label" style={{ fontWeight: 800 }}>{idx + 1}. {it.nombre}</span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <span className="label" style={{ color: "var(--text-muted)" }}>Cant.</span>
+              <span style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)" }}>{idx + 1}. {it.nombre}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 12.5, color: "var(--n-500)" }}>Cant.</span>
                 <input
                   type="number"
                   min={1}
@@ -372,38 +380,39 @@ export default function ListaDetallePage() {
                   onBlur={e => actualizarCantidad(it, parseFloat(e.target.value) || 1)}
                   onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                   style={{
-                    width: 58, background: "var(--bg-base)", border: "1px solid var(--border-default)",
-                    padding: "3px 6px", fontSize: 11, color: "var(--text-primary)",
-                    fontFamily: "var(--font-mono)", outline: "none", textAlign: "right",
+                    width: 62, background: "var(--surface)", border: "1px solid var(--n-300)",
+                    borderRadius: "var(--r-sm)", padding: "5px 8px", fontSize: 13,
+                    color: "var(--n-900)", fontFamily: "var(--font-mono)",
+                    fontVariantNumeric: "tabular-nums", outline: "none", textAlign: "right",
                   }}
                 />
               </span>
               {it.definitivo && (
-                <span className="label" style={{ color: "var(--text-success)", border: "1px solid var(--palette-green-500)", background: "var(--fill-success)", padding: "2px 8px" }}>
-                  ✓ DEFINITIVO: {it.definitivo.proveedor}
+                <Badge status="aprobada">
+                  {it.definitivo.proveedor}
                   {it.definitivo.precio_clp != null && (it.cantidad || 1) > 1 &&
-                    ` · ${it.cantidad} × ${fmtCLP(it.definitivo.precio_clp)} = ${fmtCLP(it.definitivo.precio_clp * it.cantidad)}`}
-                </span>
+                    ` · ${it.cantidad} × ${fmtCLP(it.definitivo.precio_clp)}`}
+                </Badge>
               )}
             </div>
             <Link href={`/cotizar/${it.cotizacion_id}/resultados?lista=${lista.id}`}
-              className="label" style={{ color: "var(--accent)", textDecoration: "none" }}>
+              style={{ fontSize: 13.5, fontWeight: 500, color: "var(--brand)", textDecoration: "none" }}>
               {it.comparado ? "Cambiar selección →" : "Buscar proveedores →"}
             </Link>
           </div>
 
           {it.comparados.length === 0 ? (
-            <div style={{ padding: "22px 16px", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>
+            <div style={{ padding: "24px 16px", fontSize: 13.5, color: "var(--n-500)", textAlign: "center" }}>
               Aún sin proveedores comparados para este ítem.
             </div>
           ) : (
             <div>
               <div style={{
-                display: "grid", gridTemplateColumns: "1.4fr 110px 100px 120px 90px 110px",
-                padding: "7px 16px", borderBottom: "1px solid var(--border-subtle)",
+                display: "grid", gridTemplateColumns: "1.4fr 120px 100px 120px 90px 110px", gap: 10,
+                padding: "9px 16px", borderBottom: "1px solid var(--n-200)", background: "var(--canvas)",
               }}>
                 {["Proveedor / página", "Precio", "Entrega", "Ubicación", "Origen", ""].map((h, hi) => (
-                  <div key={hi} style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em" }}>{h}</div>
+                  <div key={hi} style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)" }}>{h}</div>
                 ))}
               </div>
               {it.comparados.map((c, ci) => {
@@ -412,59 +421,60 @@ export default function ListaDetallePage() {
                 const moneda = c.precio_cotizado != null ? "CLP" : c.moneda;
                 return (
                   <div key={c.resultado_id} style={{
-                    display: "grid", gridTemplateColumns: "1.4fr 110px 100px 120px 90px 110px",
-                    padding: "10px 16px", alignItems: "center",
-                    borderBottom: ci < it.comparados.length - 1 ? "1px solid var(--border-subtle)" : "none",
-                    background: esDef ? "var(--fill-success)" : undefined,
+                    display: "grid", gridTemplateColumns: "1.4fr 120px 100px 120px 90px 110px", gap: 10,
+                    padding: "12px 16px", alignItems: "center",
+                    borderBottom: ci < it.comparados.length - 1 ? "1px solid var(--n-100)" : "none",
+                    background: esDef ? "var(--st-aprobada-bg)" : ci % 2 ? "var(--canvas)" : undefined,
                   }}>
-                    <div style={{ paddingRight: 10 }}>
+                    <div style={{ paddingRight: 8, minWidth: 0 }}>
                       {c.url ? (
                         <a href={c.url} target="_blank" rel="noopener noreferrer"
-                          style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", textDecoration: "none" }}>
+                          style={{ fontSize: 14, fontWeight: 600, color: "var(--n-900)", textDecoration: "none" }}>
                           {c.proveedor} ↗
                         </a>
                       ) : (
-                        <span style={{ fontSize: 11, fontWeight: 700 }}>{c.proveedor}</span>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--n-900)" }}>{c.proveedor}</span>
                       )}
-                      <div className="label" style={{ color: "var(--accent)" }}>
+                      <div style={{ fontSize: 12.5, color: "var(--brand)" }}>
                         {FUENTE_LABEL[c.fuente ?? ""] ?? c.fuente ?? "—"}
                       </div>
                     </div>
-                    <div style={{ fontSize: 11, fontWeight: 700 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
                       {precio != null ? fmtPrecio(precio, moneda) : "—"}
                       {precio != null && moneda !== "CLP" && (
-                        <div className="label" style={{ color: "var(--text-muted)", fontWeight: 400 }}>≈ {fmtCLP(aCLP(precio, moneda))}</div>
+                        <div style={{ fontSize: 12, color: "var(--n-500)", fontWeight: 400 }}>≈ {fmtCLP(aCLP(precio, moneda))}</div>
                       )}
                     </div>
-                    <div style={{ fontSize: 10, color: "var(--text-secondary)" }}>{c.plazo_entrega ?? "—"}</div>
-                    <div style={{ fontSize: 10, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.ubicacion ?? "—"}</div>
-                    <div className="label" style={{ color: "var(--text-muted)" }}>{c.contacto ? "email" : "vía web"}</div>
+                    <div style={{ fontSize: 13, color: "var(--n-600)" }}>{c.plazo_entrega ?? "—"}</div>
+                    <div style={{ fontSize: 13, color: "var(--n-600)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.ubicacion ?? "—"}</div>
+                    <div style={{ fontSize: 12.5, color: "var(--n-500)" }}>{c.contacto ? "Correo" : "Vía web"}</div>
                     <div style={{ textAlign: "right" }}>
                       {esDef ? (
                         <button
                           onClick={() => quitarDefinitivo(it)}
                           disabled={guardandoDef === it.cotizacion_id}
-                          className="label"
                           style={{
-                            color: "var(--text-success)", background: "none", cursor: "pointer",
-                            border: "1px solid var(--text-success)", padding: "4px 10px", fontFamily: "var(--font-mono)",
+                            display: "inline-flex", alignItems: "center", gap: 5,
+                            color: "var(--st-aprobada-fg)", background: "transparent", cursor: "pointer",
+                            border: "1px solid var(--success)", borderRadius: "var(--r-md)",
+                            padding: "6px 11px", fontSize: 13, fontWeight: 600, fontFamily: "var(--font-sans)",
                           }}
                         >
-                          ✓ ELEGIDO
+                          <Check size={14} strokeWidth={2} /> Elegido
                         </button>
                       ) : (
                         <button
                           onClick={() => elegirDefinitivo(it, c)}
                           disabled={guardandoDef === it.cotizacion_id || precio == null}
-                          className="label"
                           style={{
-                            color: precio == null ? "var(--text-muted)" : "var(--accent)",
-                            background: "none", cursor: precio == null ? "default" : "pointer",
-                            border: `1px solid ${precio == null ? "var(--border-default)" : "var(--border-accent)"}`,
-                            padding: "4px 10px", fontFamily: "var(--font-mono)",
+                            color: precio == null ? "var(--n-400)" : "var(--brand)",
+                            background: "transparent", cursor: precio == null ? "not-allowed" : "pointer",
+                            border: `1px solid ${precio == null ? "var(--n-200)" : "var(--n-300)"}`,
+                            borderRadius: "var(--r-md)", padding: "6px 11px",
+                            fontSize: 13, fontWeight: 600, fontFamily: "var(--font-sans)",
                           }}
                         >
-                          Definitivo
+                          Elegir
                         </button>
                       )}
                     </div>
@@ -478,13 +488,25 @@ export default function ListaDetallePage() {
 
       {/* Ruta de compra final */}
       {definitivos.length > 0 && (
-        <div style={{ border: "1px solid var(--border-strong)", marginBottom: 40 }}>
-          <div style={{ background: "var(--bg-inverse)", padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span className="label" style={{ color: "var(--text-inverse)", fontWeight: 800 }}>
-              RUTA DE COMPRA FINAL {completa ? "" : `(${definitivos.length}/${lista.items.length} ítems definidos)`}
+        <div style={{
+          border: "1px solid var(--n-200)", borderRadius: "var(--r-lg)",
+          overflow: "hidden", marginBottom: 24, boxShadow: "var(--shadow-card)",
+        }}>
+          <div style={{
+            background: "var(--surface-2)", padding: "12px 16px",
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            gap: 10, flexWrap: "wrap", borderBottom: "1px solid var(--n-200)",
+          }}>
+            <span style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)" }}>
+              Ruta de compra final
+              {!completa && (
+                <span style={{ fontWeight: 400, color: "var(--n-600)" }}>
+                  {" "}({definitivos.length}/{lista.items.length} ítems definidos)
+                </span>
+              )}
             </span>
-            <span className="label" style={{ color: "var(--text-inverse)", fontWeight: 800 }}>
-              TOTAL: {fmtCLP(totalCLP)}
+            <span style={{ fontSize: 16, fontWeight: 600, color: "var(--n-900)", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
+              Total: {fmtCLP(totalCLP)}
             </span>
           </div>
           {definitivos.map((it, i) => {
@@ -492,30 +514,30 @@ export default function ListaDetallePage() {
             const cant = it.cantidad || 1;
             return (
               <div key={it.cotizacion_id} style={{
-                display: "grid", gridTemplateColumns: "1fr 1fr 160px",
-                padding: "11px 16px", alignItems: "center", background: "var(--bg-surface)",
-                borderBottom: i < definitivos.length - 1 ? "1px solid var(--border-subtle)" : "none",
+                display: "grid", gridTemplateColumns: "1fr 1fr 160px", gap: 12,
+                padding: "12px 16px", alignItems: "center", background: "var(--surface)",
+                borderBottom: i < definitivos.length - 1 ? "1px solid var(--n-100)" : "none",
               }}>
-                <div style={{ fontSize: 11, fontWeight: 700 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--n-900)" }}>
                   {it.nombre}
-                  <span className="label" style={{ color: "var(--text-muted)", fontWeight: 400, marginLeft: 6 }}>× {cant}</span>
+                  <span style={{ color: "var(--n-500)", fontWeight: 400, marginLeft: 6 }}>× {cant}</span>
                 </div>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   {d.url ? (
-                    <a href={d.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "var(--accent)", textDecoration: "none" }}>
+                    <a href={d.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: "var(--brand)", textDecoration: "none", fontWeight: 500 }}>
                       {d.proveedor} — comprar aquí ↗
                     </a>
                   ) : (
-                    <span style={{ fontSize: 11 }}>{d.proveedor}</span>
+                    <span style={{ fontSize: 14 }}>{d.proveedor}</span>
                   )}
-                  <div className="label" style={{ color: "var(--text-muted)" }}>{FUENTE_LABEL[d.fuente ?? ""] ?? d.fuente ?? ""}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--n-500)" }}>{FUENTE_LABEL[d.fuente ?? ""] ?? d.fuente ?? ""}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
                     {d.precio_clp != null ? fmtCLP(d.precio_clp * cant) : d.precio != null ? fmtPrecio(d.precio * cant, d.moneda) : "—"}
                   </div>
                   {cant > 1 && d.precio_clp != null && (
-                    <div className="label" style={{ color: "var(--text-muted)" }}>{cant} × {fmtCLP(d.precio_clp)}</div>
+                    <div style={{ fontSize: 12, color: "var(--n-500)" }}>{cant} × {fmtCLP(d.precio_clp)}</div>
                   )}
                 </div>
               </div>
@@ -526,49 +548,50 @@ export default function ListaDetallePage() {
 
       {/* Acciones de aprobación */}
       {definitivos.length > 0 && !lista.aprobacion && (
-        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-          <button onClick={() => setMostrarAprobacion(true)} className="btn-swiss-primary">
+        <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+          <BtnPrimary onClick={() => setMostrarAprobacion(true)} icon={Send}>
             Solicitar autorización
-          </button>
+          </BtnPrimary>
           {!completa && lista.items.some(it => !it.definitivo && it.comparados.some(c => (c.precio_cotizado ?? c.precio) != null)) && (
-            <button onClick={autoSeleccionarBaratos} className="btn-swiss-secondary">
-              Auto: usar más baratos
-            </button>
+            <BtnSecondary onClick={autoSeleccionarBaratos} icon={Wand2}>
+              Usar los más baratos
+            </BtnSecondary>
           )}
         </div>
       )}
 
       {/* Panel de solicitud de aprobación */}
       {mostrarAprobacion && !lista.aprobacion && (
-        <div style={{ border: "1px solid var(--border-accent)", background: "var(--bg-surface)", padding: 20, marginBottom: 30 }}>
-          <div className="label" style={{ fontWeight: 800, color: "var(--accent)", marginBottom: 16, letterSpacing: "0.06em" }}>
-            SOLICITAR AUTORIZACIÓN
-          </div>
+        <Card padding={20} style={{ marginBottom: 30, borderColor: "var(--brand-200)" }}>
+          <h2 style={{ fontSize: 20, fontWeight: 600, color: "var(--n-900)", margin: "0 0 4px" }}>
+            Solicitar autorización
+          </h2>
+          <p style={{ fontSize: 13.5, color: "var(--n-600)", margin: "0 0 18px", lineHeight: 1.6 }}>
+            Le enviaremos un correo con el detalle y un enlace para aprobar o rechazar.
+          </p>
 
-          <div style={{ marginBottom: 16 }}>
-            <div className="label" style={{ color: "var(--text-muted)", marginBottom: 6 }}>Email del autorizador</div>
-            <input
+          <div style={{ marginBottom: 18 }}>
+            <Input
+              label="Email del autorizador"
               value={aprobadorEmail}
               onChange={e => setAprobadorEmail(e.target.value)}
               placeholder="jefe@empresa.cl"
               type="email"
-              style={{
-                width: "100%", background: "var(--bg-base)", border: "1px solid var(--border-default)",
-                padding: "8px 12px", fontSize: 12, color: "var(--text-primary)",
-                fontFamily: "var(--font-mono)", outline: "none", boxSizing: "border-box",
-              }}
             />
           </div>
 
-          <div className="label" style={{ color: "var(--text-muted)", marginBottom: 10 }}>
-            JUSTIFICACIÓN POR ÍTEM (opcional)
+          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--n-700)", marginBottom: 10 }}>
+            Justificación por ítem <span style={{ color: "var(--n-500)", fontWeight: 400 }}>(opcional)</span>
           </div>
           {definitivos.map(it => (
-            <div key={it.cotizacion_id} style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>
+            <div key={it.cotizacion_id} style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--n-900)", marginBottom: 5 }}>
                 {it.nombre} — {it.definitivo?.proveedor}
                 {it.definitivo?.precio_clp != null && (
-                  <span className="label" style={{ color: "var(--text-muted)", fontWeight: 400, marginLeft: 6 }}>
+                  <span style={{
+                    color: "var(--n-500)", fontWeight: 400, marginLeft: 6,
+                    fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums",
+                  }}>
                     {fmtCLP(it.definitivo.precio_clp * (it.cantidad || 1))}
                   </span>
                 )}
@@ -578,27 +601,28 @@ export default function ListaDetallePage() {
                 onChange={e => setJustificaciones(j => ({ ...j, [it.cotizacion_id]: e.target.value }))}
                 placeholder="Ej: mejor precio, entrega rápida, proveedor conocido…"
                 style={{
-                  width: "100%", background: "var(--bg-base)", border: "1px solid var(--border-default)",
-                  padding: "6px 10px", fontSize: 11, color: "var(--text-primary)",
-                  fontFamily: "var(--font-mono)", outline: "none", boxSizing: "border-box",
+                  width: "100%", height: 38, background: "var(--surface)",
+                  border: "1px solid var(--n-300)", borderRadius: "var(--r-md)",
+                  padding: "0 12px", fontSize: 14, color: "var(--n-900)",
+                  fontFamily: "var(--font-sans)", outline: "none", boxSizing: "border-box",
                 }}
               />
             </div>
           ))}
 
-          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-            <button
+          <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+            <BtnPrimary
               onClick={solicitarAprobacion}
               disabled={solicitando || !aprobadorEmail.trim()}
-              className="btn-swiss-primary"
+              icon={Send}
             >
               {solicitando ? "Enviando…" : "Enviar solicitud por correo"}
-            </button>
-            <button onClick={() => setMostrarAprobacion(false)} className="btn-swiss-secondary">
+            </BtnPrimary>
+            <BtnSecondary onClick={() => setMostrarAprobacion(false)}>
               Cancelar
-            </button>
+            </BtnSecondary>
           </div>
-        </div>
+        </Card>
       )}
     </>
   );

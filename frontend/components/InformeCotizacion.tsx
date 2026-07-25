@@ -41,17 +41,17 @@ const FUENTE_LABEL: Record<string, string> = {
   clcsa: "CLC Maderas", wmaderas: "W Maderas", ferramenta: "Ferramenta", maderas_dir: "Aserraderos CL",
 };
 
-// Estilo Swiss: blanco/negro, acento #c0392b, sin decoración
+// Informe PDF: neutros cálidos, acento azul petróleo (#136b76)
 const s = StyleSheet.create({
   page: { backgroundColor: "#ffffff", padding: 44, fontFamily: "Helvetica", fontSize: 9, color: "#111111" },
-  rule: { height: 3, width: 48, backgroundColor: "#c0392b", marginBottom: 14 },
+  rule: { height: 3, width: 48, backgroundColor: "#136b76", marginBottom: 14 },
   kicker: { fontSize: 8, color: "#666666", letterSpacing: 1.5, marginBottom: 5 },
   titulo: { fontSize: 20, fontFamily: "Helvetica-Bold", marginBottom: 4 },
   meta: { fontSize: 8, color: "#666666", marginBottom: 24 },
   card: { border: "1px solid #cccccc", marginBottom: 12, padding: 12 },
   cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
   provNombre: { fontSize: 11, fontFamily: "Helvetica-Bold" },
-  provFuente: { fontSize: 8, color: "#c0392b", marginTop: 2 },
+  provFuente: { fontSize: 8, color: "#136b76", marginTop: 2 },
   precio: { fontSize: 13, fontFamily: "Helvetica-Bold", textAlign: "right" },
   precioSub: { fontSize: 7, color: "#666666", textAlign: "right", marginTop: 1 },
   descripcion: { fontSize: 8.5, color: "#333333", lineHeight: 1.5, marginBottom: 8 },
@@ -59,7 +59,7 @@ const s = StyleSheet.create({
   dato: { flex: 1 },
   datoLabel: { fontSize: 6.5, color: "#999999", letterSpacing: 0.8, marginBottom: 2 },
   datoValor: { fontSize: 8.5 },
-  url: { fontSize: 7, color: "#c0392b", textDecoration: "none" },
+  url: { fontSize: 7, color: "#136b76", textDecoration: "none" },
   footer: {
     position: "absolute", bottom: 26, left: 44, right: 44,
     borderTop: "1px solid #cccccc", paddingTop: 7,

@@ -246,7 +246,6 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
                         <span key={k} style={{
                           display: "inline-flex", alignItems: "center", gap: 4,
                           fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
-                          textTransform: "uppercase",
                           color: "var(--text-inverse)", background: "var(--accent)",
                           padding: "4px 4px 4px 10px", fontFamily: "var(--font-mono)",
                         }}>
@@ -298,7 +297,6 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
                         <span key={tIdx} style={{
                           display: "inline-flex", alignItems: "center", gap: 4,
                           fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
-                          textTransform: "uppercase",
                           color: "var(--text-secondary)", background: "var(--bg-base)",
                           border: "1px solid var(--border-default)", padding: "3px 4px 3px 8px",
                           fontFamily: "var(--font-mono)",

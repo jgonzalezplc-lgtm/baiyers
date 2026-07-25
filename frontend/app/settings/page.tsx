@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { BtnPrimary, Input } from "@/components/ui";
+import { AlertCircle } from "lucide-react";
+import { BtnPrimary, Input, PageHeader, Card, Spinner } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -107,142 +108,125 @@ export default function SettingsPage() {
       {toast && (
         <div style={{
           position: "fixed", top: 20, right: 20,
-          background: "var(--bg-inverse)", padding: "10px 16px",
-          fontSize: 11, color: "var(--text-inverse)", fontWeight: 700,
-          zIndex: 100, fontFamily: "var(--font-mono)",
+          background: "var(--n-900)", color: "var(--canvas)",
+          padding: "11px 16px", borderRadius: "var(--r-md)",
+          fontSize: 13.5, fontWeight: 500,
+          zIndex: 100, boxShadow: "var(--shadow-pop)",
         }}>
           {toast}
         </div>
       )}
 
-      {/* Header */}
-      <div style={{ marginBottom: 28 }}>
-        <div className="section-rule" style={{ marginBottom: 16 }} />
-        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-          SISTEMA
-        </span>
-        <h1 style={{ fontSize: 26, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.02em" }}>
-          Configuración
-        </h1>
-        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>
-          Datos de tu cuenta y empresa. {email && <span style={{ color: "var(--text-muted)" }}>({email})</span>}
-        </p>
-      </div>
+      <PageHeader
+        title="Configuración"
+        subtitle={`Datos de tu cuenta y empresa.${email ? ` (${email})` : ""}`}
+      />
 
-      <div style={{ maxWidth: 600 }}>
+      <div style={{ maxWidth: 620 }}>
         {loading ? (
-          <div style={{ color: "var(--text-muted)", fontSize: 12 }}>Cargando...</div>
+          <Spinner />
         ) : (
           <>
             {/* Alerta de perfil incompleto */}
             {!perfilCompleto && (
               <div style={{
-                background: "var(--accent)", color: "#fff",
-                padding: "10px 14px", marginBottom: 16,
-                fontSize: 11, fontWeight: 700, fontFamily: "var(--font-mono)",
-                letterSpacing: "0.03em",
-                display: "flex", alignItems: "center", gap: 8,
+                background: "var(--st-cotizando-bg)", color: "var(--st-cotizando-fg)",
+                border: "1px solid rgba(124,92,18,.25)", borderRadius: "var(--r-md)",
+                padding: "12px 14px", marginBottom: 16,
+                fontSize: 13.5, fontWeight: 500,
+                display: "flex", alignItems: "flex-start", gap: 10,
               }}>
-                <span style={{ fontSize: 14 }}>!</span>
-                Completa tu perfil — faltan: {camposFaltantes.map(k =>
-                  CAMPOS_PERFIL.find(c => c.key === k)!.label
-                ).join(", ")}
+                <AlertCircle size={17} strokeWidth={1.75} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>
+                  Completa tu perfil — faltan:{" "}
+                  <strong>{camposFaltantes.map(k => CAMPOS_PERFIL.find(c => c.key === k)!.label).join(", ")}</strong>
+                </span>
               </div>
             )}
 
-            {/* Logo + empresa header */}
-            <div style={{
-              background: "var(--bg-surface)", border: "1px solid var(--border-default)",
-              padding: 20, marginBottom: 16,
-              display: "flex", alignItems: "center", gap: 16,
-            }}>
+            {/* Logo + empresa */}
+            <Card style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 16 }} padding={20}>
               {logoUrl ? (
                 <img src={logoUrl} alt="Logo" width={56} height={56}
-                  style={{ objectFit: "contain", border: "1px solid var(--border-subtle)", background: "#fff", flexShrink: 0 }}
+                  style={{ objectFit: "contain", borderRadius: "var(--r-md)", border: "1px solid var(--n-200)", background: "#fff", flexShrink: 0 }}
                 />
               ) : (
                 <div style={{
-                  width: 56, height: 56, flexShrink: 0,
-                  border: "2px dashed var(--border-default)",
+                  width: 56, height: 56, flexShrink: 0, borderRadius: "var(--r-md)",
+                  background: "var(--brand-50)", color: "var(--brand)",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 20, color: "var(--text-muted)", fontWeight: 700,
+                  fontSize: 22, fontWeight: 600,
                 }}>
                   {perfil.empresa ? perfil.empresa.charAt(0).toUpperCase() : "?"}
                 </div>
               )}
               <div>
-                <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text-primary)" }}>
+                <div style={{ fontSize: 17, fontWeight: 600, color: "var(--n-900)" }}>
                   {perfil.empresa || "Sin nombre de empresa"}
                 </div>
                 {perfil.industria && (
-                  <div className="label" style={{ color: "var(--accent)", marginTop: 2 }}>
+                  <div style={{ fontSize: 13.5, color: "var(--n-600)", marginTop: 2 }}>
                     {perfil.industria}{perfil.pais ? ` · ${perfil.pais}` : ""}
                   </div>
                 )}
               </div>
-            </div>
+            </Card>
 
             {/* Formulario */}
-            <div style={{
-              background: "var(--bg-surface)", border: "1px solid var(--border-default)",
-              padding: 24, display: "flex", flexDirection: "column", gap: 16,
-            }}>
+            <Card padding={24} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {CAMPOS_PERFIL.map(({ key, label, placeholder }) => {
                 const faltante = CAMPOS_REQUERIDOS.includes(key) && !perfil[key]?.trim();
                 return (
-                  <div key={key} style={{ position: "relative" }}>
-                    {faltante && (
-                      <div style={{
-                        position: "absolute", left: -12, top: 0, bottom: 0,
-                        width: 3, background: "var(--accent)",
-                      }} />
-                    )}
-                    <Input
-                      label={faltante ? `${label} *` : label}
-                      value={perfil[key]}
-                      onChange={e => setField(key, e.target.value)}
-                      placeholder={placeholder}
-                    />
-                  </div>
+                  <Input
+                    key={key}
+                    label={faltante ? `${label} · requerido` : label}
+                    value={perfil[key]}
+                    onChange={e => setField(key, e.target.value)}
+                    placeholder={placeholder}
+                  />
                 );
               })}
 
-              <BtnPrimary onClick={handleGuardar} disabled={guardando} className="w-full justify-center">
-                {guardando ? "Guardando..." : "Guardar"}
+              <BtnPrimary onClick={handleGuardar} disabled={guardando} style={{ width: "100%" }}>
+                {guardando ? "Guardando…" : "Guardar cambios"}
               </BtnPrimary>
-            </div>
+            </Card>
           </>
         )}
 
         {/* Zona de peligro */}
-        {!loading && (
-          <div style={{
-            marginTop: 28, background: "var(--bg-surface)",
-            border: "1px solid var(--border-accent)", padding: 24,
-          }}>
-            <div className="label" style={{ color: "var(--text-error)", fontWeight: 800, marginBottom: 6 }}>Zona de peligro</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>Darse de baja</div>
-            <p style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 14 }}>
-              Elimina tu cuenta y sus datos de forma permanente. Esta acción no se puede deshacer.
-              Podrás volver a registrarte con el mismo correo. Para confirmar, escribe <strong>ELIMINAR</strong>.
-            </p>
-            <Input label="" value={confirmBaja} onChange={e => setConfirmBaja(e.target.value)} placeholder="Escribe ELIMINAR" />
-            <button
-              onClick={handleEliminar}
-              disabled={confirmBaja.trim().toUpperCase() !== "ELIMINAR" || eliminando}
-              style={{
-                marginTop: 12, width: "100%", padding: "10px 12px", fontSize: 12, fontWeight: 700,
-                fontFamily: "var(--font-mono)",
-                cursor: confirmBaja.trim().toUpperCase() === "ELIMINAR" && !eliminando ? "pointer" : "not-allowed",
-                background: confirmBaja.trim().toUpperCase() === "ELIMINAR" ? "var(--accent)" : "var(--bg-base)",
-                color: confirmBaja.trim().toUpperCase() === "ELIMINAR" ? "#fff" : "var(--text-muted)",
-                border: "1px solid var(--border-accent)",
-              }}
-            >
-              {eliminando ? "Eliminando cuenta..." : "Eliminar mi cuenta permanentemente"}
-            </button>
-          </div>
-        )}
+        {!loading && (() => {
+          const confirmado = confirmBaja.trim().toUpperCase() === "ELIMINAR";
+          return (
+            <div style={{
+              marginTop: 28, background: "var(--surface)",
+              border: "1px solid rgba(154,63,40,.3)", borderRadius: "var(--r-lg)", padding: 24,
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--danger)", marginBottom: 6 }}>Zona de peligro</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--n-900)", marginBottom: 4 }}>Darse de baja</div>
+              <p style={{ fontSize: 13.5, color: "var(--n-600)", lineHeight: 1.6, marginBottom: 14 }}>
+                Elimina tu cuenta y sus datos de forma permanente. Esta acción no se puede deshacer.
+                Podrás volver a registrarte con el mismo correo. Para confirmar, escribe <strong>ELIMINAR</strong>.
+              </p>
+              <Input value={confirmBaja} onChange={e => setConfirmBaja(e.target.value)} placeholder="Escribe ELIMINAR" />
+              <button
+                onClick={handleEliminar}
+                disabled={!confirmado || eliminando}
+                style={{
+                  marginTop: 12, width: "100%", padding: "10px 16px",
+                  fontSize: 14, fontWeight: 600, fontFamily: "var(--font-sans)",
+                  borderRadius: "var(--r-md)",
+                  cursor: confirmado && !eliminando ? "pointer" : "not-allowed",
+                  background: confirmado ? "var(--danger)" : "var(--surface-2)",
+                  color: confirmado ? "#fff" : "var(--n-500)",
+                  border: `1px solid ${confirmado ? "var(--danger)" : "var(--n-300)"}`,
+                }}
+              >
+                {eliminando ? "Eliminando cuenta…" : "Eliminar mi cuenta permanentemente"}
+              </button>
+            </div>
+          );
+        })()}
       </div>
     </>
   );

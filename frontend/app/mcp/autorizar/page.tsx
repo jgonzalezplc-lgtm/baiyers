@@ -57,7 +57,7 @@ function MCPAutorizarContent() {
     <div style={{ minHeight: "100vh", background: "#060610", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ background: "#0a0a18", border: "1px solid #1a1a2e", borderRadius: 12, padding: 40, maxWidth: 400, width: "100%", textAlign: "center" }}>
         <div style={{ fontSize: 22, fontWeight: 800, color: "#6366f1", marginBottom: 4 }}>Claria</div>
-        <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 32 }}>Cotizador Inteligente</div>
+        <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 32 }}>Cotizador Inteligente</div>
 
         {status === "loading" && (
           <>

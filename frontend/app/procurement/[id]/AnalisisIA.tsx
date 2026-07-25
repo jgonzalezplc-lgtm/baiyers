@@ -36,7 +36,7 @@ interface Analisis {
 function scoreColor(s: number): string {
   if (s >= 75) return "#1a6e45";
   if (s >= 50) return "#92400e";
-  return "#c0392b";
+  return "var(--brand)";
 }
 
 export default function AnalisisIA({ userId, itemNombre, cantidad, opciones }: {
@@ -84,7 +84,7 @@ export default function AnalisisIA({ userId, itemNombre, cantidad, opciones }: {
       {analisis && abierto && (
         <div style={{ marginTop: 10 }}>
           {/* Recomendación ganadora */}
-          <div style={{ borderLeft: "3px solid #c0392b", background: "var(--bg-base)", padding: "10px 12px", marginBottom: 10 }}>
+          <div style={{ borderLeft: "3px solid var(--brand)", background: "var(--bg-base)", padding: "10px 12px", marginBottom: 10 }}>
             <div className="label" style={{ color: "var(--text-accent)", fontWeight: 800, marginBottom: 3 }}>
               RECOMENDACIÓN: {analisis.recomendacion_ganadora.proveedor}
             </div>

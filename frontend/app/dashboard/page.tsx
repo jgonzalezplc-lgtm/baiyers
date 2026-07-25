@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { FileText } from "lucide-react";
+import { Card, Badge, CategoryChip, EmptyState, categoriaLabel, fmtCLP } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -71,91 +73,85 @@ export default async function DashboardPage({
   return (
     <div>
       {/* Title */}
-      <div style={{ marginBottom: 28, display: "flex", alignItems: "center", gap: 14 }}>
+      <div style={{ marginBottom: 24, display: "flex", alignItems: "center", gap: 14 }}>
         {user.user_metadata?.logo_url && (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img src={user.user_metadata.logo_url as string} alt={String(user.user_metadata?.empresa ?? "logo")}
             width={52} height={52}
-            style={{ objectFit: "contain", border: "1px solid var(--border-subtle)", background: "#fff", flexShrink: 0 }} />
+            style={{ objectFit: "contain", borderRadius: "var(--r-md)", border: "1px solid var(--n-200)", background: "#fff", flexShrink: 0 }} />
         )}
         <div>
-          <span className="label" style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-            {user.user_metadata?.industria ? String(user.user_metadata.industria) : "Cotizador inteligente"}
-          </span>
-          <h1 style={{ fontSize: 28, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.02em" }}>
-            {user.user_metadata?.empresa ? `Hola, ${user.user_metadata.empresa}` : "Dashboard"}
+          {user.user_metadata?.industria && (
+            <span style={{ fontSize: 13, color: "var(--brand)", display: "block", marginBottom: 3, fontWeight: 500 }}>
+              {String(user.user_metadata.industria)}
+            </span>
+          )}
+          <h1 style={{ fontSize: 26, lineHeight: 1.2, fontWeight: 600, color: "var(--n-900)", margin: "0 0 4px", letterSpacing: "-0.015em" }}>
+            {user.user_metadata?.empresa ? `Hola, ${user.user_metadata.empresa}` : "Inicio"}
           </h1>
-          <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>¿Qué necesitas cotizar hoy?</p>
+          <p style={{ fontSize: 14, color: "var(--n-600)", margin: 0 }}>¿Qué necesitas cotizar hoy?</p>
         </div>
       </div>
 
       {/* Stats row */}
       <div style={{
         display: "grid",
-        gridTemplateColumns: "repeat(3,1fr)",
-        border: "1px solid var(--border-default)",
-        marginBottom: 24,
+        gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+        gap: 12,
+        marginBottom: 20,
       }}>
         {[
           {
             label: "Cotizaciones este mes",
             val: stats.cotizaciones,
             sub: `Límite: ${planInfo.cotizaciones === 9999 ? "ilimitadas" : planInfo.cotizaciones + "/mes"}`,
-            subColor: "var(--text-muted)",
           },
           {
             label: "Proveedores contactados",
             val: stats.proveedores,
             sub: "Red en crecimiento",
-            subColor: "var(--text-muted)",
           },
           {
-            label: "OC emitidas",
+            label: "Órdenes de compra emitidas",
             val: stats.ocs,
             sub: stats.totalOC > 0
-              ? `$${stats.totalOC.toLocaleString("es-CL")} CLP total`
+              ? `${fmtCLP(stats.totalOC)} en total`
               : plan === "free" || plan === "starter" ? "Disponible en Pro" : "Activo en tu plan",
-            subColor: stats.totalOC > 0 ? "var(--accent)" : "var(--text-muted)",
           },
         ].map((s, i) => (
-          <div key={i} style={{
-            background: "var(--bg-surface)",
-            borderRight: i < 2 ? "1px solid var(--border-default)" : "none",
-            padding: "20px 24px",
-          }}>
-            <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 12 }}>
-              {s.label}
-            </div>
-            <div style={{ fontSize: 32, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.03em", lineHeight: 1 }}>
+          <Card key={i} padding={18}>
+            <div style={{ fontSize: 12.5, color: "var(--n-500)", marginBottom: 8 }}>{s.label}</div>
+            <div style={{ fontSize: 30, fontWeight: 600, color: "var(--n-900)", letterSpacing: "-0.02em", lineHeight: 1 }}>
               {s.val}
             </div>
-            <div style={{ fontSize: 11, color: s.subColor, marginTop: 6 }}>{s.sub}</div>
-          </div>
+            <div style={{ fontSize: 12.5, color: "var(--n-600)", marginTop: 6 }}>{s.sub}</div>
+          </Card>
         ))}
       </div>
 
       {/* Nueva cotización CTA */}
       <div style={{
-        background: "var(--bg-surface)",
-        border: "1px solid var(--border-default)",
-        borderLeft: "3px solid var(--accent)",
-        padding: "24px 28px",
+        background: "var(--brand-50)",
+        border: "1px solid var(--brand-100)",
+        borderRadius: "var(--r-lg)",
+        padding: "20px 24px",
         marginBottom: 28,
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
         gap: 24,
+        flexWrap: "wrap",
       }}>
         <div>
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.01em" }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--n-900)", margin: "0 0 4px" }}>
             Nueva cotización
           </h2>
-          <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0, maxWidth: 380 }}>
-            Describe el item o sube una foto — el sistema identifica, busca proveedores y cotiza automáticamente.
+          <p style={{ fontSize: 13.5, color: "var(--n-600)", margin: 0, maxWidth: 420, lineHeight: 1.6 }}>
+            Describe el ítem o sube una foto — el sistema lo identifica, busca proveedores y cotiza automáticamente.
           </p>
         </div>
         <a href="/cotizar" className="btn-swiss-primary" style={{ textDecoration: "none", whiteSpace: "nowrap", flexShrink: 0 }}>
-          COMENZAR →
+          Comenzar
         </a>
       </div>
 
@@ -165,34 +161,41 @@ export default async function DashboardPage({
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: 14,
+          marginBottom: 12,
         }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em" }}>
-            COTIZACIONES RECIENTES
-          </div>
-          <a href="/cotizaciones" className="btn-swiss-secondary" style={{ textDecoration: "none", fontSize: 10, padding: "5px 12px" }}>
-            VER TODAS →
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--n-900)", margin: 0 }}>
+            Cotizaciones recientes
+          </h2>
+          <a href="/cotizaciones" style={{ fontSize: 13.5, fontWeight: 500, color: "var(--brand)", textDecoration: "none" }}>
+            Ver todas →
           </a>
         </div>
 
-        <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-surface)" }}>
+        <div style={{
+          border: "1px solid var(--n-200)", background: "var(--surface)",
+          borderRadius: "var(--r-lg)", overflow: "hidden", boxShadow: "var(--shadow-card)",
+        }}>
           {/* Cabecera */}
           <div style={{
             display: "grid",
-            gridTemplateColumns: "72px 1fr 100px 90px 110px 110px 100px 68px",
-            padding: "9px 16px",
-            borderBottom: "1px solid var(--border-default)",
-            background: "var(--bg-base)",
+            gridTemplateColumns: "72px 1fr 110px 90px 110px 110px 100px 76px",
+            gap: 10,
+            padding: "10px 16px",
+            borderBottom: "1px solid var(--n-200)",
+            background: "var(--canvas)",
           }}>
             {["ID", "Ítem", "Categoría", "Confianza", "Correos env.", "Respondieron", "Precio mín.", "Fecha"].map(h => (
-              <div key={h} style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em" }}>{h}</div>
+              <div key={h} style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)" }}>{h}</div>
             ))}
           </div>
 
           {cotizacionesRecientes.length === 0 ? (
-            <div style={{ padding: "32px 16px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
-              Aún no hay cotizaciones. <a href="/cotizar" style={{ color: "var(--accent)" }}>Crea tu primera →</a>
-            </div>
+            <EmptyState
+              icon={FileText}
+              title="Aún no hay cotizaciones"
+              description="Describe lo que necesitas comprar y el sistema busca proveedores por ti."
+              action={<a href="/cotizar" className="btn-swiss-primary" style={{ textDecoration: "none" }}>Crear mi primera cotización</a>}
+            />
           ) : (
             cotizacionesRecientes.map((c, i) => {
               const conf = c.confianza_ia?.toLowerCase();
@@ -203,36 +206,40 @@ export default async function DashboardPage({
                 <Link key={c.id} href={`/cotizaciones/${c.id}`}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "72px 1fr 100px 90px 110px 110px 100px 68px",
-                    padding: "11px 16px",
-                    borderBottom: i < cotizacionesRecientes.length - 1 ? "1px solid var(--border-subtle)" : "none",
+                    gridTemplateColumns: "72px 1fr 110px 90px 110px 110px 100px 76px",
+                    gap: 10,
+                    padding: "12px 16px",
+                    borderBottom: i < cotizacionesRecientes.length - 1 ? "1px solid var(--n-100)" : "none",
                     alignItems: "center",
                     textDecoration: "none", color: "inherit",
-                    background: tieneRespuestas ? "var(--fill-success)" : undefined,
+                    background: tieneRespuestas ? "var(--st-aprobada-bg)" : i % 2 ? "var(--canvas)" : undefined,
                   }}>
-                  <div style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                  <div style={{ fontSize: 12, color: "var(--n-500)", fontFamily: "var(--font-mono)" }}>
                     COT-{c.id.slice(-4).toUpperCase()}
                   </div>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", marginBottom: 1 }}>{c.nombre_identificado}</div>
-                    {c.marca && <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{c.marca}</div>}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--n-900)" }}>{c.nombre_identificado}</div>
+                    {c.marca && <div style={{ fontSize: 12, color: "var(--n-500)" }}>{c.marca}</div>}
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{c.categoria || "—"}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                    <CategoryChip categoria={c.categoria} size={26} />
+                    <span style={{ fontSize: 13, color: "var(--n-600)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {categoriaLabel(c.categoria)}
+                    </span>
+                  </div>
                   <div>
                     {conf ? (
-                      <span style={{ fontSize: 9, fontWeight: 700, color: CONFIANZA_COLORS[conf] ?? "var(--text-muted)", border: `1px solid ${CONFIANZA_COLORS[conf] ?? "var(--border-default)"}`, padding: "2px 6px" }}>
+                      <Badge status={conf === "alto" ? "aprobada" : conf === "medio" ? "cotizando" : "rechazada"}>
                         {conf}
-                      </span>
-                    ) : <span style={{ fontSize: 11, color: "var(--text-muted)" }}>—</span>}
+                      </Badge>
+                    ) : <span style={{ fontSize: 13, color: "var(--n-500)" }}>—</span>}
                   </div>
                   {/* Correos enviados */}
                   <div>
                     {tieneEnviados ? (
-                      <span style={{ fontSize: 10, fontWeight: 700, color: "#2980b9", border: "1px solid #2980b9", padding: "2px 8px" }}>
-                        {c.n_enviados} enviado{c.n_enviados !== 1 ? "s" : ""}
-                      </span>
+                      <Badge status="en_curso">{c.n_enviados} enviado{c.n_enviados !== 1 ? "s" : ""}</Badge>
                     ) : (
-                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                      <span style={{ fontSize: 13, color: "var(--n-500)" }}>
                         {c.n_encontrados > 0 ? `${c.n_encontrados} encontr.` : "—"}
                       </span>
                     )}
@@ -240,20 +247,16 @@ export default async function DashboardPage({
                   {/* Respondieron */}
                   <div>
                     {tieneRespuestas ? (
-                      <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-success)", border: "1px solid var(--text-success)", padding: "2px 8px" }}>
-                        {c.n_respondieron} respondió
-                      </span>
-                    ) : tieneEnviados ? (
-                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Esperando</span>
+                      <Badge status="aprobada">{c.n_respondieron} respondió</Badge>
                     ) : (
-                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>—</span>
+                      <span style={{ fontSize: 13, color: "var(--n-500)" }}>{tieneEnviados ? "Esperando" : "—"}</span>
                     )}
                   </div>
                   {/* Precio mínimo */}
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)" }}>
-                    {c.precio_min != null ? `$${Math.round(c.precio_min).toLocaleString("es-CL")}` : "—"}
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--n-900)", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
+                    {c.precio_min != null ? fmtCLP(c.precio_min) : "—"}
                   </div>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{fmtFecha(c.created_at)}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--n-500)" }}>{fmtFecha(c.created_at)}</div>
                 </Link>
               );
             })
@@ -265,23 +268,26 @@ export default async function DashboardPage({
       {!gmailRecienConectado && (
         <div style={{
           marginTop: 24,
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border-default)",
-          padding: "14px 20px",
+          background: "var(--surface)",
+          border: "1px solid var(--n-200)",
+          borderRadius: "var(--r-lg)",
+          padding: "16px 20px",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          gap: 16,
+          flexWrap: "wrap",
         }}>
           <div>
-            <span style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", display: "block", marginBottom: 4 }}>
-              EMAIL AGENT
-            </span>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-              Conecta Gmail para enviar cotizaciones automáticamente
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)", marginBottom: 2 }}>
+              Agente de correo
+            </div>
+            <div style={{ fontSize: 13.5, color: "var(--n-600)" }}>
+              Conecta Gmail para enviar cotizaciones automáticamente.
             </div>
           </div>
-          <a href={`${API_URL}/api/gmail/auth?user_id=${user.id}`} className="btn-swiss-primary" style={{ textDecoration: "none" }}>
-            CONECTAR GMAIL
+          <a href={`${API_URL}/api/gmail/auth?user_id=${user.id}`} className="btn-swiss-secondary" style={{ textDecoration: "none" }}>
+            Conectar Gmail
           </a>
         </div>
       )}

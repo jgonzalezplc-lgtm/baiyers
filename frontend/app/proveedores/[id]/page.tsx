@@ -120,7 +120,7 @@ export default function ProveedorHistorialPage() {
         <div style={{ background: "#0a0a18", border: "1px solid #1a1a2e", borderRadius: 12, padding: "20px 24px", marginBottom: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
-              <div style={{ fontSize: 10, color: "#6366f1", textTransform: "uppercase", letterSpacing: "0.15em", marginBottom: 4 }}>Supplier Intelligence</div>
+              <div style={{ fontSize: 10, color: "#6366f1", letterSpacing: "0.15em", marginBottom: 4 }}>Supplier Intelligence</div>
               <h1 style={{ fontSize: 18, fontWeight: 800, color: "#f1f5f9", margin: "0 0 4px" }}>{proveedor.nombre}</h1>
               {proveedor.email && <div style={{ fontSize: 10, color: "#475569" }}>{proveedor.email}</div>}
             </div>
@@ -138,7 +138,7 @@ export default function ProveedorHistorialPage() {
               { label: "OCs confirmadas", val: proveedor.total_oc_confirmadas || 0 },
             ].map(m => (
               <div key={m.label}>
-                <div style={{ fontSize: 9, color: "#334155", textTransform: "uppercase", letterSpacing: "0.08em" }}>{m.label}</div>
+                <div style={{ fontSize: 9, color: "#334155", letterSpacing: "0.08em" }}>{m.label}</div>
                 <div style={{ fontSize: 20, fontWeight: 800, color: "#94a3b8" }}>{m.val}</div>
               </div>
             ))}
@@ -147,7 +147,7 @@ export default function ProveedorHistorialPage() {
 
         {/* Ordenes de Compra */}
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10, fontWeight: 700 }}>
+          <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 10, fontWeight: 700 }}>
             Ordenes de Compra ({ordenes.length})
           </div>
           {ordenes.length === 0 ? (
@@ -179,7 +179,7 @@ export default function ProveedorHistorialPage() {
 
         {/* Ratings */}
         <div>
-          <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10, fontWeight: 700 }}>
+          <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 10, fontWeight: 700 }}>
             Calificaciones ({ratings.length})
           </div>
           {ratings.length === 0 ? (

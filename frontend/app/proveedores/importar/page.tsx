@@ -71,7 +71,7 @@ export default function ImportarProveedoresPage() {
         {/* Header */}
         <div style={{ marginBottom: 24 }}>
           <Link href="/proveedores" style={{ fontSize: 10, color: "#475569", textDecoration: "none" }}>← Proveedores</Link>
-          <div style={{ fontSize: 10, color: "#6366f1", textTransform: "uppercase", letterSpacing: "0.15em", marginTop: 8, marginBottom: 4 }}>Importación</div>
+          <div style={{ fontSize: 10, color: "#6366f1", letterSpacing: "0.15em", marginTop: 8, marginBottom: 4 }}>Importación</div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
             <h1 style={{ fontSize: 20, fontWeight: 800, color: "#f1f5f9", margin: 0 }}>Importar base de proveedores</h1>
             <button onClick={handlePlantilla} style={{ fontSize: 10, color: "#34d399", background: "#34d39911", border: "1px solid #34d39933", borderRadius: 6, padding: "7px 14px", cursor: "pointer", fontFamily: "inherit" }}>
@@ -140,11 +140,11 @@ export default function ImportarProveedoresPage() {
             <div style={{ display: "flex", gap: 24 }}>
               <div>
                 <div style={{ fontSize: 28, fontWeight: 800, color: "#34d399" }}>{resultado.importados}</div>
-                <div style={{ fontSize: 10, color: "#475569", textTransform: "uppercase" }}>Nuevos</div>
+                <div style={{ fontSize: 10, color: "#475569" }}>Nuevos</div>
               </div>
               <div>
                 <div style={{ fontSize: 28, fontWeight: 800, color: "#6366f1" }}>{resultado.actualizados}</div>
-                <div style={{ fontSize: 10, color: "#475569", textTransform: "uppercase" }}>Actualizados</div>
+                <div style={{ fontSize: 10, color: "#475569" }}>Actualizados</div>
               </div>
             </div>
             {resultado.errores.length > 0 && (
@@ -161,7 +161,7 @@ export default function ImportarProveedoresPage() {
         {/* Preview */}
         {preview.length > 0 && (
           <div>
-            <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8, fontWeight: 700 }}>
+            <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 8, fontWeight: 700 }}>
               Preview — primeras {preview.length} filas
             </div>
             <div style={{ background: "#0a0a18", border: "1px solid #1a1a2e", borderRadius: 8, overflow: "auto" }}>
@@ -169,7 +169,7 @@ export default function ImportarProveedoresPage() {
                 <thead>
                   <tr>
                     {columnas.map(col => (
-                      <th key={col} style={{ padding: "8px 12px", borderBottom: "1px solid #1a1a2e", textAlign: "left", color: "#475569", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", whiteSpace: "nowrap" }}>{col}</th>
+                      <th key={col} style={{ padding: "8px 12px", borderBottom: "1px solid #1a1a2e", textAlign: "left", color: "#475569", fontSize: 10, letterSpacing: "0.08em", whiteSpace: "nowrap" }}>{col}</th>
                     ))}
                   </tr>
                 </thead>

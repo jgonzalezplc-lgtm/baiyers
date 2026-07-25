@@ -259,7 +259,7 @@ export default function ProyectoDetallePage() {
                 <thead>
                   <tr style={{ background: "#0d0d20" }}>
                     {["#", "Ítem", "Cantidad", "Proveedor seleccionado", "P. Unit.", "P. Total", "Plazo"].map(h => (
-                      <th key={h} style={{ padding: "10px 12px", borderBottom: "1px solid #1a1a2e", textAlign: "left", color: "#475569", fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em" }}>{h}</th>
+                      <th key={h} style={{ padding: "10px 12px", borderBottom: "1px solid #1a1a2e", textAlign: "left", color: "#475569", fontSize: 9 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -368,7 +368,7 @@ export default function ProyectoDetallePage() {
                     <thead>
                       <tr style={{ background: "#0d0d20" }}>
                         {["Semana", "Período", "Monto", "Nivel", "Ítems"].map(h => (
-                          <th key={h} style={{ padding: "8px 12px", borderBottom: "1px solid #1a1a2e", textAlign: "left", color: "#475569", fontSize: 9, textTransform: "uppercase" }}>{h}</th>
+                          <th key={h} style={{ padding: "8px 12px", borderBottom: "1px solid #1a1a2e", textAlign: "left", color: "#475569", fontSize: 9 }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -384,7 +384,7 @@ export default function ProyectoDetallePage() {
                             ${Math.round(s.monto).toLocaleString("es-CL")}
                           </td>
                           <td style={{ padding: "8px 12px" }}>
-                            <span style={{ fontSize: 9, fontWeight: 700, color: NIVEL_COLOR[s.nivel], background: `${NIVEL_COLOR[s.nivel]}22`, padding: "2px 8px", borderRadius: 10, textTransform: "uppercase" }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: NIVEL_COLOR[s.nivel], background: `${NIVEL_COLOR[s.nivel]}22`, padding: "2px 8px", borderRadius: 10 }}>
                               {s.nivel}
                             </span>
                           </td>
@@ -413,7 +413,7 @@ export default function ProyectoDetallePage() {
                 { label: "Proveedores", value: `${proveedores.length}`, color: "#a78bfa" },
               ].map(k => (
                 <div key={k.label} style={{ background: "#0a0a18", border: "1px solid #1a1a2e", borderRadius: 8, padding: "14px 16px" }}>
-                  <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{k.label}</div>
+                  <div style={{ fontSize: 9, color: "#475569", letterSpacing: "0.1em", marginBottom: 6 }}>{k.label}</div>
                   <div style={{ fontSize: 20, fontWeight: 800, color: k.color }}>{k.value}</div>
                 </div>
               ))}
@@ -466,25 +466,25 @@ export default function ProyectoDetallePage() {
               <div style={{ fontSize: 11, color: "#475569", marginBottom: 10 }}>Información del proyecto</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                 <div>
-                  <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", marginBottom: 4 }}>Creado</div>
+                  <div style={{ fontSize: 9, color: "#475569", marginBottom: 4 }}>Creado</div>
                   <div style={{ fontSize: 11, color: "#94a3b8" }}>{new Date(proyecto.created_at).toLocaleDateString("es-CL")}</div>
                 </div>
                 {proyecto.fecha_inicio && (
                   <div>
-                    <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", marginBottom: 4 }}>Inicio estimado</div>
+                    <div style={{ fontSize: 9, color: "#475569", marginBottom: 4 }}>Inicio estimado</div>
                     <div style={{ fontSize: 11, color: "#94a3b8" }}>{new Date(proyecto.fecha_inicio + "T12:00:00").toLocaleDateString("es-CL")}</div>
                   </div>
                 )}
                 {proyecto.cliente && (
                   <div>
-                    <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", marginBottom: 4 }}>Cliente</div>
+                    <div style={{ fontSize: 9, color: "#475569", marginBottom: 4 }}>Cliente</div>
                     <div style={{ fontSize: 11, color: "#94a3b8" }}>{proyecto.cliente}</div>
                   </div>
                 )}
               </div>
               {proyecto.descripcion && (
                 <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #1a1a2e" }}>
-                  <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", marginBottom: 4 }}>Descripción</div>
+                  <div style={{ fontSize: 9, color: "#475569", marginBottom: 4 }}>Descripción</div>
                   <div style={{ fontSize: 11, color: "#94a3b8" }}>{proyecto.descripcion}</div>
                 </div>
               )}

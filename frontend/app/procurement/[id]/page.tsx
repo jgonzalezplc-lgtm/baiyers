@@ -172,7 +172,7 @@ export default function ProcurementDetailPage() {
                     display: "grid", gridTemplateColumns: "1fr 110px 120px 100px 120px 200px",
                     gap: 8, padding: "10px 14px", borderBottom: "1px solid var(--border-subtle)",
                     alignItems: "center", opacity: sm.tachado ? 0.5 : 1,
-                    borderLeft: p.badge === "mas_conveniente" ? "3px solid #c0392b" : "3px solid transparent",
+                    borderLeft: p.badge === "mas_conveniente" ? "3px solid var(--brand)" : "3px solid transparent",
                   }}>
                     {/* Proveedor + badge */}
                     <div style={{ minWidth: 0 }}>
