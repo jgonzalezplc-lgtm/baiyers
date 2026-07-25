@@ -7,7 +7,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // useSearchParams requiere un límite de Suspense para el prerender de Next 16.
 export default function MCPAutorizarPage() {
   return (
-    <Suspense fallback={<div style={{ minHeight: "100vh", background: "#060610" }} />}>
+    <Suspense fallback={<div style={{ minHeight: "100vh", background: "var(--canvas)" }} />}>
       <MCPAutorizarContent />
     </Suspense>
   );
@@ -54,27 +54,27 @@ function MCPAutorizarContent() {
   }, [searchParams]);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#060610", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div style={{ background: "#0a0a18", border: "1px solid #1a1a2e", borderRadius: 12, padding: 40, maxWidth: 400, width: "100%", textAlign: "center" }}>
-        <div style={{ fontSize: 22, fontWeight: 800, color: "#6366f1", marginBottom: 4 }}>Claria</div>
-        <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 32 }}>Cotizador Inteligente</div>
+    <div style={{ minHeight: "100vh", background: "var(--canvas)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: 12, padding: 40, maxWidth: 400, width: "100%", textAlign: "center" }}>
+        <div style={{ fontSize: 22, fontWeight: 800, color: "var(--brand)", marginBottom: 4 }}>Claria</div>
+        <div style={{ fontSize: 11, color: "var(--n-600)", letterSpacing: "0.1em", marginBottom: 32 }}>Cotizador Inteligente</div>
 
         {status === "loading" && (
           <>
-            <div style={{ width: 40, height: 40, border: "3px solid #1a1a2e", borderTop: "3px solid #6366f1", borderRadius: "50%", margin: "0 auto 16px", animation: "spin 1s linear infinite" }} />
-            <div style={{ fontSize: 13, color: "#94a3b8" }}>Redirigiendo a la pagina de autorizacion...</div>
-            {clientName && <div style={{ fontSize: 11, color: "#475569", marginTop: 8 }}>Solicitud de: {clientName}</div>}
+            <div style={{ width: 40, height: 40, border: "3px solid var(--n-200)", borderTop: "3px solid var(--brand)", borderRadius: "50%", margin: "0 auto 16px", animation: "spin 1s linear infinite" }} />
+            <div style={{ fontSize: 13, color: "var(--n-500)" }}>Redirigiendo a la pagina de autorizacion...</div>
+            {clientName && <div style={{ fontSize: 11, color: "var(--n-600)", marginTop: 8 }}>Solicitud de: {clientName}</div>}
           </>
         )}
 
         {status === "error" && (
           <>
             <div style={{ fontSize: 32, marginBottom: 16 }}>⚠️</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9", marginBottom: 8 }}>Parametros invalidos</div>
-            <div style={{ fontSize: 12, color: "#475569", marginBottom: 20 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--n-900)", marginBottom: 8 }}>Parametros invalidos</div>
+            <div style={{ fontSize: 12, color: "var(--n-600)", marginBottom: 20 }}>
               Faltan parametros requeridos para la autorizacion OAuth.
             </div>
-            <a href="/integraciones" style={{ display: "inline-block", background: "#6366f1", color: "#fff", padding: "10px 24px", borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
+            <a href="/integraciones" style={{ display: "inline-block", background: "var(--brand)", color: "#fff", padding: "10px 24px", borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none" }}>
               Ir a Integraciones
             </a>
           </>

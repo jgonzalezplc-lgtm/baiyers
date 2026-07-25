@@ -153,18 +153,18 @@ const TOOLS = [
 
 export default function MCPDocsPage() {
   return (
-    <div style={{ minHeight: "100vh", background: "#060610", padding: "40px 20px" }}>
+    <div style={{ minHeight: "100vh", background: "var(--canvas)", padding: "40px 20px" }}>
       <div style={{ maxWidth: 900, margin: "0 auto" }}>
 
         {/* Header */}
         <div style={{ marginBottom: 40 }}>
-          <a href="/" style={{ fontSize: 10, color: "#475569", textDecoration: "none" }}>← Claria</a>
+          <a href="/" style={{ fontSize: 10, color: "var(--n-600)", textDecoration: "none" }}>← Claria</a>
           <div style={{ marginTop: 20 }}>
-            <div style={{ display: "inline-block", background: "#6366f122", color: "#6366f1", borderRadius: 6, padding: "3px 10px", fontSize: 10, fontWeight: 700, marginBottom: 12, letterSpacing: "0.1em" }}>
+            <div style={{ display: "inline-block", background: "var(--brand)22", color: "var(--brand)", borderRadius: 6, padding: "3px 10px", fontSize: 10, fontWeight: 700, marginBottom: 12, letterSpacing: "0.1em" }}>
               MODEL CONTEXT PROTOCOL
             </div>
-            <h1 style={{ fontSize: 28, fontWeight: 800, color: "#f1f5f9", margin: "0 0 8px" }}>Claria MCP Server</h1>
-            <p style={{ fontSize: 13, color: "#94a3b8", maxWidth: 600 }}>
+            <h1 style={{ fontSize: 28, fontWeight: 800, color: "var(--n-900)", margin: "0 0 8px" }}>Claria MCP Server</h1>
+            <p style={{ fontSize: 13, color: "var(--n-500)", maxWidth: 600 }}>
               Conecta Claude, ChatGPT, Gemini y cualquier LLM compatible con MCP a tu cuenta Claria.
               Cotiza productos, emite OCs y analiza gastos directamente desde el chat de IA.
             </p>
@@ -172,12 +172,12 @@ export default function MCPDocsPage() {
         </div>
 
         {/* Quick start */}
-        <div style={{ background: "#0a0a18", border: "1px solid #6366f133", borderRadius: 12, padding: "24px", marginBottom: 32 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: "#f1f5f9", margin: "0 0 16px" }}>Inicio rapido — Claude Desktop</h2>
-          <p style={{ fontSize: 11, color: "#475569", marginBottom: 16 }}>
-            Agrega esto a tu archivo <code style={{ background: "#1a1a2e", padding: "1px 6px", borderRadius: 3, color: "#94a3b8" }}>claude_desktop_config.json</code>:
+        <div style={{ background: "var(--surface)", border: "1px solid var(--brand)33", borderRadius: 12, padding: "24px", marginBottom: 32 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--n-900)", margin: "0 0 16px" }}>Inicio rapido — Claude Desktop</h2>
+          <p style={{ fontSize: 11, color: "var(--n-600)", marginBottom: 16 }}>
+            Agrega esto a tu archivo <code style={{ background: "var(--n-200)", padding: "1px 6px", borderRadius: 3, color: "var(--n-500)" }}>claude_desktop_config.json</code>:
           </p>
-          <pre style={{ background: "#060610", border: "1px solid #1a1a2e", borderRadius: 8, padding: "16px", fontSize: 11, color: "#94a3b8", overflow: "auto", fontFamily: "monospace" }}>{`{
+          <pre style={{ background: "var(--canvas)", border: "1px solid var(--n-200)", borderRadius: 8, padding: "16px", fontSize: 11, color: "var(--n-500)", overflow: "auto", fontFamily: "monospace" }}>{`{
   "mcpServers": {
     "claria-cotizador": {
       "command": "npx",
@@ -191,15 +191,15 @@ export default function MCPDocsPage() {
 }`}</pre>
           <a
             href="/integraciones"
-            style={{ display: "inline-block", marginTop: 16, background: "#6366f1", color: "#fff", padding: "10px 24px", borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none" }}
+            style={{ display: "inline-block", marginTop: 16, background: "var(--brand)", color: "#fff", padding: "10px 24px", borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none" }}
           >
             Obtener mi token →
           </a>
         </div>
 
         {/* OAuth endpoints */}
-        <div style={{ background: "#0a0a18", border: "1px solid #1a1a2e", borderRadius: 12, padding: "24px", marginBottom: 32 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: "#f1f5f9", margin: "0 0 16px" }}>Endpoints OAuth 2.1</h2>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: 12, padding: "24px", marginBottom: 32 }}>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--n-900)", margin: "0 0 16px" }}>Endpoints OAuth 2.1</h2>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
               { method: "GET", path: "/api/mcp/oauth/authorize", desc: "Pagina de autorizacion (PKCE)" },
@@ -210,49 +210,49 @@ export default function MCPDocsPage() {
               <div key={ep.path} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <span style={{
                   fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 3,
-                  background: ep.method === "GET" ? "#34d39922" : ep.method === "POST" ? "#6366f122" : "#f8717122",
-                  color: ep.method === "GET" ? "#34d399" : ep.method === "POST" ? "#6366f1" : "#f87171",
+                  background: ep.method === "GET" ? "var(--success)22" : ep.method === "POST" ? "var(--brand)22" : "var(--danger)22",
+                  color: ep.method === "GET" ? "var(--success)" : ep.method === "POST" ? "var(--brand)" : "var(--danger)",
                   fontFamily: "monospace", minWidth: 44, textAlign: "center",
                 }}>{ep.method}</span>
-                <code style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>{ep.path}</code>
-                <span style={{ fontSize: 11, color: "#475569" }}>{ep.desc}</span>
+                <code style={{ fontSize: 11, color: "var(--n-500)", fontFamily: "monospace" }}>{ep.path}</code>
+                <span style={{ fontSize: 11, color: "var(--n-600)" }}>{ep.desc}</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* Tools */}
-        <h2 style={{ fontSize: 15, fontWeight: 700, color: "#f1f5f9", margin: "0 0 16px" }}>Herramientas disponibles ({TOOLS.length})</h2>
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--n-900)", margin: "0 0 16px" }}>Herramientas disponibles ({TOOLS.length})</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {TOOLS.map(tool => (
-            <div key={tool.name} style={{ background: "#0a0a18", border: "1px solid #1a1a2e", borderRadius: 12, overflow: "hidden" }}>
-              <div style={{ padding: "16px 20px", borderBottom: "1px solid #0d0d1a" }}>
+            <div key={tool.name} style={{ background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: 12, overflow: "hidden" }}>
+              <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--surface-2)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
-                  <code style={{ fontSize: 12, color: "#6366f1", fontFamily: "monospace", fontWeight: 700 }}>{tool.name}</code>
-                  <span style={{ fontSize: 11, color: "#f1f5f9", fontWeight: 700 }}>{tool.label}</span>
+                  <code style={{ fontSize: 12, color: "var(--brand)", fontFamily: "monospace", fontWeight: 700 }}>{tool.name}</code>
+                  <span style={{ fontSize: 11, color: "var(--n-900)", fontWeight: 700 }}>{tool.label}</span>
                 </div>
-                <p style={{ fontSize: 11, color: "#94a3b8", margin: 0 }}>{tool.description}</p>
+                <p style={{ fontSize: 11, color: "var(--n-500)", margin: 0 }}>{tool.description}</p>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
-                <div style={{ padding: "16px 20px", borderRight: "1px solid #0d0d1a" }}>
-                  <div style={{ fontSize: 9, color: "#475569", letterSpacing: "0.1em", marginBottom: 10 }}>Parametros</div>
+                <div style={{ padding: "16px 20px", borderRight: "1px solid var(--surface-2)" }}>
+                  <div style={{ fontSize: 9, color: "var(--n-600)", letterSpacing: "0.1em", marginBottom: 10 }}>Parametros</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {tool.params.map(p => (
                       <div key={p.name}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <code style={{ fontSize: 10, color: "#a78bfa", fontFamily: "monospace" }}>{p.name}</code>
-                          <span style={{ fontSize: 9, color: "#475569" }}>{p.type}</span>
-                          {p.required && <span style={{ fontSize: 8, color: "#f87171", background: "#f8717122", padding: "1px 5px", borderRadius: 3 }}>req</span>}
+                          <code style={{ fontSize: 10, color: "var(--brand-400)", fontFamily: "monospace" }}>{p.name}</code>
+                          <span style={{ fontSize: 9, color: "var(--n-600)" }}>{p.type}</span>
+                          {p.required && <span style={{ fontSize: 8, color: "var(--danger)", background: "var(--danger)22", padding: "1px 5px", borderRadius: 3 }}>req</span>}
                         </div>
-                        <div style={{ fontSize: 10, color: "#475569", marginTop: 2, paddingLeft: 0 }}>{p.desc}</div>
+                        <div style={{ fontSize: 10, color: "var(--n-600)", marginTop: 2, paddingLeft: 0 }}>{p.desc}</div>
                       </div>
                     ))}
                   </div>
                 </div>
                 <div style={{ padding: "16px 20px" }}>
-                  <div style={{ fontSize: 9, color: "#475569", letterSpacing: "0.1em", marginBottom: 10 }}>Ejemplo</div>
-                  <pre style={{ fontSize: 9, color: "#94a3b8", fontFamily: "monospace", margin: 0, overflow: "auto", background: "#060610", borderRadius: 6, padding: "10px" }}>{tool.example}</pre>
+                  <div style={{ fontSize: 9, color: "var(--n-600)", letterSpacing: "0.1em", marginBottom: 10 }}>Ejemplo</div>
+                  <pre style={{ fontSize: 9, color: "var(--n-500)", fontFamily: "monospace", margin: 0, overflow: "auto", background: "var(--canvas)", borderRadius: 6, padding: "10px" }}>{tool.example}</pre>
                 </div>
               </div>
             </div>
@@ -260,10 +260,10 @@ export default function MCPDocsPage() {
         </div>
 
         {/* Footer */}
-        <div style={{ marginTop: 40, paddingTop: 24, borderTop: "1px solid #1a1a2e", textAlign: "center" }}>
-          <p style={{ fontSize: 10, color: "#334155" }}>
+        <div style={{ marginTop: 40, paddingTop: 24, borderTop: "1px solid var(--n-200)", textAlign: "center" }}>
+          <p style={{ fontSize: 10, color: "var(--n-700)" }}>
             Claria MCP · Protocol version 2024-11-05 ·{" "}
-            <a href="https://modelcontextprotocol.io" style={{ color: "#475569" }}>modelcontextprotocol.io</a>
+            <a href="https://modelcontextprotocol.io" style={{ color: "var(--n-600)" }}>modelcontextprotocol.io</a>
           </p>
         </div>
       </div>

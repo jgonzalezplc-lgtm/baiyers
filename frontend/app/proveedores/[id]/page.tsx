@@ -38,18 +38,18 @@ interface Proveedor {
 }
 
 const CATEGORIAS: Record<string, { label: string; color: string }> = {
-  preferido:      { label: "Preferido",    color: "#f59e0b" },
-  confiable:      { label: "Confiable",    color: "#34d399" },
-  con_reparos:    { label: "Con reparos",  color: "#94a3b8" },
-  problematico:   { label: "Problematico", color: "#f87171" },
-  bloqueado_auto: { label: "Bloqueado",    color: "#475569" },
+  preferido:      { label: "Preferido",    color: "var(--warning)" },
+  confiable:      { label: "Confiable",    color: "var(--success)" },
+  con_reparos:    { label: "Con reparos",  color: "var(--n-500)" },
+  problematico:   { label: "Problematico", color: "var(--danger)" },
+  bloqueado_auto: { label: "Bloqueado",    color: "var(--n-600)" },
 };
 
 function Estrellas({ n }: { n: number }) {
   return (
     <span>
       {[1, 2, 3, 4, 5].map(i => (
-        <span key={i} style={{ color: i <= n ? "#f59e0b" : "#334155", fontSize: 14 }}>★</span>
+        <span key={i} style={{ color: i <= n ? "var(--warning)" : "var(--n-700)", fontSize: 14 }}>★</span>
       ))}
     </span>
   );
@@ -92,16 +92,16 @@ export default function ProveedorHistorialPage() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: "100vh", background: "#060610", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ fontSize: 11, color: "#475569" }}>Cargando...</div>
+      <div style={{ minHeight: "100vh", background: "var(--canvas)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ fontSize: 11, color: "var(--n-600)" }}>Cargando...</div>
       </div>
     );
   }
 
   if (error || !proveedor) {
     return (
-      <div style={{ minHeight: "100vh", background: "#060610", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-        <div style={{ fontSize: 13, color: "#f87171" }}>{error || "Proveedor no encontrado"}</div>
+      <div style={{ minHeight: "100vh", background: "var(--canvas)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+        <div style={{ fontSize: 13, color: "var(--danger)" }}>{error || "Proveedor no encontrado"}</div>
       </div>
     );
   }
@@ -109,20 +109,20 @@ export default function ProveedorHistorialPage() {
   const cat = CATEGORIAS[proveedor.bloqueado ? "bloqueado_auto" : proveedor.categoria_score] ?? CATEGORIAS.con_reparos;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#060610", padding: "24px 20px" }}>
+    <div style={{ minHeight: "100vh", background: "var(--canvas)", padding: "24px 20px" }}>
       <div style={{ maxWidth: 800, margin: "0 auto" }}>
 
         <div style={{ marginBottom: 24 }}>
-          <Link href="/proveedores" style={{ fontSize: 10, color: "#475569", textDecoration: "none" }}>← Proveedores</Link>
+          <Link href="/proveedores" style={{ fontSize: 10, color: "var(--n-600)", textDecoration: "none" }}>← Proveedores</Link>
         </div>
 
         {/* Header proveedor */}
-        <div style={{ background: "#0a0a18", border: "1px solid #1a1a2e", borderRadius: 12, padding: "20px 24px", marginBottom: 20 }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: 12, padding: "20px 24px", marginBottom: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
-              <div style={{ fontSize: 10, color: "#6366f1", letterSpacing: "0.15em", marginBottom: 4 }}>Supplier Intelligence</div>
-              <h1 style={{ fontSize: 18, fontWeight: 800, color: "#f1f5f9", margin: "0 0 4px" }}>{proveedor.nombre}</h1>
-              {proveedor.email && <div style={{ fontSize: 10, color: "#475569" }}>{proveedor.email}</div>}
+              <div style={{ fontSize: 10, color: "var(--brand)", letterSpacing: "0.15em", marginBottom: 4 }}>Supplier Intelligence</div>
+              <h1 style={{ fontSize: 18, fontWeight: 800, color: "var(--n-900)", margin: "0 0 4px" }}>{proveedor.nombre}</h1>
+              {proveedor.email && <div style={{ fontSize: 10, color: "var(--n-600)" }}>{proveedor.email}</div>}
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 32, fontWeight: 800, color: cat.color }}>{proveedor.score}</div>
@@ -138,8 +138,8 @@ export default function ProveedorHistorialPage() {
               { label: "OCs confirmadas", val: proveedor.total_oc_confirmadas || 0 },
             ].map(m => (
               <div key={m.label}>
-                <div style={{ fontSize: 9, color: "#334155", letterSpacing: "0.08em" }}>{m.label}</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: "#94a3b8" }}>{m.val}</div>
+                <div style={{ fontSize: 9, color: "var(--n-700)", letterSpacing: "0.08em" }}>{m.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "var(--n-500)" }}>{m.val}</div>
               </div>
             ))}
           </div>
@@ -147,27 +147,27 @@ export default function ProveedorHistorialPage() {
 
         {/* Ordenes de Compra */}
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 10, fontWeight: 700 }}>
+          <div style={{ fontSize: 11, color: "var(--n-600)", letterSpacing: "0.1em", marginBottom: 10, fontWeight: 700 }}>
             Ordenes de Compra ({ordenes.length})
           </div>
           {ordenes.length === 0 ? (
-            <div style={{ fontSize: 11, color: "#334155", padding: "16px 0" }}>Sin ordenes de compra.</div>
+            <div style={{ fontSize: 11, color: "var(--n-700)", padding: "16px 0" }}>Sin ordenes de compra.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {ordenes.map(oc => (
-                <div key={oc.numero_oc} style={{ background: "#0a0a18", border: "1px solid #1a1a2e", borderRadius: 8, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div key={oc.numero_oc} style={{ background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: 8, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#f1f5f9" }}>{oc.numero_oc}</div>
-                    <div style={{ fontSize: 10, color: "#475569", marginTop: 2 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--n-900)" }}>{oc.numero_oc}</div>
+                    <div style={{ fontSize: 10, color: "var(--n-600)", marginTop: 2 }}>
                       {new Date(oc.created_at).toLocaleDateString("es-CL")}
                       {oc.confirmada_at && ` · Confirmada ${new Date(oc.confirmada_at).toLocaleDateString("es-CL")}`}
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--n-500)" }}>
                       {oc.moneda} {Number(oc.precio_total).toLocaleString("es-CL")}
                     </div>
-                    <div style={{ fontSize: 10, marginTop: 2, color: oc.estado === "confirmada" ? "#34d399" : oc.estado === "enviada" ? "#6366f1" : "#475569", fontWeight: 600 }}>
+                    <div style={{ fontSize: 10, marginTop: 2, color: oc.estado === "confirmada" ? "var(--success)" : oc.estado === "enviada" ? "var(--brand)" : "var(--n-600)", fontWeight: 600 }}>
                       {oc.estado}
                     </div>
                   </div>
@@ -179,33 +179,33 @@ export default function ProveedorHistorialPage() {
 
         {/* Ratings */}
         <div>
-          <div style={{ fontSize: 11, color: "#475569", letterSpacing: "0.1em", marginBottom: 10, fontWeight: 700 }}>
+          <div style={{ fontSize: 11, color: "var(--n-600)", letterSpacing: "0.1em", marginBottom: 10, fontWeight: 700 }}>
             Calificaciones ({ratings.length})
           </div>
           {ratings.length === 0 ? (
-            <div style={{ fontSize: 11, color: "#334155", padding: "16px 0" }}>Sin calificaciones aun.</div>
+            <div style={{ fontSize: 11, color: "var(--n-700)", padding: "16px 0" }}>Sin calificaciones aun.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {ratings.map(r => (
-                <div key={r.id} style={{ background: "#0a0a18", border: "1px solid #1a1a2e", borderRadius: 8, padding: "14px 16px" }}>
+                <div key={r.id} style={{ background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: 8, padding: "14px 16px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                     <Estrellas n={r.estrellas} />
-                    <span style={{ fontSize: 10, color: "#334155" }}>{new Date(r.created_at).toLocaleDateString("es-CL")}</span>
+                    <span style={{ fontSize: 10, color: "var(--n-700)" }}>{new Date(r.created_at).toLocaleDateString("es-CL")}</span>
                   </div>
                   <div style={{ display: "flex", gap: 12, marginBottom: r.comentario ? 8 : 0 }}>
                     {r.precio_cumplido !== null && (
-                      <span style={{ fontSize: 10, color: r.precio_cumplido ? "#34d399" : "#f87171" }}>
+                      <span style={{ fontSize: 10, color: r.precio_cumplido ? "var(--success)" : "var(--danger)" }}>
                         Precio: {r.precio_cumplido ? "Si" : "No"}
                       </span>
                     )}
                     {r.plazo_cumplido !== null && (
-                      <span style={{ fontSize: 10, color: r.plazo_cumplido ? "#34d399" : "#f87171" }}>
+                      <span style={{ fontSize: 10, color: r.plazo_cumplido ? "var(--success)" : "var(--danger)" }}>
                         Plazo: {r.plazo_cumplido ? "Si" : "No"}
                       </span>
                     )}
                   </div>
                   {r.comentario && (
-                    <div style={{ fontSize: 11, color: "#94a3b8", fontStyle: "italic" }}>"{r.comentario}"</div>
+                    <div style={{ fontSize: 11, color: "var(--n-500)", fontStyle: "italic" }}>"{r.comentario}"</div>
                   )}
                 </div>
               ))}
