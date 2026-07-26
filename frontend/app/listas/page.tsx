@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import { ListChecks } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  PageHeader, Table, TableHead, TableRow, EmptyState, Spinner, BtnPrimary, fmtCLP,
+  PageHeader, Table, TableHead, TableRow, EmptyState, Spinner, BtnPrimary, Badge, fmtCLP,
 } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-const COLS = "1fr 90px 120px 120px 130px";
+const COLS = "1fr 80px 120px 120px 140px 110px";
 
 interface ListaResumen {
   id: string;
@@ -20,6 +20,15 @@ interface ListaResumen {
   n_items: number;
   n_comparados: number;
   n_definitivos: number;
+  aprobacion_estado: "pendiente" | "aprobado" | "rechazado" | null;
+}
+
+/** Estado de autorización, siempre visible como badge (nunca texto plano). */
+function BadgeAprobacion({ estado }: { estado: ListaResumen["aprobacion_estado"] }) {
+  if (estado === "aprobado") return <Badge status="aprobado">Autorizado</Badge>;
+  if (estado === "rechazado") return <Badge status="rechazado">Rechazada</Badge>;
+  if (estado === "pendiente") return <Badge status="pendiente">Esperando</Badge>;
+  return <Badge status="borrador">Sin solicitar</Badge>;
 }
 
 export default function ListasPage() {
@@ -42,8 +51,8 @@ export default function ListasPage() {
   return (
     <>
       <PageHeader
-        title="Listas de cotización"
-        subtitle="Varios ítems cotizados en paralelo."
+        title="Cotizaciones"
+        subtitle="Cada compra, de 1 o varios ítems, con su estado de autorización."
         actions={<BtnPrimary onClick={() => router.push("/cotizar")}>Nueva cotización</BtnPrimary>}
       />
 
@@ -53,18 +62,19 @@ export default function ListasPage() {
         <Table>
           <EmptyState
             icon={ListChecks}
-            title="Aún no tienes listas"
-            description={'Escribe varios ítems separados por ";" en Nueva cotización, por ejemplo: martillo; taladro; madera.'}
-            action={<Link href="/cotizar" className="btn-swiss-primary" style={{ textDecoration: "none" }}>Crear mi primera lista</Link>}
+            title="Aún no tienes cotizaciones"
+            description="Describe lo que necesitas comprar, sea un ítem o un proyecto completo con varios."
+            action={<Link href="/cotizar" className="btn-swiss-primary" style={{ textDecoration: "none" }}>Crear mi primera cotización</Link>}
           />
         </Table>
       ) : (
         <Table>
           <TableHead cols={COLS}>
-            <div>Lista</div>
+            <div>Cotización</div>
             <div>Ítems</div>
             <div>Comparados</div>
             <div>Definitivos</div>
+            <div>Autorización</div>
             <div style={{ textAlign: "right" }}>Total</div>
           </TableHead>
           {listas.map((l, i) => (
@@ -90,6 +100,7 @@ export default function ListasPage() {
               <div style={{ color: l.n_definitivos === l.n_items ? "var(--success)" : "var(--n-600)", fontWeight: l.n_definitivos === l.n_items ? 600 : 400 }}>
                 {l.n_definitivos}/{l.n_items}
               </div>
+              <div><BadgeAprobacion estado={l.aprobacion_estado} /></div>
               <div style={{
                 fontWeight: 600, color: "var(--n-900)", textAlign: "right",
                 fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums",

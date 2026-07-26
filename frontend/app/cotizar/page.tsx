@@ -218,11 +218,32 @@ export default function CotizarPage() {
       })
       .select("id")
       .single();
-    setGuardando(false);
     if (dbError || !cotizacion) {
+      setGuardando(false);
       setError("Error guardando en base de datos: " + (dbError?.message ?? "sin datos"));
       return;
     }
+
+    // Un solo ítem es, igual que varios, una "lista de cotización" (de 1 ítem):
+    // así todo el flujo — comparador, definitivo, aprobación — es el mismo sin
+    // importar cuántos ítems tenga la compra.
+    try {
+      const resLista = await fetch(`${API_URL}/api/listas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          nombre: nombreLista || resultado.nombre_tecnico,
+          items: [{ cotizacion_id: cotizacion.id, nombre: resultado.nombre_tecnico, cantidad: 1 }],
+        }),
+      });
+      if (resLista.ok) {
+        const lista = await resLista.json();
+        extra.set("lista", lista.id);
+      }
+    } catch { /* si falla, sigue como cotización suelta (se envuelve al abrirla) */ }
+
+    setGuardando(false);
     const qs = extra.toString();
     router.push(`/cotizar/${cotizacion.id}/resultados${qs ? `?${qs}` : ""}`);
   };

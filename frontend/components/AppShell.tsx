@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, PlusCircle, FileText, ListChecks, Building2, BarChart3,
+  LayoutDashboard, PlusCircle, ListChecks, Building2, BarChart3,
   ScrollText, Receipt, FolderKanban, CalendarDays, Repeat, FileBarChart,
   MessageSquare, Plug, Code2, Settings, LogOut, Menu, X,
   type LucideIcon,
@@ -17,8 +17,7 @@ const NAV: { section: string; links: NavLink[] }[] = [
     links: [
       { href: "/dashboard", label: "Inicio", icon: LayoutDashboard },
       { href: "/cotizar", label: "Nueva cotización", icon: PlusCircle },
-      { href: "/cotizaciones", label: "Cotizaciones", icon: FileText },
-      { href: "/listas", label: "Listas de cotización", icon: ListChecks },
+      { href: "/listas", label: "Cotizaciones", icon: ListChecks },
     ],
   },
   {
@@ -49,7 +48,7 @@ const BREADCRUMB: Record<string, string> = {
   "/dashboard": "Inicio",
   "/cotizar": "Nueva cotización",
   "/cotizaciones": "Cotizaciones",
-  "/listas": "Listas de cotización",
+  "/listas": "Cotizaciones",
   "/proveedores": "Proveedores",
   "/estadisticas": "Estadísticas",
   "/oc": "Órdenes de compra",

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { ArrowLeft, Check, Send, Wand2 } from "lucide-react";
@@ -75,7 +75,8 @@ const fmtPrecio = (n: number, m: string) =>
   m === "CLP" ? fmtCLP(n) : `${n.toLocaleString("en-US", { minimumFractionDigits: 2 })} ${m}`;
 
 export default function ListaDetallePage() {
-  const { id } = useParams<{ id: string }>();
+  const { id: idUrl } = useParams<{ id: string }>();
+  const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [lista, setLista] = useState<DetalleLista | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,6 +89,10 @@ export default function ListaDetallePage() {
   const [mostrarAprobacion, setMostrarAprobacion] = useState(false);
   const [userMeta, setUserMeta] = useState<Record<string, string>>({});
 
+  // Id real de la lista (una vez cargada) — las cotizaciones sueltas se
+  // envuelven al vuelo con un id nuevo distinto al de la URL original.
+  const id = lista?.id ?? idUrl;
+
   const aCLP = useCallback((valor: number, moneda: string | null | undefined): number => {
     const m = moneda || "CLP";
     if (m === "CLP") return valor;
@@ -96,15 +101,18 @@ export default function ListaDetallePage() {
 
   const cargar = useCallback(async (uid: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/listas/${id}?user_id=${uid}`);
+      const res = await fetch(`${API_URL}/api/listas/${idUrl}?user_id=${uid}`);
       if (res.ok) {
         const data = await res.json();
         setLista(data);
         if (data.justificaciones) setJustificaciones(data.justificaciones);
+        // Cotizaciones sueltas se envuelven al vuelo con un id nuevo: actualiza
+        // la URL al id real de la lista para que las siguientes acciones apunten ahí.
+        if (data.id && data.id !== idUrl) router.replace(`/listas/${data.id}`);
       }
     } catch { /* silent */ }
     setLoading(false);
-  }, [id]);
+  }, [idUrl, router]);
 
   useEffect(() => {
     fetch("https://open.er-api.com/v6/latest/USD")
@@ -288,7 +296,7 @@ export default function ListaDetallePage() {
           display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
           fontSize: 13, color: "var(--n-500)", textDecoration: "none",
         }}>
-          <ArrowLeft size={15} strokeWidth={1.75} /> Listas de cotización
+          <ArrowLeft size={15} strokeWidth={1.75} /> Cotizaciones
         </Link>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
           <div>

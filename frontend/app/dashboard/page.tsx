@@ -167,7 +167,7 @@ export default async function DashboardPage({
           <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--n-900)", margin: 0 }}>
             Cotizaciones recientes
           </h2>
-          <a href="/cotizaciones" style={{ fontSize: 13.5, fontWeight: 500, color: "var(--brand)", textDecoration: "none" }}>
+          <a href="/listas" style={{ fontSize: 13.5, fontWeight: 500, color: "var(--brand)", textDecoration: "none" }}>
             Ver todas →
           </a>
         </div>
@@ -204,7 +204,7 @@ export default async function DashboardPage({
               const tieneEnviados = c.n_enviados > 0;
 
               return (
-                <Link key={c.id} href={`/cotizaciones/${c.id}`}
+                <Link key={c.id} href={`/listas/${c.id}`}
                   style={{
                     display: "grid",
                     gridTemplateColumns: "72px 1fr 110px 90px 110px 110px 100px 76px",

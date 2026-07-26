@@ -98,14 +98,23 @@ async def crear_lista(req: CrearListaRequest):
 
 @router.get("")
 async def listar_listas(user_id: str):
+    """Todas las cotizaciones del usuario, unificadas: cada una es una "lista"
+    de 1 o más ítems. Las cotizaciones sueltas (creadas antes de unificar el
+    flujo, o vía integraciones externas) se muestran como listas de 1 ítem
+    hasta que el usuario las abre, momento en que se envuelven de verdad
+    (ver `_resolver_o_envolver`)."""
     from app.services.supabase import get_supabase
     sb = get_supabase()
+
     res = sb.table("proyectos").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
     listas = []
+    cotizacion_ids_en_listas: set[str] = set()
     for p in res.data or []:
         data = _parse_lista(p)
         if data:
             n_items = len(data.get("items", []))
+            for it in data.get("items", []):
+                cotizacion_ids_en_listas.add(it["cotizacion_id"])
             listas.append({
                 "id": p["id"],
                 "nombre": p["nombre"],
@@ -114,8 +123,69 @@ async def listar_listas(user_id: str):
                 "n_items": n_items,
                 "n_comparados": sum(1 for it in data.get("items", []) if it.get("comparado")),
                 "n_definitivos": len(data.get("definitivos", {})),
+                "aprobacion_estado": (data.get("aprobacion") or {}).get("estado"),
+                "es_cotizacion_simple": False,
             })
+
+    # Cotizaciones sueltas (no envueltas todavía en ninguna lista)
+    try:
+        cots = sb.table("cotizaciones").select(
+            "id, nombre_identificado, estado, created_at"
+        ).eq("user_id", user_id).order("created_at", desc=True).execute()
+    except Exception:
+        cots = None
+    for c in (cots.data or []) if cots else []:
+        if c["id"] in cotizacion_ids_en_listas:
+            continue
+        listas.append({
+            "id": c["id"],
+            "nombre": c.get("nombre_identificado") or "Ítem sin nombre",
+            "created_at": c.get("created_at"),
+            "monto_total": 0,
+            "n_items": 1,
+            "n_comparados": 0,
+            "n_definitivos": 0,
+            "aprobacion_estado": None,
+            "es_cotizacion_simple": True,
+        })
+
+    listas.sort(key=lambda l: l.get("created_at") or "", reverse=True)
     return listas
+
+
+def _envolver_cotizacion_suelta(sb, cotizacion_id: str, user_id: str) -> Optional[dict]:
+    """Si `cotizacion_id` es una cotización suelta (no una lista), la envuelve
+    en una lista de 1 ítem (fila nueva en `proyectos`) y devuelve esa fila.
+    Devuelve None si no existe una cotización con ese id para el usuario."""
+    cot = sb.table("cotizaciones").select("id, nombre_identificado").eq("id", cotizacion_id).eq("user_id", user_id).limit(1).execute()
+    fila = (cot.data or [None])[0]
+    if not fila:
+        return None
+
+    data = {
+        "tipo": MARCA_LISTA,
+        "items": [{"cotizacion_id": fila["id"], "nombre": fila.get("nombre_identificado") or "Ítem", "cantidad": 1, "comparado": False}],
+        "definitivos": {},
+    }
+    row = {
+        "user_id": user_id,
+        "nombre": fila.get("nombre_identificado") or "Cotización",
+        "descripcion": json.dumps(data, ensure_ascii=False),
+        "estado": "borrador",
+        "monto_total": 0,
+    }
+    ins = sb.table("proyectos").insert(row).execute()
+    return ins.data[0]
+
+
+def _resolver_o_envolver(sb, lista_id: str, user_id: str) -> Optional[dict]:
+    """Busca `lista_id` como proyecto (lista real). Si no existe, prueba si es
+    una cotización suelta y la envuelve automáticamente en una lista nueva."""
+    proy = sb.table("proyectos").select("*").eq("id", lista_id).eq("user_id", user_id).limit(1).execute()
+    fila = (proy.data or [None])[0]
+    if fila and _parse_lista(fila):
+        return fila
+    return _envolver_cotizacion_suelta(sb, lista_id, user_id)
 
 
 def _comparador_de(sb, cotizacion_id: str) -> list[dict]:
@@ -159,10 +229,12 @@ async def detalle_lista(lista_id: str, user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    proy = sb.table("proyectos").select("*").eq("id", lista_id).eq("user_id", user_id).single().execute()
-    if not proy.data:
+    # Si lista_id es en realidad una cotización suelta, se envuelve al vuelo:
+    # así toda cotización (1 ítem o N) pasa por la misma pantalla de detalle.
+    proy_data = _resolver_o_envolver(sb, lista_id, user_id)
+    if not proy_data:
         raise HTTPException(status_code=404, detail="Lista no encontrada")
-    data = _parse_lista(proy.data)
+    data = _parse_lista(proy_data)
     if not data:
         raise HTTPException(status_code=404, detail="El proyecto no es una lista de cotización")
 
@@ -174,10 +246,10 @@ async def detalle_lista(lista_id: str, user_id: str):
 
     definitivos = data.get("definitivos", {})
     result = {
-        "id": proy.data["id"],
-        "nombre": proy.data["nombre"],
-        "created_at": proy.data.get("created_at"),
-        "monto_total": proy.data.get("monto_total") or 0,
+        "id": proy_data["id"],
+        "nombre": proy_data["nombre"],
+        "created_at": proy_data.get("created_at"),
+        "monto_total": proy_data.get("monto_total") or 0,
         "items": [
             {
                 **it,

@@ -201,7 +201,7 @@ export default function ResultadosPage() {
 
   useEffect(() => {
     // Precarga la vista comparador para que "Comparar (X)" navegue al instante
-    if (id !== "demo") router.prefetch(`/cotizaciones/${id}`);
+    if (id !== "demo") router.prefetch(`/listas/${id}`);
     if (listaId) router.prefetch(`/listas/${listaId}`);
     createClient().auth.getUser().then(({ data }) => {
       setUserId(data.user?.id ?? null);
@@ -534,9 +534,11 @@ export default function ResultadosPage() {
         return;
       }
 
-      // Sin lista: el comparador lee los flags, esperar antes de navegar
+      // Sin lista (cotización suelta, ej. enlaces antiguos): el comparador lee
+      // los flags, esperar antes de navegar. /listas/{id} envuelve la
+      // cotización en una lista de 1 ítem si todavía no tenía una.
       await pComparador;
-      router.push(`/cotizaciones/${id}`);
+      router.push(`/listas/${id}`);
     } catch {
       setToast("No se pudo guardar la selección");
       setTimeout(() => setToast(""), 3000);
