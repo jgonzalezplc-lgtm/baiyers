@@ -264,6 +264,8 @@ async def detalle_lista(lista_id: str, user_id: str):
         result["aprobacion"] = data["aprobacion"]
     if data.get("justificaciones"):
         result["justificaciones"] = data["justificaciones"]
+    if data.get("compras"):
+        result["compras"] = data["compras"]
     return result
 
 
@@ -484,6 +486,203 @@ async def reenviar_aprobacion(lista_id: str, req: ReenviarAprobacionRequest):
         _guardar_lista(sb, lista_id, data)
 
     return {"success": True}
+
+
+# ─── Compra: OC enviada o compra online ─────────────────────────────────────
+# Cuando la lista está autorizada, cada ítem puede:
+#   - Enviarse por OC (definitivo tiene email de proveedor)
+#   - Comprarse online (solo hay link, no email); se chequea a mano o vía boleta
+# El estado por ítem vive en data["compras"][cotizacion_id].
+
+class CompraRequest(BaseModel):
+    user_id: str
+    cotizacion_id: str
+    estado: str  # "enviada_oc" | "comprado" | "pendiente"
+    oc_id: Optional[str] = None
+    numero_oc: Optional[str] = None
+    precio_real: Optional[float] = None  # precio efectivamente pagado (CLP)
+    boleta_url: Optional[str] = None
+    notas: Optional[str] = None
+
+
+@router.post("/{lista_id}/compra")
+async def actualizar_compra(lista_id: str, req: CompraRequest):
+    """Registra el avance de la compra de un ítem: OC enviada, comprado
+    online, o desmarcar (volver a pendiente)."""
+    from datetime import datetime, timezone
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+
+    if req.estado not in ("enviada_oc", "comprado", "pendiente"):
+        raise HTTPException(status_code=400, detail="estado inválido")
+
+    async with _lock_de(lista_id):
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).eq("user_id", req.user_id).single().execute()
+        if not proy.data:
+            raise HTTPException(status_code=404, detail="Lista no encontrada")
+        data = _parse_lista(proy.data)
+        if not data:
+            raise HTTPException(status_code=404, detail="No es una lista de cotización")
+
+        compras = data.setdefault("compras", {})
+        if req.estado == "pendiente":
+            compras.pop(req.cotizacion_id, None)
+        else:
+            entry = compras.get(req.cotizacion_id, {})
+            entry["estado"] = req.estado
+            if req.oc_id is not None: entry["oc_id"] = req.oc_id
+            if req.numero_oc is not None: entry["numero_oc"] = req.numero_oc
+            if req.precio_real is not None: entry["precio_real"] = req.precio_real
+            if req.boleta_url is not None: entry["boleta_url"] = req.boleta_url
+            if req.notas is not None: entry["notas"] = req.notas
+            entry[f"{req.estado}_at"] = datetime.now(timezone.utc).isoformat()
+            compras[req.cotizacion_id] = entry
+
+        _guardar_lista(sb, lista_id, data)
+        return {"success": True, "compras": compras}
+
+
+def _normalizar(s: str) -> str:
+    """Minúsculas sin tildes ni puntuación, para comparar nombres de ítems."""
+    import re
+    import unicodedata
+    s = unicodedata.normalize("NFD", s or "").encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+
+
+def _matchear_item(nombre_ocr: str, items_lista: list[dict]) -> Optional[str]:
+    """Busca el ítem de la lista que mejor calce con el nombre leído en la
+    boleta (heurística simple: solapamiento de tokens ≥ 2 o subcadena)."""
+    n_ocr = _normalizar(nombre_ocr)
+    if not n_ocr:
+        return None
+    toks_ocr = set(n_ocr.split())
+    mejor_id, mejor_score = None, 0
+    for it in items_lista:
+        n_it = _normalizar(it.get("nombre") or "")
+        if not n_it:
+            continue
+        toks_it = set(n_it.split())
+        overlap = len(toks_ocr & toks_it)
+        # Subcadena directa cuenta como buen match
+        if n_ocr in n_it or n_it in n_ocr:
+            overlap = max(overlap, 2)
+        if overlap > mejor_score:
+            mejor_score, mejor_id = overlap, it["cotizacion_id"]
+    return mejor_id if mejor_score >= 2 else None
+
+
+class BoletaScanRequest(BaseModel):
+    user_id: str
+    imagen_base64: str
+    imagen_mime: str = "image/jpeg"
+    auto_marcar: bool = True  # marcar directo los ítems que la IA reconoció
+
+
+@router.post("/{lista_id}/boleta-scan")
+async def escanear_boleta(lista_id: str, req: BoletaScanRequest):
+    """Recibe una foto de boleta/factura, la parsea con Gemini vision y (si
+    `auto_marcar`) marca los ítems reconocidos como comprados con su precio
+    real. Guarda la boleta en Supabase Storage (bucket `boletas`)."""
+    import base64
+    import json as _json
+    from datetime import datetime, timezone
+    from app.config import settings
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+
+    if not settings.gemini_api_key:
+        raise HTTPException(status_code=500, detail="Gemini no configurado")
+
+    # 1. Cargar la lista y armar el contexto de ítems para el prompt
+    async with _lock_de(lista_id):
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).eq("user_id", req.user_id).single().execute()
+        if not proy.data:
+            raise HTTPException(status_code=404, detail="Lista no encontrada")
+        data = _parse_lista(proy.data)
+        if not data:
+            raise HTTPException(status_code=404, detail="No es una lista de cotización")
+
+        items_lista = data.get("items", [])
+        pendientes = [it for it in items_lista
+                      if (data.get("compras", {}).get(it["cotizacion_id"], {}).get("estado")) != "comprado"]
+        nombres_pendientes = [f"- {it['nombre']} (x{int(it.get('cantidad', 1))})" for it in pendientes]
+
+    # 2. Llamar a Gemini vision (fuera del lock, es lento)
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=settings.gemini_api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        prompt = (
+            "Lee esta boleta/factura chilena y extrae los ítems comprados. "
+            "Devuelve SOLO JSON con esta forma: "
+            '{"proveedor": "...", "fecha": "YYYY-MM-DD", "total": 0, '
+            '"items": [{"nombre": "...", "cantidad": 1, "precio_unitario": 0, "precio_total": 0}]}. '
+            "Precios en CLP sin puntos ni símbolos. Si la lista de compra esperada es útil, "
+            "trata de calzar los nombres:\n" + "\n".join(nombres_pendientes[:20])
+        )
+        img_bytes = base64.b64decode(req.imagen_base64)
+        resp = model.generate_content([
+            prompt,
+            {"mime_type": req.imagen_mime, "data": img_bytes},
+        ])
+        raw = (resp.text or "").strip()
+        # Gemini a veces devuelve ```json ... ```
+        if raw.startswith("```"):
+            raw = raw.strip("`").split("\n", 1)[-1].rsplit("```", 1)[0]
+        if raw.startswith("json"):
+            raw = raw[4:].lstrip()
+        parsed = _json.loads(raw)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"No se pudo leer la boleta: {e}")
+
+    items_ocr = parsed.get("items") or []
+
+    # 3. Subir la boleta a Storage
+    boleta_url = None
+    try:
+        ext = "jpg" if "jpeg" in req.imagen_mime or "jpg" in req.imagen_mime else "png"
+        fname = f"{req.user_id}/{lista_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}.{ext}"
+        sb.storage.from_("boletas").upload(fname, base64.b64decode(req.imagen_base64), {
+            "content-type": req.imagen_mime, "upsert": "true",
+        })
+        boleta_url = sb.storage.from_("boletas").get_public_url(fname)
+    except Exception as e:
+        print(f"[boleta-scan] no se pudo subir imagen: {e}")
+
+    # 4. Matchear con los ítems de la lista y marcar como comprados
+    matches: list[dict] = []
+    async with _lock_de(lista_id):
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).eq("user_id", req.user_id).single().execute()
+        data = _parse_lista(proy.data) or {}
+        compras = data.setdefault("compras", {})
+
+        for it_ocr in items_ocr:
+            cid = _matchear_item(it_ocr.get("nombre") or "", data.get("items", []))
+            precio = it_ocr.get("precio_total") or it_ocr.get("precio_unitario")
+            match = {"nombre_ocr": it_ocr.get("nombre"), "cantidad": it_ocr.get("cantidad"),
+                     "precio": precio, "cotizacion_id": cid}
+            matches.append(match)
+            if cid and req.auto_marcar:
+                entry = compras.get(cid, {})
+                entry["estado"] = "comprado"
+                if precio is not None: entry["precio_real"] = precio
+                if boleta_url: entry["boleta_url"] = boleta_url
+                entry["comprado_at"] = datetime.now(timezone.utc).isoformat()
+                entry["origen"] = "boleta"
+                compras[cid] = entry
+
+        if req.auto_marcar:
+            _guardar_lista(sb, lista_id, data)
+
+    return {
+        "success": True,
+        "boleta_url": boleta_url,
+        "proveedor": parsed.get("proveedor"),
+        "fecha": parsed.get("fecha"),
+        "total": parsed.get("total"),
+        "items_detectados": matches,
+    }
 
 
 @router.get("/{lista_id}/informe")

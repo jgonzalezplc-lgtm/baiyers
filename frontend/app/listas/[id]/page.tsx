@@ -1,13 +1,14 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { ArrowLeft, Check, Send, Wand2 } from "lucide-react";
+import { ArrowLeft, Check, Send, Wand2, Camera, ShoppingBag, Mail, ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, Badge, BtnPrimary, BtnSecondary, SummaryPanel, Input, Spinner } from "@/components/ui";
 
 const InformeLista = dynamic(() => import("@/components/InformeLista"), { ssr: false });
+const OCModal = dynamic(() => import("@/components/OCModal"), { ssr: false });
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -52,6 +53,18 @@ interface Aprobacion {
   decidido_at?: string;
 }
 
+export interface Compra {
+  estado: "enviada_oc" | "comprado" | "pendiente";
+  oc_id?: string;
+  numero_oc?: string;
+  precio_real?: number;
+  boleta_url?: string;
+  notas?: string;
+  origen?: string;
+  enviada_oc_at?: string;
+  comprado_at?: string;
+}
+
 export interface DetalleLista {
   id: string;
   nombre: string;
@@ -60,6 +73,7 @@ export interface DetalleLista {
   items: ItemLista[];
   aprobacion?: Aprobacion;
   justificaciones?: Record<string, string>;
+  compras?: Record<string, Compra>;
 }
 
 const FUENTE_LABEL: Record<string, string> = {
@@ -88,6 +102,17 @@ export default function ListaDetallePage() {
   const [solicitando, setSolicitando] = useState(false);
   const [mostrarAprobacion, setMostrarAprobacion] = useState(false);
   const [userMeta, setUserMeta] = useState<Record<string, string>>({});
+  const [plan, setPlan] = useState<string>("free");
+  // Item cuyo OC se está editando en el modal (solo ese ítem, no toda la lista)
+  const [ocItem, setOcItem] = useState<ItemLista | null>(null);
+  // Panel "Lista de compras" para ítems que se compran online (no por OC)
+  const [mostrarComprasOnline, setMostrarComprasOnline] = useState(false);
+  const [subiendoBoleta, setSubiendoBoleta] = useState(false);
+  const [resultadoBoleta, setResultadoBoleta] = useState<{
+    proveedor?: string; total?: number;
+    items_detectados: { nombre_ocr: string; cotizacion_id: string | null; precio: number | null }[];
+  } | null>(null);
+  const boletaInputRef = useRef<HTMLInputElement>(null);
 
   // Id real de la lista (una vez cargada) — las cotizaciones sueltas se
   // envuelven al vuelo con un id nuevo distinto al de la URL original.
@@ -126,6 +151,7 @@ export default function ListaDetallePage() {
       const m = data.user?.user_metadata ?? {};
       setUserMeta(m);
       if (m.autorizador_email) setAprobadorEmail(m.autorizador_email);
+      if (m.plan) setPlan(m.plan);
     });
   }, [cargar]);
 
@@ -272,6 +298,63 @@ export default function ListaDetallePage() {
     }
   };
 
+  // Marca la compra de un ítem: OC enviada (con id/número) o comprado a mano
+  const registrarCompra = async (
+    cotizacionId: string,
+    estado: "enviada_oc" | "comprado" | "pendiente",
+    extra: { oc_id?: string; numero_oc?: string; precio_real?: number } = {},
+  ) => {
+    if (!userId) return;
+    try {
+      await fetch(`${API_URL}/api/listas/${id}/compra`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, cotizacion_id: cotizacionId, estado, ...extra }),
+      });
+      await cargar(userId);
+    } catch { /* silent */ }
+  };
+
+  const subirBoleta = async (file: File) => {
+    if (!userId) return;
+    setSubiendoBoleta(true);
+    setResultadoBoleta(null);
+    try {
+      const base64 = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res((r.result as string).split(",")[1]);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+      const resp = await fetch(`${API_URL}/api/listas/${id}/boleta-scan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          imagen_base64: base64,
+          imagen_mime: file.type || "image/jpeg",
+          auto_marcar: true,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data?.detail || "Error al leer la boleta");
+      setResultadoBoleta({
+        proveedor: data.proveedor,
+        total: data.total,
+        items_detectados: data.items_detectados || [],
+      });
+      const n = (data.items_detectados || []).filter((m: { cotizacion_id: string | null }) => m.cotizacion_id).length;
+      setToast(n > 0 ? `Boleta procesada: ${n} ítem${n !== 1 ? "s" : ""} marcados como comprados` : "Boleta procesada, no se encontraron coincidencias");
+      setTimeout(() => setToast(""), 4000);
+      await cargar(userId);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Error al subir boleta");
+      setTimeout(() => setToast(""), 3500);
+    } finally {
+      setSubiendoBoleta(false);
+    }
+  };
+
   if (loading) return <Spinner />;
   if (!lista) return <Spinner label="Lista no encontrada." />;
 
@@ -366,7 +449,16 @@ export default function ListaDetallePage() {
       })()}
 
       {/* Ítems con sus comparados */}
-      {lista.items.map((it, idx) => (
+      {lista.items.map((it, idx) => {
+        // ¿La lista está autorizada y este ítem tiene definitivo elegido?
+        const autorizadaYConDef = lista.aprobacion?.estado === "aprobado" && !!it.definitivo;
+        const compra = lista.compras?.[it.cotizacion_id];
+        // Si el definitivo trae email (via contacto en comparados), OC por correo
+        const emailProveedor = it.comparados.find(c => c.resultado_id === it.definitivo?.resultado_id)?.contacto || null;
+        const puedeEnviarOC = autorizadaYConDef && !!emailProveedor && compra?.estado !== "comprado";
+        const compraOnline = autorizadaYConDef && !emailProveedor && compra?.estado !== "comprado";
+
+        return (
         <div key={it.cotizacion_id} style={{
           border: "1px solid var(--n-200)", background: "var(--surface)",
           borderRadius: "var(--r-lg)", marginBottom: 16, overflow: "hidden",
@@ -402,11 +494,58 @@ export default function ListaDetallePage() {
                     ` · ${it.cantidad} × ${fmtCLP(it.definitivo.precio_clp)}`}
                 </Badge>
               )}
+              {/* Estado de compra por ítem — visible solo si ya está en curso o comprado */}
+              {compra?.estado === "comprado" && (
+                <Badge status="cerrada">
+                  ✓ Comprado
+                  {compra.precio_real != null ? ` · ${fmtCLP(compra.precio_real)}` : ""}
+                </Badge>
+              )}
+              {compra?.estado === "enviada_oc" && (
+                <Badge status="en_curso">
+                  OC {compra.numero_oc || "enviada"}
+                </Badge>
+              )}
             </div>
-            <Link href={`/cotizar/${it.cotizacion_id}/resultados?lista=${lista.id}`}
-              style={{ fontSize: 13.5, fontWeight: 500, color: "var(--brand)", textDecoration: "none" }}>
-              {it.comparado ? "Cambiar selección →" : "Buscar proveedores →"}
-            </Link>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {/* Acciones de compra (solo si la lista está aprobada) */}
+              {puedeEnviarOC && (
+                <BtnPrimary size="sm" icon={Send} onClick={() => setOcItem(it)}>
+                  Enviar OC
+                </BtnPrimary>
+              )}
+              {compraOnline && (
+                <>
+                  {it.definitivo?.url && (
+                    <a href={it.definitivo.url} target="_blank" rel="noopener noreferrer"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6,
+                        fontSize: 13, fontWeight: 500, color: "var(--brand)", textDecoration: "none" }}>
+                      <ExternalLink size={14} strokeWidth={1.75} /> Ir a comprar
+                    </a>
+                  )}
+                  <BtnSecondary size="sm" icon={Check} onClick={() => registrarCompra(it.cotizacion_id, "comprado")}>
+                    Marcar comprado
+                  </BtnSecondary>
+                </>
+              )}
+              {compra?.estado && compra.estado !== "pendiente" && (
+                <button
+                  onClick={() => registrarCompra(it.cotizacion_id, "pendiente")}
+                  title="Deshacer estado de compra"
+                  style={{
+                    background: "transparent", border: "none", cursor: "pointer",
+                    color: "var(--n-500)", fontSize: 12.5, fontFamily: "var(--font-sans)",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Deshacer
+                </button>
+              )}
+              <Link href={`/cotizar/${it.cotizacion_id}/resultados?lista=${lista.id}`}
+                style={{ fontSize: 13.5, fontWeight: 500, color: "var(--brand)", textDecoration: "none" }}>
+                {it.comparado ? "Cambiar selección →" : "Buscar proveedores →"}
+              </Link>
+            </div>
           </div>
 
           {it.comparados.length === 0 ? (
@@ -492,7 +631,8 @@ export default function ListaDetallePage() {
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
 
       {/* Ruta de compra final */}
       {definitivos.length > 0 && (
@@ -632,6 +772,186 @@ export default function ListaDetallePage() {
           </div>
         </Card>
       )}
+
+      {/* Modal OC — se abre por ítem: la OC contiene SOLO ese ítem con su cantidad */}
+      {ocItem && (() => {
+        const d = ocItem.definitivo!;
+        const c = ocItem.comparados.find(x => x.resultado_id === d.resultado_id);
+        const emailProv = c?.contacto || "";
+        // OCModal espera un "Resultado" del comparador; lo armamos desde el definitivo
+        const resultadoParaOC = {
+          titulo: ocItem.nombre,
+          proveedor: d.proveedor || "",
+          precio: d.precio,
+          moneda: d.moneda || "CLP",
+          url: d.url || "",
+          fuente: d.fuente || "",
+          pais: "CL",
+          proveedor_email: emailProv,
+        };
+        return (
+          <OCModal
+            resultado={resultadoParaOC}
+            nombreItem={ocItem.nombre}
+            cotizacionId={ocItem.cotizacion_id}
+            userId={userId ?? ""}
+            plan={plan}
+            cantidadInicial={ocItem.cantidad || 1}
+            onClose={() => setOcItem(null)}
+            onEnviada={(numeroOc: string) => {
+              registrarCompra(ocItem.cotizacion_id, "enviada_oc", { numero_oc: numeroOc });
+              setOcItem(null);
+              setToast(`OC ${numeroOc} enviada a ${d.proveedor}`);
+              setTimeout(() => setToast(""), 4000);
+            }}
+          />
+        );
+      })()}
+
+      {/* Panel "Lista de compras" (ítems que se compran online, sin OC por correo) */}
+      {lista.aprobacion?.estado === "aprobado" && (() => {
+        const itemsOnline = lista.items.filter(it => {
+          if (!it.definitivo) return false;
+          const c = it.comparados.find(x => x.resultado_id === it.definitivo?.resultado_id);
+          return !c?.contacto; // sin email = compra online
+        });
+        if (itemsOnline.length === 0) return null;
+        const pendientes = itemsOnline.filter(it => lista.compras?.[it.cotizacion_id]?.estado !== "comprado");
+        const totalPend = pendientes.reduce((s, it) => s + (it.definitivo!.precio_clp ?? 0) * (it.cantidad || 1), 0);
+
+        // mailto con la lista de compras para reenviarla al comprador
+        const cuerpoCorreo = itemsOnline.map(it => {
+          const total = it.definitivo!.precio_clp != null ? fmtCLP(it.definitivo!.precio_clp * (it.cantidad || 1)) : "—";
+          return `${it.cantidad} × ${it.nombre}\n  Proveedor: ${it.definitivo!.proveedor}\n  Total: ${total}\n  ${it.definitivo!.url || ""}`;
+        }).join("\n\n");
+        const mailto = `mailto:?subject=${encodeURIComponent(`Lista de compras · ${lista.nombre}`)}&body=${encodeURIComponent(cuerpoCorreo)}`;
+
+        return (
+          <Card style={{ marginTop: 24 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
+              <div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <ShoppingBag size={18} strokeWidth={1.75} style={{ color: "var(--brand)" }} />
+                  <h3 style={{ fontSize: 18, fontWeight: 600, color: "var(--n-900)", margin: 0 }}>Lista de compras</h3>
+                </div>
+                <div style={{ fontSize: 13.5, color: "var(--n-600)" }}>
+                  {pendientes.length} ítem{pendientes.length !== 1 ? "s" : ""} pendiente{pendientes.length !== 1 ? "s" : ""} de comprar en persona · Total {fmtCLP(totalPend)}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <a href={mailto} style={{ textDecoration: "none" }}>
+                  <BtnSecondary size="sm" icon={Mail}>Enviar por correo</BtnSecondary>
+                </a>
+                <BtnPrimary size="sm" icon={Camera} onClick={() => boletaInputRef.current?.click()} disabled={subiendoBoleta}>
+                  {subiendoBoleta ? "Leyendo boleta…" : "Foto de boleta"}
+                </BtnPrimary>
+                <input
+                  ref={boletaInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  style={{ display: "none" }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) subirBoleta(f); e.target.value = ""; }}
+                />
+              </div>
+            </div>
+
+            {/* Ítems del checklist */}
+            <div>
+              {itemsOnline.map((it, i) => {
+                const comprado = lista.compras?.[it.cotizacion_id]?.estado === "comprado";
+                const compra = lista.compras?.[it.cotizacion_id];
+                return (
+                  <div key={it.cotizacion_id} style={{
+                    display: "grid", gridTemplateColumns: "28px 1fr auto", gap: 12, alignItems: "center",
+                    padding: "12px 4px",
+                    borderBottom: i < itemsOnline.length - 1 ? "1px solid var(--n-100)" : "none",
+                    opacity: comprado ? 0.55 : 1,
+                  }}>
+                    <button
+                      onClick={() => registrarCompra(it.cotizacion_id, comprado ? "pendiente" : "comprado")}
+                      aria-label={comprado ? "Desmarcar" : "Marcar como comprado"}
+                      style={{
+                        width: 22, height: 22, borderRadius: 6,
+                        border: `1.5px solid ${comprado ? "var(--success)" : "var(--n-400)"}`,
+                        background: comprado ? "var(--success)" : "var(--surface)",
+                        color: "#fff", cursor: "pointer",
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        padding: 0, fontFamily: "inherit",
+                      }}
+                    >
+                      {comprado && <Check size={14} strokeWidth={2.5} />}
+                    </button>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 14, fontWeight: 500, color: "var(--n-900)",
+                        textDecoration: comprado ? "line-through" : "none",
+                      }}>
+                        {it.cantidad || 1} × {it.nombre}
+                      </div>
+                      <div style={{ fontSize: 12.5, color: "var(--n-500)", display: "flex", gap: 10, flexWrap: "wrap", marginTop: 2 }}>
+                        <span>{it.definitivo!.proveedor}</span>
+                        {it.definitivo!.url && (
+                          <a href={it.definitivo!.url} target="_blank" rel="noopener noreferrer"
+                            style={{ color: "var(--brand)", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                            <ExternalLink size={12} strokeWidth={1.75} /> Ver en tienda
+                          </a>
+                        )}
+                        {compra?.boleta_url && (
+                          <a href={compra.boleta_url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--brand)", textDecoration: "none" }}>
+                            Boleta
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--n-900)" }}>
+                        {compra?.precio_real != null
+                          ? fmtCLP(compra.precio_real)
+                          : it.definitivo!.precio_clp != null
+                            ? fmtCLP(it.definitivo!.precio_clp * (it.cantidad || 1))
+                            : "—"}
+                      </div>
+                      {compra?.precio_real != null && it.definitivo!.precio_clp != null && (
+                        <div style={{ fontSize: 11, color: "var(--n-500)" }}>
+                          cotizado {fmtCLP(it.definitivo!.precio_clp * (it.cantidad || 1))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Resumen del último escaneo de boleta */}
+            {resultadoBoleta && (
+              <SummaryPanel style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 13.5, color: "var(--n-700)", marginBottom: 6 }}>
+                  Boleta procesada
+                  {resultadoBoleta.proveedor ? ` · ${resultadoBoleta.proveedor}` : ""}
+                  {resultadoBoleta.total ? ` · Total ${fmtCLP(resultadoBoleta.total)}` : ""}
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--n-600)", display: "flex", flexDirection: "column", gap: 3 }}>
+                  {resultadoBoleta.items_detectados.map((m, i) => (
+                    <div key={i}>
+                      {m.cotizacion_id ? "✓" : "○"} {m.nombre_ocr}
+                      {m.precio != null ? ` · ${fmtCLP(m.precio)}` : ""}
+                      {!m.cotizacion_id && <span style={{ color: "var(--n-500)" }}> (no calzó con la lista)</span>}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setResultadoBoleta(null)}
+                  style={{ marginTop: 8, background: "none", border: "none", cursor: "pointer",
+                    color: "var(--n-500)", fontSize: 12.5, textDecoration: "underline" }}
+                >
+                  Cerrar
+                </button>
+              </SummaryPanel>
+            )}
+          </Card>
+        );
+      })()}
     </>
   );
 }

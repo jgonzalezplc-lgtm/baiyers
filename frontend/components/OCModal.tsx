@@ -10,6 +10,8 @@ interface Props {
   cotizacionId: string;
   userId: string;
   plan: string;
+  /** Cantidad pre-cargada — la OC se envía por ese número de unidades. */
+  cantidadInicial?: number;
   onClose: () => void;
   onEnviada: (numeroOc: string) => void;
 }
@@ -42,9 +44,9 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-export default function OCModal({ resultado, nombreItem, cotizacionId, userId, plan, onClose, onEnviada }: Props) {
+export default function OCModal({ resultado, nombreItem, cotizacionId, userId, plan, cantidadInicial, onClose, onEnviada }: Props) {
   const proveedorNombre = resultado.proveedor || resultado.titulo;
-  const [cantidad, setCantidad] = useState(1);
+  const [cantidad, setCantidad] = useState(cantidadInicial ?? 1);
   const [precioUnitario, setPrecioUnitario] = useState(resultado.precio ?? 0);
   const [moneda, setMoneda] = useState(resultado.moneda || "CLP");
   const [condicionesPago, setCondicionesPago] = useState("30 dias");
