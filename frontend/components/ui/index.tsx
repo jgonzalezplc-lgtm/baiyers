@@ -429,16 +429,19 @@ export function Highlight({ children, style }: { children: ReactNode; style?: CS
 // ═══ Empty state ════════════════════════════════════════════════════════════
 export function EmptyState({
   icon: Icon, title, description, action,
-}: { icon?: LucideIcon; title: string; description?: string; action?: ReactNode }) {
+}: { icon?: LucideIcon | ReactNode; title: string; description?: string; action?: ReactNode }) {
+  const iconEl = typeof Icon === "function"
+    ? <Icon size={26} strokeWidth={1.5} />
+    : Icon;
   return (
     <div style={{ padding: "56px 20px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-      {Icon && (
+      {iconEl && (
         <span style={{
           width: 56, height: 56, borderRadius: "var(--r-lg)",
           background: "var(--brand-50)", color: "var(--brand)",
           display: "inline-flex", alignItems: "center", justifyContent: "center",
         }}>
-          <Icon size={26} strokeWidth={1.5} />
+          {iconEl}
         </span>
       )}
       <div style={{ fontSize: 16, fontWeight: 600, color: "var(--n-900)" }}>{title}</div>

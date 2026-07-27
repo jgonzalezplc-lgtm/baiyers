@@ -214,7 +214,7 @@ export default async function DashboardPage({
 
           {cotizacionesRecientes.length === 0 ? (
             <EmptyState
-              icon={FileText}
+              icon={<FileText size={26} strokeWidth={1.5} />}
               title="Aún no hay cotizaciones"
               description="Describe lo que necesitas comprar y el sistema busca proveedores por ti."
               action={<a href="/cotizar" className="btn-swiss-primary" style={{ textDecoration: "none" }}>Crear mi primera cotización</a>}
