@@ -58,18 +58,32 @@ export default async function DashboardPage({
     fetch(`${API_URL}/api/gmail/sync-email?user_id=${user!.id}`, { method: "POST" }).catch(() => {});
   }
 
-  // Fetch real stats & recent quotes
+  // Fetch real stats & recent quotes — con timeout duro para que un backend
+  // lento nunca cuelgue el SSR (usuario quedaba viendo la página en blanco).
   let stats = { cotizaciones: 0, proveedores: 0, ocs: 0, totalOC: 0 };
   let cotizacionesRecientes: CotizacionReciente[] = [];
 
+  const fetchConTimeout = async (url: string, ms = 5000): Promise<Response | null> => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), ms);
+    try {
+      return await fetch(url, { cache: "no-store", signal: ctrl.signal });
+    } catch (e) {
+      console.warn(`[dashboard SSR] fetch falló: ${url}`, (e as Error).message);
+      return null;
+    } finally {
+      clearTimeout(t);
+    }
+  };
+
   try {
     const [statsRes, cotRes] = await Promise.all([
-      fetch(`${API_URL}/api/dashboard/stats?user_id=${user.id}`, { cache: "no-store" }).catch(() => null),
-      fetch(`${API_URL}/api/cotizaciones?user_id=${user.id}&limit=5`, { cache: "no-store" }).catch(() => null),
+      fetchConTimeout(`${API_URL}/api/dashboard/stats?user_id=${user.id}`),
+      fetchConTimeout(`${API_URL}/api/cotizaciones?user_id=${user.id}&limit=5`),
     ]);
     if (statsRes?.ok) stats = await statsRes.json();
     if (cotRes?.ok) cotizacionesRecientes = await cotRes.json();
-  } catch (_) {}
+  } catch (_) { /* silent */ }
 
   return (
     <div>
