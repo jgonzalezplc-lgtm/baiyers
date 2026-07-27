@@ -5,11 +5,14 @@ import { useParams, useSearchParams } from "next/navigation";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface ResumenItem {
+  cotizacion_id?: string;
   nombre: string;
   cantidad: number;
   proveedor: string;
   precio_clp: number | null;
   justificacion?: string;
+  url?: string | null;
+  alternativas?: { proveedor?: string | null; precio_clp?: number | null; moneda?: string; url?: string | null }[];
 }
 
 interface Solicitud {
@@ -42,6 +45,8 @@ export default function AuthorizePage() {
   const [enviando, setEnviando] = useState(false);
   const [comentario, setComentario] = useState("");
   const [mostrarRechazo, setMostrarRechazo] = useState(false);
+  const [decisionesItems, setDecisionesItems] = useState<Record<string, { estado: "aprobado" | "rechazado"; motivo?: string }>>({});
+  const [alternativasAbiertas, setAlternativasAbiertas] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetch(`${API_URL}/api/aprobaciones/token/${token}`)
@@ -49,7 +54,7 @@ export default function AuthorizePage() {
         if (!r.ok) throw new Error((await r.json()).detail ?? "Error");
         return r.json();
       })
-      .then(setSol)
+      .then((data) => { setSol(data); const previas = data.resumen?.decisiones_items || {}; setDecisionesItems(previas); })
       .catch((e) => setError(e.message));
   }, [token]);
 
@@ -59,7 +64,7 @@ export default function AuthorizePage() {
       const r = await fetch(`${API_URL}/api/aprobaciones/token/${token}/decidir`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision, comentario: decision === "rechazar" ? comentario : undefined }),
+        body: JSON.stringify({ decision, comentario: decision === "rechazar" ? comentario : undefined, item_decisions: decisionesItems }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail ?? "Error");
@@ -113,27 +118,32 @@ export default function AuthorizePage() {
             {esLista && items.length > 0 && (
               <div style={{ border: "1px solid var(--border-default)", marginBottom: 16 }}>
                 <div style={{
-                  display: "grid", gridTemplateColumns: "1.5fr 1fr 100px",
+                  display: "grid", gridTemplateColumns: "1.35fr 1fr 100px 120px",
                   padding: "8px 14px", borderBottom: "1px solid var(--border-subtle)", background: "var(--bg-base)",
                 }}>
                   <div className="label" style={{ fontWeight: 700, color: "var(--text-muted)" }}>Ítem</div>
                   <div className="label" style={{ fontWeight: 700, color: "var(--text-muted)" }}>Proveedor</div>
                   <div className="label" style={{ fontWeight: 700, color: "var(--text-muted)", textAlign: "right" }}>Precio</div>
+                  <div className="label" style={{ fontWeight: 700, color: "var(--text-muted)" }}>Decisión</div>
                 </div>
                 {items.map((it, i) => (
                   <div key={i}>
                     <div style={{
-                      display: "grid", gridTemplateColumns: "1.5fr 1fr 100px",
+                      display: "grid", gridTemplateColumns: "1.35fr 1fr 100px 120px",
                       padding: "10px 14px", alignItems: "center",
                       borderBottom: i < items.length - 1 || it.justificacion ? "1px solid var(--border-subtle)" : "none",
                     }}>
                       <div style={{ fontSize: 12, fontWeight: 700 }}>
-                        {it.nombre}
+                        {it.url ? <a href={it.url} target="_blank" rel="noreferrer" style={{ color: "inherit" }}>{it.nombre} ↗</a> : it.nombre}
                         <span className="label" style={{ color: "var(--text-muted)", fontWeight: 400, marginLeft: 4 }}>×{it.cantidad}</span>
                       </div>
                       <div style={{ fontSize: 12 }}>{it.proveedor}</div>
                       <div style={{ fontSize: 12, fontWeight: 700, textAlign: "right" }}>
                         {it.precio_clp != null ? fmtCLP(it.precio_clp * it.cantidad) : "—"}
+                      </div>
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                        <button onClick={() => setDecisionesItems(d => ({ ...d, [it.cotizacion_id || String(i)]: { estado: "aprobado" } }))} style={{ border: "1px solid var(--success)", background: decisionesItems[it.cotizacion_id || String(i)]?.estado === "aprobado" ? "var(--fill-success)" : "transparent", color: "var(--success)", cursor: "pointer", padding: "4px 6px", fontSize: 11 }}>Aceptar</button>
+                        <button onClick={() => setDecisionesItems(d => ({ ...d, [it.cotizacion_id || String(i)]: { estado: "rechazado", motivo: d[it.cotizacion_id || String(i)]?.motivo || "" } }))} style={{ border: "1px solid var(--border-accent)", background: decisionesItems[it.cotizacion_id || String(i)]?.estado === "rechazado" ? "var(--fill-error)" : "transparent", color: "var(--text-error)", cursor: "pointer", padding: "4px 6px", fontSize: 11 }}>Rechazar</button>
                       </div>
                     </div>
                     {it.justificacion && (
@@ -141,6 +151,15 @@ export default function AuthorizePage() {
                         {it.justificacion}
                       </div>
                     )}
+                    {(it.alternativas?.length || 0) > 0 && (
+                      <div style={{ padding: "0 14px 10px", borderBottom: i < items.length - 1 ? "1px solid var(--border-subtle)" : "none" }}>
+                        <button onClick={() => setAlternativasAbiertas(a => ({ ...a, [it.cotizacion_id || String(i)]: !a[it.cotizacion_id || String(i)] }))} style={{ border: 0, background: "none", padding: "5px 0", color: "var(--accent)", cursor: "pointer", fontSize: 11 }}>
+                          {alternativasAbiertas[it.cotizacion_id || String(i)] ? "Ocultar" : "Ver"} alternativas comparadas ({it.alternativas!.length})
+                        </button>
+                        {alternativasAbiertas[it.cotizacion_id || String(i)] && it.alternativas!.map((alt, ai) => <div key={ai} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11, padding: "4px 0" }}><span>{alt.url ? <a href={alt.url} target="_blank" rel="noreferrer">{alt.proveedor || "Proveedor"} ↗</a> : alt.proveedor || "Proveedor"}</span><span>{alt.precio_clp != null ? `${alt.moneda === "CLP" ? fmtCLP(alt.precio_clp) : `${alt.precio_clp} ${alt.moneda || ""}`}` : "—"}</span></div>)}
+                      </div>
+                    )}
+                    {decisionesItems[it.cotizacion_id || String(i)]?.estado === "rechazado" && <div style={{ padding: "0 14px 10px" }}><input value={decisionesItems[it.cotizacion_id || String(i)]?.motivo || ""} onChange={e => setDecisionesItems(d => ({ ...d, [it.cotizacion_id || String(i)]: { estado: "rechazado", motivo: e.target.value } }))} placeholder="Motivo del rechazo (opcional)" style={{ width: "100%", boxSizing: "border-box", padding: 7, fontSize: 11 }} /></div>}
                   </div>
                 ))}
                 {total > 0 && (

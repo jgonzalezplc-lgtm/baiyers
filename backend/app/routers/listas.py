@@ -418,11 +418,23 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest):
             d = definitivos.get(cid)
             if d:
                 resumen_items.append({
+                    "cotizacion_id": cid,
                     "nombre": it["nombre"],
                     "cantidad": it.get("cantidad", 1),
                     "proveedor": d.get("proveedor"),
                     "precio_clp": d.get("precio_clp"),
+                    "url": d.get("url"),
                     "justificacion": req.justificaciones.get(cid, ""),
+                    # Snapshot completo de las opciones consideradas. El
+                    # autorizador puede inspeccionarlas sin depender de que la
+                    # cotización cambie después del envío.
+                    "alternativas": [{
+                        "resultado_id": c.get("resultado_id"),
+                        "proveedor": c.get("proveedor"),
+                        "precio_clp": c.get("precio_cotizado") if c.get("precio_cotizado") is not None else c.get("precio"),
+                        "moneda": "CLP" if c.get("precio_cotizado") is not None else c.get("moneda", "CLP"),
+                        "url": c.get("url"),
+                    } for c in (it.get("comparados") or [])],
                 })
 
         monto_total = _monto_total(data)

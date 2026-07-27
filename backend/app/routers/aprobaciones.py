@@ -109,6 +109,9 @@ async def listar_solicitudes(user_id: str, estado: Optional[str] = None):
 class DecisionRequest(BaseModel):
     decision: str  # "aprobar" | "rechazar"
     comentario: Optional[str] = None
+    # Para listas, una decisión por ítem. Se guarda dentro del snapshot para no
+    # requerir una tabla nueva y para que el historial sea inmutable.
+    item_decisions: dict[str, dict] = {}
 
 
 @router.get("/token/{token}")
@@ -146,10 +149,19 @@ async def decidir(token: str, req: DecisionRequest):
         sb.table("approval_requests").update({"estado": "expirado"}).eq("id", row["id"]).execute()
         raise HTTPException(status_code=410, detail="El enlace de aprobación expiró")
 
-    nuevo = "aprobado" if req.decision == "aprobar" else "rechazado"
+    decisiones_items = req.item_decisions or {}
+    # Una lista puede aprobarse parcialmente. A nivel de lista se considera
+    # rechazada si al menos un ítem fue rechazado, para impedir su compra hasta
+    # que el solicitante ajuste la selección y la reenvíe.
+    hay_rechazados = any(d.get("estado") == "rechazado" for d in decisiones_items.values())
+    nuevo = "rechazado" if req.decision == "rechazar" or hay_rechazados else "aprobado"
     update_data: dict = {"estado": nuevo, "decidido_at": _now()}
     if req.comentario:
         update_data["comentario"] = req.comentario
+    if decisiones_items:
+        resumen = row.get("resumen") or {}
+        resumen["decisiones_items"] = decisiones_items
+        update_data["resumen"] = resumen
     sb.table("approval_requests").update(update_data).eq("id", row["id"]).execute()
 
     # Si la referencia es un quote_supplier y fue aprobado, marcarlo seleccionado
@@ -172,6 +184,8 @@ async def decidir(token: str, req: DecisionRequest):
                     aprobacion = data.get("aprobacion", {})
                     aprobacion["estado"] = nuevo
                     aprobacion["decidido_at"] = _now()
+                    if decisiones_items:
+                        aprobacion["decisiones_items"] = decisiones_items
                     if req.comentario:
                         aprobacion["comentario_rechazo"] = req.comentario
                     data["aprobacion"] = aprobacion

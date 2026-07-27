@@ -219,8 +219,8 @@ export default function ListaDetallePage() {
 
   const autoSeleccionarBaratos = async () => {
     if (!userId || !lista) return;
+    const motivos: Record<string, string> = {};
     for (const it of lista.items) {
-      if (it.definitivo) continue;
       const comparados = it.comparados.filter(c => (c.precio_cotizado ?? c.precio) != null);
       if (!comparados.length) continue;
       comparados.sort((a, b) => {
@@ -229,7 +229,12 @@ export default function ListaDetallePage() {
         return pa - pb;
       });
       await elegirDefinitivo(it, comparados[0]);
+      motivos[it.cotizacion_id] = "El más económico";
     }
+    // La pantalla siguiente consume este valor y lo convierte en el motivo por
+    // defecto de cada ítem. No pisa una justificación escrita manualmente.
+    sessionStorage.setItem(`baiyer:justificaciones:${id}`, JSON.stringify(motivos));
+    router.push(`/listas/${id}/autorizacion`);
   };
 
   const solicitarAprobacion = async () => {
@@ -697,12 +702,12 @@ export default function ListaDetallePage() {
       {/* Acciones de aprobación */}
       {definitivos.length > 0 && !lista.aprobacion && (
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-          <BtnPrimary onClick={() => setMostrarAprobacion(true)} icon={Send}>
+          <BtnPrimary onClick={() => router.push(`/listas/${id}/autorizacion`)} icon={Send}>
             Solicitar autorización
           </BtnPrimary>
-          {!completa && lista.items.some(it => !it.definitivo && it.comparados.some(c => (c.precio_cotizado ?? c.precio) != null)) && (
+          {lista.items.some(it => it.comparados.some(c => (c.precio_cotizado ?? c.precio) != null)) && (
             <BtnSecondary onClick={autoSeleccionarBaratos} icon={Wand2}>
-              Usar los más baratos
+              Escoger lo más barato
             </BtnSecondary>
           )}
         </div>
