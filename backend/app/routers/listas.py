@@ -491,8 +491,8 @@ async def reenviar_aprobacion(lista_id: str, req: ReenviarAprobacionRequest):
             raise HTTPException(status_code=404, detail="No es una lista de cotización")
 
         aprobacion = data.get("aprobacion", {})
-        if aprobacion.get("estado") not in ("rechazado", None):
-            raise HTTPException(status_code=400, detail="Solo se puede re-solicitar una lista rechazada")
+        if aprobacion.get("estado") not in ("rechazado", "aprobado_con_observaciones", None):
+            raise HTTPException(status_code=400, detail="Solo se puede re-solicitar una lista rechazada u observada")
 
         data.pop("aprobacion", None)
         _guardar_lista(sb, lista_id, data)

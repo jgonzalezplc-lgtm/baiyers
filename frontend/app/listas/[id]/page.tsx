@@ -46,11 +46,13 @@ export interface ItemLista {
 }
 
 interface Aprobacion {
-  estado: "pendiente" | "aprobado" | "rechazado";
+  estado: "pendiente" | "aprobado" | "rechazado" | "aprobado_con_observaciones";
   resultado?: "aprobado_con_observaciones";
   aprobador_email?: string;
   token?: string;
   comentario_rechazo?: string;
+  comentario_observaciones?: string;
+  observaciones_items?: Record<string, string>;
   decidido_at?: string;
 }
 
@@ -430,8 +432,8 @@ export default function ListaDetallePage() {
       {/* Banner de estado de aprobación */}
       {lista.aprobacion && (() => {
         const est = lista.aprobacion.estado;
-        const badge = est === "aprobado" ? "aprobada" : est === "rechazado" ? "rechazada" : "cotizando";
-        const texto = est === "aprobado" ? (lista.aprobacion?.resultado === "aprobado_con_observaciones" ? "Autorizada con observaciones" : "Autorizada") : est === "rechazado" ? "Rechazada" : "Esperando autorización";
+        const badge = est === "aprobado" ? "aprobada" : est === "rechazado" ? "rechazada" : est === "aprobado_con_observaciones" ? "en_curso" : "cotizando";
+        const texto = est === "aprobado_con_observaciones" ? "Aprobada con observaciones" : est === "aprobado" ? "Autorizada" : est === "rechazado" ? "Rechazada" : "Esperando autorización";
         return (
           <Card padding={16} style={{ marginBottom: 20 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -441,18 +443,28 @@ export default function ListaDetallePage() {
                   <span style={{ fontSize: 13.5, color: "var(--n-600)" }}>{lista.aprobacion.aprobador_email}</span>
                 )}
               </div>
-              {est === "rechazado" && (
+              {(est === "rechazado" || est === "aprobado_con_observaciones") && (
                 <BtnSecondary onClick={reiniciarAprobacion} size="sm">
                   Modificar y volver a solicitar
                 </BtnSecondary>
               )}
             </div>
-            {(est === "rechazado" || lista.aprobacion?.resultado === "aprobado_con_observaciones") && lista.aprobacion.comentario_rechazo && (
+            {(est === "rechazado" ? lista.aprobacion.comentario_rechazo : lista.aprobacion.comentario_observaciones) && (
               <SummaryPanel style={{ marginTop: 12 }}>
                 <div style={{ fontSize: 12.5, color: "var(--n-500)", marginBottom: 4 }}>{est === "rechazado" ? "Motivo del autorizador" : "Observaciones del autorizador"}</div>
                 <div style={{ fontSize: 14, color: "var(--n-900)", lineHeight: 1.6 }}>
-                  {lista.aprobacion.comentario_rechazo}
+                  {est === "rechazado" ? lista.aprobacion.comentario_rechazo : lista.aprobacion.comentario_observaciones}
                 </div>
+              </SummaryPanel>
+            )}
+            {est === "aprobado_con_observaciones" && lista.aprobacion.observaciones_items && Object.keys(lista.aprobacion.observaciones_items).length > 0 && (
+              <SummaryPanel style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12.5, color: "var(--n-500)", marginBottom: 6 }}>Ítems a corregir antes de reenviar</div>
+                {Object.entries(lista.aprobacion.observaciones_items).map(([cotizacionId, motivo]) => (
+                  <div key={cotizacionId} style={{ fontSize: 13.5, color: "var(--n-800)", padding: "5px 0", borderTop: "1px solid var(--n-200)" }}>
+                    <strong>{lista.items.find(item => item.cotizacion_id === cotizacionId)?.nombre ?? "Ítem"}</strong>{motivo ? ` — ${motivo}` : ""}
+                  </div>
+                ))}
               </SummaryPanel>
             )}
           </Card>

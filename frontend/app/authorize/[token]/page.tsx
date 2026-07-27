@@ -82,6 +82,7 @@ export default function AuthorizePage() {
   const esLista = sol?.referencia?.startsWith("lista:");
   const items = sol?.resumen?.items ?? [];
   const total = sol?.resumen?.monto_total ?? 0;
+  const rechazados = Object.values(decisionesItems).filter(d => d.estado === "rechazado").length;
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-base)", padding: 24 }}>
@@ -212,10 +213,13 @@ export default function AuthorizePage() {
                     </div>
                   </Card>
                 ) : (
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <BtnPrimary style={{ flex: 1 }} disabled={enviando} icon={Check} onClick={() => decidir("aprobar")}>Aprobar</BtnPrimary>
-                    <BtnSecondary style={{ flex: 1 }} disabled={enviando} icon={MessageSquare} onClick={() => { setModoComentario("observaciones"); setMostrarRechazo(true); }}>Aprobar con observaciones</BtnSecondary>
+                  <div>
+                    {rechazados > 0 && <div style={{ marginBottom: 10, fontSize: 13, color: "var(--st-encurso-fg)", background: "var(--st-encurso-bg)", padding: "9px 12px", borderRadius: "var(--r-md)" }}>{rechazados} ítem{rechazados === 1 ? " quedó rechazado" : "s quedaron rechazados"}. Envía la lista como aprobada con observaciones para que se corrijan y reenvíen.</div>}
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <BtnPrimary style={{ flex: 1 }} disabled={enviando || rechazados > 0} icon={Check} onClick={() => decidir("aprobar")}>Aprobar todo</BtnPrimary>
+                    <BtnSecondary style={{ flex: 1 }} disabled={enviando || rechazados === 0} icon={MessageSquare} onClick={() => { setModoComentario("observaciones"); setMostrarRechazo(true); }}>Aprobar con observaciones</BtnSecondary>
                     <BtnSecondary style={{ flex: 1, color: "var(--st-rechazada-fg)", borderColor: "var(--st-rechazada-fg)" }} disabled={enviando} icon={X} onClick={() => { setModoComentario("rechazo"); setMostrarRechazo(true); }}>Rechazar</BtnSecondary>
+                    </div>
                   </div>
                 )}
                 {decisionAuto && (

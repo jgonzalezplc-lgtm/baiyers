@@ -150,11 +150,12 @@ async def decidir(token: str, req: DecisionRequest):
         raise HTTPException(status_code=410, detail="El enlace de aprobación expiró")
 
     decisiones_items = req.item_decisions or {}
-    # Una lista puede aprobarse parcialmente. A nivel de lista se considera
-    # rechazada si al menos un ítem fue rechazado, para impedir su compra hasta
-    # que el solicitante ajuste la selección y la reenvíe.
+    # Los rechazos por ítem son observaciones de una aprobación parcial. El
+    # solicitante corrige sólo esos ítems y vuelve a enviar la lista.
     hay_rechazados = any(d.get("estado") == "rechazado" for d in decisiones_items.values())
-    nuevo = "rechazado" if req.decision == "rechazar" or hay_rechazados else "aprobado"
+    if hay_rechazados and req.decision == "aprobar":
+        raise HTTPException(status_code=400, detail="Hay ítems rechazados: envía 'Aprobar con observaciones'")
+    nuevo = "rechazado" if req.decision == "rechazar" else "aprobado"
     update_data: dict = {"estado": nuevo, "decidido_at": _now()}
     if req.comentario:
         update_data["comentario"] = req.comentario
@@ -188,14 +189,19 @@ async def decidir(token: str, req: DecisionRequest):
                 data = json.loads(proy.data.get("descripcion") or "{}")
                 if data.get("tipo") == "lista_cotizacion":
                     aprobacion = data.get("aprobacion", {})
-                    aprobacion["estado"] = nuevo
+                    aprobacion["estado"] = "aprobado_con_observaciones" if req.decision == "aprobar_con_observaciones" else nuevo
                     if req.decision == "aprobar_con_observaciones":
                         aprobacion["resultado"] = "aprobado_con_observaciones"
                     aprobacion["decidido_at"] = _now()
                     if decisiones_items:
                         aprobacion["decisiones_items"] = decisiones_items
+                        aprobacion["observaciones_items"] = {
+                            item_id: decision.get("motivo", "")
+                            for item_id, decision in decisiones_items.items()
+                            if decision.get("estado") == "rechazado"
+                        }
                     if req.comentario:
-                        aprobacion["comentario_rechazo"] = req.comentario
+                        aprobacion["comentario_observaciones" if req.decision == "aprobar_con_observaciones" else "comentario_rechazo"] = req.comentario
                     data["aprobacion"] = aprobacion
                     sb.table("proyectos").update({
                         "descripcion": json.dumps(data, ensure_ascii=False),
