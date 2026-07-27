@@ -61,6 +61,52 @@ def _dominio_de(email_o_dominio: str) -> str:
 _RUT_RE = re.compile(r"\b(\d{1,2}\.\d{3}\.\d{3}-[\dkK])\b")
 
 
+def _normaliza_razon_social(s: str) -> str:
+    s = s.lower().strip()
+    s = re.sub(r"\b(s\.?a\.?|spa|ltda\.?|limitada|e\.?i\.?r\.?l\.?)\b\.?", "", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+async def _buscar_rut_boletaofactura(nombre_empresa: str) -> Optional[str]:
+    """Rutificador de empresas/fundaciones chilenas: busca por razón social y
+    devuelve el RUT de la coincidencia exacta, o el primer resultado como respaldo."""
+    import httpx
+    from bs4 import BeautifulSoup
+
+    UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0 Safari/537.36"
+    nombre = (nombre_empresa or "").strip()
+    if not nombre:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=8.0, headers={"User-Agent": UA}, follow_redirects=True) as client:
+            resp = await client.post("https://www.boletaofactura.com/buscar", data={"term": nombre})
+            if resp.status_code != 200:
+                return None
+            soup = BeautifulSoup(resp.text, "html.parser")
+            filas = soup.select("tbody tr")
+            if not filas:
+                return None
+
+            objetivo = _normaliza_razon_social(nombre)
+            respaldo = None
+            for fila in filas:
+                celdas = fila.find_all("td")
+                if len(celdas) < 4:
+                    continue
+                razon = celdas[0].get_text(strip=True)
+                rut = celdas[-1].get_text(strip=True)
+                if not rut:
+                    continue
+                if _normaliza_razon_social(razon) == objetivo:
+                    return rut
+                if respaldo is None:
+                    respaldo = rut
+            return respaldo
+    except Exception as e:
+        print(f"[Onboarding boletaofactura] {nombre_empresa}: {e}")
+        return None
+
+
 async def _scrape_rut_direccion(dominio: str) -> dict:
     """Scrapea el sitio de la empresa (home + /contacto) buscando RUT y dirección."""
     import httpx
@@ -172,7 +218,17 @@ async def investigar_empresa(req: InvestigarRequest):
         logos += _logos_de(dominio)
     gem_res["logo_candidatos"] = logos or base["logo_candidatos"]
 
-    # Scraping de RUT/dirección del sitio real (si la IA no los dio)
+    # RUT: 1) lo que dijo la IA, 2) el rutificador boletaofactura.com por razón
+    # social, 3) scrape del sitio real como último recurso.
+    if not gem_res.get("rut"):
+        empresa_nombre = gem_res.get("empresa") or nombre
+        if empresa_nombre:
+            try:
+                gem_res["rut"] = await _buscar_rut_boletaofactura(empresa_nombre)
+            except Exception:
+                pass
+
+    # Scraping de RUT/dirección del sitio real (si aún falta)
     scrape = {"rut": None, "direccion": None}
     if dom_scrape and not (gem_res.get("rut") and gem_res.get("direccion")):
         try:
@@ -181,7 +237,6 @@ async def investigar_empresa(req: InvestigarRequest):
             pass
 
     gem_res.setdefault("sitio_web", f"https://{dom_empresa or dominio}")
-    # La IA gana para rut/dirección si los tiene; sino el scrape
     if not gem_res.get("rut"):
         gem_res["rut"] = scrape.get("rut")
     if not gem_res.get("direccion"):
