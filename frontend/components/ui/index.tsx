@@ -6,7 +6,7 @@
  * su implementación es la nueva.
  */
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { X, Moon, Sun, type LucideIcon } from "lucide-react";
+import { X, Moon, Sun, Eye, EyeOff, type LucideIcon } from "lucide-react";
 import {
   ESTADO_TOKENS, normalizarEstado, categoriaToken, CATEGORIA_TOKENS_DARK,
   type EstadoUI,
@@ -217,15 +217,36 @@ export function Input({
   error, hint, disabled, autoFocus, mono, style,
 }: InputProps) {
   const [focus, setFocus] = useState(false);
+  const [verPassword, setVerPassword] = useState(false);
+  const esPassword = type === "password";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       {label && <FieldLabel>{label}</FieldLabel>}
-      <input
-        type={type} value={value} onChange={onChange} onKeyDown={onKeyDown}
-        placeholder={placeholder} disabled={disabled} autoFocus={autoFocus}
-        style={{ ...fieldStyle(focus, error, mono), opacity: disabled ? .6 : 1, ...style }}
-        onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
-      />
+      <div style={{ position: "relative" }}>
+        <input
+          type={esPassword ? (verPassword ? "text" : "password") : type}
+          value={value} onChange={onChange} onKeyDown={onKeyDown}
+          placeholder={placeholder} disabled={disabled} autoFocus={autoFocus}
+          style={{ ...fieldStyle(focus, error, mono), opacity: disabled ? .6 : 1, ...(esPassword ? { paddingRight: 40 } : {}), ...style }}
+          onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
+        />
+        {esPassword && (
+          <button
+            type="button"
+            onClick={() => setVerPassword(v => !v)}
+            tabIndex={-1}
+            aria-label={verPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+            style={{
+              position: "absolute", right: 10, top: 0, height: 42,
+              display: "inline-flex", alignItems: "center",
+              background: "none", border: "none", cursor: "pointer",
+              color: "var(--n-500)", padding: 0,
+            }}
+          >
+            {verPassword ? <EyeOff size={17} strokeWidth={1.75} /> : <Eye size={17} strokeWidth={1.75} />}
+          </button>
+        )}
+      </div>
       {error && <span style={{ fontSize: 12.5, color: "var(--danger)" }}>{error}</span>}
       {!error && hint && <span style={{ fontSize: 12.5, color: "var(--n-500)" }}>{hint}</span>}
     </div>

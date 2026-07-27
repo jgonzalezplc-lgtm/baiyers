@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { BtnPrimary, BtnSecondary, Input } from "@/components/ui";
+import { Eye, EyeOff } from "lucide-react";
 
 function GoogleIcon() {
   return (
@@ -30,6 +31,7 @@ function OutlookIcon() {
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [verPassword, setVerPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [modo, setModo] = useState<"login" | "recovery">("login");
@@ -197,19 +199,35 @@ export default function LoginPage() {
                       Olvidé mi contraseña
                     </button>
                   </div>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && handleLogin()}
-                    placeholder="••••••••"
-                    style={{
-                      width: "100%", height: 42, padding: "0 12px",
-                      background: "var(--surface)", color: "var(--n-900)",
-                      border: "1px solid var(--n-300)", borderRadius: "var(--r-md)",
-                      fontFamily: "var(--font-sans)", fontSize: 14, outline: "none",
-                    }}
-                  />
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type={verPassword ? "text" : "password"}
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && handleLogin()}
+                      placeholder="••••••••"
+                      style={{
+                        width: "100%", height: 42, padding: "0 40px 0 12px",
+                        background: "var(--surface)", color: "var(--n-900)",
+                        border: "1px solid var(--n-300)", borderRadius: "var(--r-md)",
+                        fontFamily: "var(--font-sans)", fontSize: 14, outline: "none",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setVerPassword(v => !v)}
+                      tabIndex={-1}
+                      aria-label={verPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                      style={{
+                        position: "absolute", right: 10, top: 0, height: 42,
+                        display: "inline-flex", alignItems: "center",
+                        background: "none", border: "none", cursor: "pointer",
+                        color: "var(--n-500)", padding: 0,
+                      }}
+                    >
+                      {verPassword ? <EyeOff size={17} strokeWidth={1.75} /> : <Eye size={17} strokeWidth={1.75} />}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
