@@ -36,14 +36,22 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ gmail?: string }>;
 }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  let user;
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch (e) {
+    console.error("[dashboard] auth.getUser tiró:", (e as Error).message);
+    redirect("/login");
+  }
   const sp = await searchParams;
   const gmailRecienConectado = sp.gmail === "conectado";
 
   if (!user) redirect("/login");
 
-  const plan: string = user.user_metadata?.plan || "free";
+  const m = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const plan: string = typeof m.plan === "string" ? m.plan : "free";
 
   const PLANES: Record<string, { label: string; cotizaciones: number }> = {
     free:     { label: "Free",     cotizaciones: 3 },
@@ -89,20 +97,20 @@ export default async function DashboardPage({
     <div>
       {/* Title */}
       <div style={{ marginBottom: 24, display: "flex", alignItems: "center", gap: 14 }}>
-        {user.user_metadata?.logo_url && (
+        {typeof m.logo_url === "string" && m.logo_url && (
           /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={user.user_metadata.logo_url as string} alt={String(user.user_metadata?.empresa ?? "logo")}
+          <img src={m.logo_url} alt={typeof m.empresa === "string" ? m.empresa : "logo"}
             width={52} height={52}
             style={{ objectFit: "contain", borderRadius: "var(--r-md)", border: "1px solid var(--n-200)", background: "#fff", flexShrink: 0 }} />
         )}
         <div>
-          {user.user_metadata?.industria && (
+          {typeof m.industria === "string" && m.industria && (
             <span style={{ fontSize: 13, color: "var(--brand)", display: "block", marginBottom: 3, fontWeight: 500 }}>
-              {String(user.user_metadata.industria)}
+              {m.industria}
             </span>
           )}
           <h1 style={{ fontSize: 26, lineHeight: 1.2, fontWeight: 600, color: "var(--n-900)", margin: "0 0 4px", letterSpacing: "-0.015em" }}>
-            {user.user_metadata?.empresa ? `Hola, ${user.user_metadata.empresa}` : "Inicio"}
+            {typeof m.empresa === "string" && m.empresa ? `Hola, ${m.empresa}` : "Inicio"}
           </h1>
           <p style={{ fontSize: 14, color: "var(--n-600)", margin: 0 }}>¿Qué necesitas cotizar hoy?</p>
         </div>
