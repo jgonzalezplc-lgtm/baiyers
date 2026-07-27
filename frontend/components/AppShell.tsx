@@ -8,6 +8,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ui";
+import OnboardingFloating from "./OnboardingFloating";
 
 interface NavLink { href: string; label: string; icon: LucideIcon }
 
@@ -282,6 +283,8 @@ export default function AppShell({ children, empresa, planLabel, planLimitLabel,
           {children}
         </main>
       </div>
+
+      {perfilIncompleto && <OnboardingFloating />}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import AppShell from "./AppShell";
+import { camposFaltantes } from "@/lib/onboarding";
 
 const PLAN_META: Record<string, { label: string; limit: string }> = {
   free:     { label: "Free",     limit: "3" },
@@ -8,8 +9,6 @@ const PLAN_META: Record<string, { label: string; limit: string }> = {
   pro:      { label: "Pro",      limit: "100" },
   business: { label: "Business", limit: "∞" },
 };
-
-const CAMPOS_REQUERIDOS = ["empresa", "nombre_usuario", "rut", "industria"];
 
 export default async function AppShellServer({ children }: { children: React.ReactNode }) {
   let user;
@@ -27,10 +26,7 @@ export default async function AppShellServer({ children }: { children: React.Rea
   const plan: string = typeof m.plan === "string" ? m.plan : "free";
   const empresa: string = (typeof m.empresa === "string" && m.empresa) || user.email || "";
   const meta = PLAN_META[plan] ?? PLAN_META.free;
-  const perfilIncompleto = CAMPOS_REQUERIDOS.some(k => {
-    const v = m[k];
-    return typeof v !== "string" || !v.trim();
-  });
+  const perfilIncompleto = camposFaltantes(m).length > 0;
 
   return (
     <AppShell
