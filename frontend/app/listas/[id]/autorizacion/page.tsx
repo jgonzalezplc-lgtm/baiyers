@@ -38,9 +38,8 @@ export default function AutorizarListaPage() {
     try {
       const r = await fetch(`${API_URL}/api/listas/${id}/solicitar-aprobacion`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId, aprobador_email: email.trim(), justificaciones, nombre_solicitante: meta.nombre_usuario || "", empresa: meta.empresa || "" }) });
       const d = await r.json(); if (!r.ok) throw new Error(d.detail || "No se pudo crear la solicitud");
-      const lineas = definitivos.map(i => `• ${i.nombre} ×${i.cantidad}: ${i.definitivo?.proveedor || "—"} — ${i.definitivo?.precio_clp != null ? fmtCLP(i.definitivo.precio_clp * i.cantidad) : "—"}\n  Link: ${i.definitivo?.url || "—"}\n  Motivo: ${justificaciones[i.cotizacion_id] || "—"}`).join("\n\n");
       const asunto = encodeURIComponent(`Autorización requerida: ${lista.nombre}`);
-      const cuerpo = encodeURIComponent(`Hola,\n\nSe solicita autorización para la lista: ${lista.nombre}\n\n${lineas}\n\nTotal: ${fmtCLP(total)}\n\nRevisa las alternativas y aprueba o rechaza cada ítem aquí:\n${d.magic_link_aprobar}\n\nEl enlace expira el ${new Date(d.expira_at).toLocaleDateString("es-CL")}.`);
+      const cuerpo = encodeURIComponent(`Hola,\n\nSe solicita tu autorización para la lista “${lista.nombre}” por un total de ${fmtCLP(total)}.\n\nRevisa el detalle, las alternativas y aprueba o rechaza cada ítem desde este enlace:\n${d.magic_link_aprobar}\n\nEl enlace expira el ${new Date(d.expira_at).toLocaleDateString("es-CL")}.`);
       window.open(`mailto:${email.trim()}?subject=${asunto}&body=${cuerpo}`, "_self");
       router.replace(`/listas/${id}`);
     } catch (e) { setError(e instanceof Error ? e.message : "Error al enviar"); }
