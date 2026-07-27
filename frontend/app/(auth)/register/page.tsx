@@ -33,31 +33,48 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [aviso, setAviso] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
   const handleRegister = async () => {
+    setError("");
+    setAviso("");
     if (!email || !password) {
       setError("Ingresa tu email y contraseña");
       return;
     }
+    if (password.length < 8) {
+      setError("La contraseña debe tener al menos 8 caracteres");
+      return;
+    }
     setLoading(true);
-    setError("");
 
-    // La empresa se detecta en el onboarding a partir del correo
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { plan: "free" } },
+      options: {
+        data: { plan: "free" },
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
+      },
     });
 
     if (error) {
       setError(error.message);
       setLoading(false);
-    } else {
-      router.push("/onboarding");
+      return;
     }
+
+    // Supabase crea el usuario pero exige confirmar el correo antes de iniciar
+    // sesión. Cuando eso pasa, no viene session → hay que avisarle explícito,
+    // si no la persona intenta "entrar" sin poder y no entiende por qué.
+    if (!data.session) {
+      setAviso(`Cuenta creada. Te enviamos un correo a ${email} para confirmar tu cuenta. Ábrelo (revisa spam si no llega) y entra desde ahí para completar tu configuración.`);
+      setLoading(false);
+      return;
+    }
+    router.push("/onboarding");
   };
 
   const handleGoogle = async () => {
@@ -128,6 +145,21 @@ export default function RegisterPage() {
           </div>
         )}
 
+        {aviso && (
+          <div style={{
+            background: "var(--brand-50)",
+            border: "1px solid var(--brand-100)",
+            borderRadius: "var(--r-md)",
+            padding: "12px 14px",
+            fontSize: 13,
+            color: "var(--brand-700)",
+            marginBottom: 16,
+            lineHeight: 1.55,
+          }}>
+            {aviso}
+          </div>
+        )}
+
         {/* Proveedores primero, la empresa se detecta luego en el onboarding */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <button onClick={handleGoogle} className="btn-swiss-secondary"
@@ -163,7 +195,7 @@ export default function RegisterPage() {
             type="password"
             value={password}
             onChange={e => setPassword(e.target.value)}
-            placeholder="Minimo 8 caracteres"
+            placeholder="Mínimo 8 caracteres"
           />
         </div>
 

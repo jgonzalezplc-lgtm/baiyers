@@ -206,22 +206,38 @@ export default function OnboardingChatPage() {
   const finalizar = async (proceso: string) => {
     setFase("fin");
     addBot(`¡Listo, ${nombreUsuario || ""}! Configuré tu cuenta de ${empresa || "tu empresa"}. Te llevo al dashboard…`);
-    await createClient().auth.updateUser({
-      data: {
-        onboarding_completo: true,
-        empresa: empresa.trim() || null,
-        nombre_usuario: nombreUsuario.trim() || null,
-        industria: inv?.industria ?? null,
-        rut: rut.trim() || null,
-        logo_url: inv?.logo_candidatos?.[logoIdx] ?? null,
-        sitio_web: inv?.sitio_web ?? null,
-        pais: inv?.pais ?? inv?.pais_tld ?? null,
-        categorias_default: cats,
-        proceso_compra: proceso.trim() || null,
-      },
-    });
-    await espera(900);
-    router.replace("/dashboard");
+    // Datos a guardar en user_metadata. Los logos scrapeados a veces vienen
+    // enormes (data URLs, favicons con ?params); si el metadata excede el
+    // límite de Supabase, todo el updateUser falla y el usuario ve una ventana
+    // de error. Filtramos y limitamos por seguridad.
+    const logoUrl = inv?.logo_candidatos?.[logoIdx] ?? null;
+    const logoSeguro = logoUrl && logoUrl.length < 500 && logoUrl.startsWith("http") ? logoUrl : null;
+    try {
+      const { error } = await createClient().auth.updateUser({
+        data: {
+          onboarding_completo: true,
+          empresa: empresa.trim() || null,
+          nombre_usuario: nombreUsuario.trim() || null,
+          industria: inv?.industria ?? null,
+          rut: rut.trim() || null,
+          logo_url: logoSeguro,
+          sitio_web: inv?.sitio_web ?? null,
+          pais: inv?.pais ?? inv?.pais_tld ?? null,
+          categorias_default: (cats || []).slice(0, 20),
+          proceso_compra: proceso.trim() || null,
+        },
+      });
+      if (error) throw error;
+      // Refresca la cookie del servidor con la sesión actualizada antes de
+      // navegar. Sin esto, el AppShellServer puede leer una copia vieja.
+      router.refresh();
+      await espera(600);
+      router.replace("/dashboard");
+    } catch (e) {
+      addBot(`Hubo un problema guardando tu configuración: ${(e as Error).message || "error desconocido"}. Igual te llevo al dashboard, puedes completar tus datos en Configuración.`);
+      await espera(1500);
+      router.replace("/dashboard");
+    }
   };
 
   // ── Input activo según fase ──
