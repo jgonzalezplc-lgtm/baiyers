@@ -250,22 +250,53 @@ export default function OnboardingChatPage() {
     fase === "proceso" ? "Ej: yo cotizo y mi jefe autoriza sobre $500.000…" : "";
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg-base)", display: "flex", flexDirection: "column" }}>
-      <div style={{ borderBottom: "1px solid var(--border-default)", padding: "14px 20px" }}>
-        <span className="label" style={{ color: "var(--accent)", fontWeight: 800 }}>Baiyer · configuración</span>
+    <div style={{ minHeight: "100vh", background: "var(--canvas)", display: "flex", flexDirection: "column" }}>
+      {/* Header con marca */}
+      <div style={{
+        borderBottom: "1px solid var(--n-200)",
+        padding: "14px 24px",
+        background: "var(--surface)",
+        display: "flex", alignItems: "center", gap: 10,
+      }}>
+        <span style={{
+          width: 28, height: 28, borderRadius: 8,
+          background: "var(--brand)", color: "#fff",
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          fontSize: 15, fontWeight: 700,
+        }}>B</span>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--n-900)", letterSpacing: "-0.015em" }}>Baiyer</div>
+          <div style={{ fontSize: 12, color: "var(--n-500)" }}>Configuración de tu cuenta</div>
+        </div>
       </div>
 
       {/* Chat */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "24px 16px" }}>
-        <div style={{ maxWidth: 560, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "28px 16px" }}>
+        <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
           {msgs.map((m, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: m.rol === "user" ? "flex-end" : "flex-start" }}>
+            <div key={i} style={{
+              display: "flex",
+              gap: 10,
+              justifyContent: m.rol === "user" ? "flex-end" : "flex-start",
+              alignItems: "flex-start",
+            }}>
+              {m.rol === "bot" && (
+                <span style={{
+                  width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                  background: "var(--brand-50)", color: "var(--brand)",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 14, fontWeight: 700, marginTop: 2,
+                }}>B</span>
+              )}
               <div style={{
-                maxWidth: "85%",
-                background: m.rol === "user" ? "var(--accent)" : "var(--bg-surface)",
-                color: m.rol === "user" ? "#fff" : "var(--text-primary)",
-                border: m.rol === "user" ? "none" : "1px solid var(--border-default)",
-                padding: m.card ? 14 : "10px 14px", fontSize: 13, lineHeight: 1.5,
+                maxWidth: "78%",
+                background: m.rol === "user" ? "var(--brand)" : "var(--surface)",
+                color: m.rol === "user" ? "#fff" : "var(--n-900)",
+                border: m.rol === "user" ? "none" : "1px solid var(--n-200)",
+                borderRadius: m.rol === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                boxShadow: m.rol === "bot" ? "var(--shadow-card)" : "none",
+                padding: m.card ? 16 : "10px 14px",
+                fontSize: 14, lineHeight: 1.55,
               }}>
                 {m.texto}
                 {m.card && <EmpresaCard d={m.card} logoIdx={logoIdx} onLogoError={() => setLogoIdx(x => x + 1)} />}
@@ -277,8 +308,12 @@ export default function OnboardingChatPage() {
       </div>
 
       {/* Barra de acción */}
-      <div style={{ borderTop: "1px solid var(--border-default)", padding: "12px 16px", background: "var(--bg-base)" }}>
-        <div style={{ maxWidth: 560, margin: "0 auto", display: "flex", gap: 8, alignItems: "center" }}>
+      <div style={{
+        borderTop: "1px solid var(--n-200)",
+        padding: "14px 16px",
+        background: "var(--surface)",
+      }}>
+        <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", gap: 8, alignItems: "center" }}>
           {fase === "confirmar_empresa" && (
             <button onClick={confirmarEmpresa} disabled={busy} className="btn-swiss-primary" style={{ whiteSpace: "nowrap" }}>Sí, es correcta ✓</button>
           )}
@@ -296,7 +331,13 @@ export default function OnboardingChatPage() {
                 onKeyDown={e => { if (e.key === "Enter" && !busy) enviar(); }}
                 placeholder={placeholder}
                 autoFocus
-                style={{ flex: 1, background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: "10px 12px", fontSize: 13, color: "var(--text-primary)", fontFamily: "var(--font-mono)", outline: "none" }}
+                style={{
+                  flex: 1, background: "var(--canvas)",
+                  border: "1px solid var(--n-300)", borderRadius: "var(--r-md)",
+                  padding: "10px 14px", fontSize: 14,
+                  color: "var(--n-900)", fontFamily: "var(--font-sans)",
+                  outline: "none",
+                }}
               />
               <button onClick={enviar} disabled={busy} className="btn-swiss-primary" style={{ whiteSpace: "nowrap" }}>
                 {busy ? "…" : (fase === "rut" || fase === "proceso") && !input.trim() ? "Omitir" : "Enviar"}
@@ -312,16 +353,32 @@ export default function OnboardingChatPage() {
 function EmpresaCard({ d, logoIdx, onLogoError }: { d: Investigacion; logoIdx: number; onLogoError: () => void }) {
   const logo = d.logo_candidatos?.[logoIdx];
   return (
-    <div style={{ display: "flex", gap: 12, alignItems: "flex-start", marginTop: 8, paddingTop: 10, borderTop: "1px solid var(--border-subtle)" }}>
-      {logo && (
-        <img src={logo} alt="logo" width={48} height={48} onError={onLogoError}
-          style={{ objectFit: "contain", border: "1px solid var(--border-subtle)", background: "#fff", flexShrink: 0 }} />
+    <div style={{
+      display: "flex", gap: 14, alignItems: "flex-start",
+      marginTop: 10, paddingTop: 12, borderTop: "1px solid var(--n-100)",
+    }}>
+      {logo ? (
+        <img src={logo} alt="logo" width={52} height={52} onError={onLogoError}
+          style={{ objectFit: "contain", borderRadius: 8, border: "1px solid var(--n-200)", background: "#fff", flexShrink: 0, padding: 4 }} />
+      ) : (
+        <div style={{
+          width: 52, height: 52, borderRadius: 8, flexShrink: 0,
+          background: "var(--brand-50)", color: "var(--brand)",
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          fontSize: 22, fontWeight: 600,
+        }}>{d.empresa?.charAt(0).toUpperCase() ?? "?"}</div>
       )}
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 15, fontWeight: 800 }}>{d.empresa}</div>
-        <div className="label" style={{ color: "var(--accent)", margin: "2px 0" }}>{d.industria}{d.pais ? ` · ${d.pais}` : ""}</div>
-        {d.descripcion && <div style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.5 }}>{d.descripcion}</div>}
-        {d.rut && <div className="label" style={{ color: "var(--text-muted)", marginTop: 4 }}>RUT: {d.rut}</div>}
+        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)" }}>{d.empresa}</div>
+        <div style={{ fontSize: 13, color: "var(--brand)", margin: "3px 0", fontWeight: 500 }}>
+          {d.industria}{d.pais ? ` · ${d.pais}` : ""}
+        </div>
+        {d.descripcion && <div style={{ fontSize: 12.5, color: "var(--n-600)", lineHeight: 1.55 }}>{d.descripcion}</div>}
+        {d.rut && (
+          <div style={{ fontSize: 12, color: "var(--n-500)", marginTop: 6, fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
+            RUT: {d.rut}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -329,9 +386,27 @@ function EmpresaCard({ d, logoIdx, onLogoError }: { d: Investigacion; logoIdx: n
 
 function TypingDots() {
   return (
-    <div style={{ display: "flex", gap: 5, padding: "8px 14px" }}>
-      {[0, 1, 2].map(i => <div key={i} style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--text-muted)", animation: "pulse 1s infinite", animationDelay: `${i * 0.15}s` }} />)}
-      <style>{`@keyframes pulse { 0%,100% { opacity:.3 } 50% { opacity:1 } }`}</style>
+    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+      <span style={{
+        width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+        background: "var(--brand-50)", color: "var(--brand)",
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        fontSize: 14, fontWeight: 700,
+      }}>B</span>
+      <div style={{
+        background: "var(--surface)", border: "1px solid var(--n-200)",
+        borderRadius: "16px 16px 16px 4px", padding: "12px 16px",
+        display: "flex", gap: 5, alignItems: "center",
+        boxShadow: "var(--shadow-card)",
+      }}>
+        {[0, 1, 2].map(i => (
+          <span key={i} style={{
+            width: 7, height: 7, borderRadius: "50%", background: "var(--n-400)",
+            animation: `pulseDot 1.2s ease-in-out ${i * 0.15}s infinite`,
+          }} />
+        ))}
+        <style>{`@keyframes pulseDot { 0%,60%,100% { opacity:.3; transform: scale(.85) } 30% { opacity:1; transform: scale(1) } }`}</style>
+      </div>
     </div>
   );
 }
