@@ -195,6 +195,20 @@ export default function OnboardingChatPage() {
     preguntarRut(empresa || inv?.empresa || "tu empresa");
   };
 
+  // Cortar el ping-pong si el bot no encuentra la empresa: usa lo que haya
+  // tipeado el usuario (o el nombre ya anotado, o "Mi empresa") y sigue.
+  const saltarBusquedaEmpresa = async () => {
+    const val = input.trim();
+    const emp = val ? extraer(val, "empresa") : (empresa || "Mi empresa");
+    addUser(val ? `Es "${emp}", no busques más` : "Sigamos sin buscar la empresa");
+    setEmpresa(emp);
+    setInput("");
+    addBot(`Ok, uso "${emp}" tal cual. Podrás afinar los detalles después en Configuración.`);
+    setFase("rut");
+    await espera(300);
+    preguntarRut(emp);
+  };
+
   // Logo
   const respLogo = async (ok: boolean) => {
     addUser(ok ? "Sí, es mi logo" : "Lo subo después");
@@ -339,6 +353,11 @@ export default function OnboardingChatPage() {
                   outline: "none",
                 }}
               />
+              {(fase === "pedir_nombre" || fase === "confirmar_empresa") && (
+                <button onClick={saltarBusquedaEmpresa} disabled={busy} className="btn-swiss-secondary" style={{ whiteSpace: "nowrap" }}>
+                  Seguir sin buscar
+                </button>
+              )}
               <button onClick={enviar} disabled={busy} className="btn-swiss-primary" style={{ whiteSpace: "nowrap" }}>
                 {busy ? "…" : (fase === "rut" || fase === "proceso") && !input.trim() ? "Omitir" : "Enviar"}
               </button>
