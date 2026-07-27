@@ -107,7 +107,7 @@ async def listar_solicitudes(user_id: str, estado: Optional[str] = None):
 # ─── Magic link — decisión sin login ───────────────────────────────────────
 
 class DecisionRequest(BaseModel):
-    decision: str  # "aprobar" | "rechazar"
+    decision: str  # "aprobar" | "aprobar_con_observaciones" | "rechazar"
     comentario: Optional[str] = None
     # Para listas, una decisión por ítem. Se guarda dentro del snapshot para no
     # requerir una tabla nueva y para que el historial sea inmutable.
@@ -136,8 +136,8 @@ async def decidir(token: str, req: DecisionRequest):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    if req.decision not in ("aprobar", "rechazar"):
-        raise HTTPException(status_code=400, detail="decision debe ser 'aprobar' o 'rechazar'")
+    if req.decision not in ("aprobar", "aprobar_con_observaciones", "rechazar"):
+        raise HTTPException(status_code=400, detail="Decisión inválida")
 
     res = sb.table("approval_requests").select("*").eq("token", token).limit(1).execute()
     row = (res.data or [None])[0]
@@ -161,6 +161,12 @@ async def decidir(token: str, req: DecisionRequest):
     if decisiones_items:
         resumen = row.get("resumen") or {}
         resumen["decisiones_items"] = decisiones_items
+        if req.decision == "aprobar_con_observaciones":
+            resumen["resultado"] = "aprobado_con_observaciones"
+        update_data["resumen"] = resumen
+    elif req.decision == "aprobar_con_observaciones":
+        resumen = row.get("resumen") or {}
+        resumen["resultado"] = "aprobado_con_observaciones"
         update_data["resumen"] = resumen
     sb.table("approval_requests").update(update_data).eq("id", row["id"]).execute()
 
@@ -183,6 +189,8 @@ async def decidir(token: str, req: DecisionRequest):
                 if data.get("tipo") == "lista_cotizacion":
                     aprobacion = data.get("aprobacion", {})
                     aprobacion["estado"] = nuevo
+                    if req.decision == "aprobar_con_observaciones":
+                        aprobacion["resultado"] = "aprobado_con_observaciones"
                     aprobacion["decidido_at"] = _now()
                     if decisiones_items:
                         aprobacion["decisiones_items"] = decisiones_items

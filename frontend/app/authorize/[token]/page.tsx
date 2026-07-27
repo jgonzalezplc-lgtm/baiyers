@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import { Check, ChevronDown, MessageSquare, X } from "lucide-react";
+import { Badge, BtnPrimary, BtnSecondary, Card } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -45,6 +47,7 @@ export default function AuthorizePage() {
   const [enviando, setEnviando] = useState(false);
   const [comentario, setComentario] = useState("");
   const [mostrarRechazo, setMostrarRechazo] = useState(false);
+  const [modoComentario, setModoComentario] = useState<"observaciones" | "rechazo">("rechazo");
   const [decisionesItems, setDecisionesItems] = useState<Record<string, { estado: "aprobado" | "rechazado"; motivo?: string }>>({});
   const [alternativasAbiertas, setAlternativasAbiertas] = useState<Record<string, boolean>>({});
 
@@ -58,17 +61,17 @@ export default function AuthorizePage() {
       .catch((e) => setError(e.message));
   }, [token]);
 
-  const decidir = async (decision: "aprobar" | "rechazar") => {
+  const decidir = async (decision: "aprobar" | "aprobar_con_observaciones" | "rechazar") => {
     setEnviando(true);
     try {
       const r = await fetch(`${API_URL}/api/aprobaciones/token/${token}/decidir`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision, comentario: decision === "rechazar" ? comentario : undefined, item_decisions: decisionesItems }),
+        body: JSON.stringify({ decision, comentario: comentario || undefined, item_decisions: decisionesItems }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail ?? "Error");
-      setResultado(d.estado);
+      setResultado(decision === "aprobar_con_observaciones" ? "aprobado_con_observaciones" : d.estado);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
     } finally {
@@ -82,7 +85,7 @@ export default function AuthorizePage() {
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-base)", padding: 24 }}>
-      <div style={{ width: 560, maxWidth: "100%", border: "1px solid var(--border-strong)", background: "var(--bg-elevated)", padding: 32 }}>
+      <div style={{ width: 760, maxWidth: "100%", border: "1px solid var(--n-200)", borderRadius: "var(--r-lg)", background: "var(--surface)", padding: 28, boxShadow: "var(--shadow-card)" }}>
         <div className="label" style={{ color: "var(--accent)", fontWeight: 800, marginBottom: 4, letterSpacing: "0.06em" }}>Baiyer</div>
         <h1 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 16px" }}>Autorización de compra</h1>
 
@@ -93,7 +96,7 @@ export default function AuthorizePage() {
         {sol && !resultado && (
           <>
             {/* Encabezado de la solicitud */}
-            <div style={{ border: "1px solid var(--border-default)", padding: 14, marginBottom: 16, background: "var(--bg-surface)" }}>
+            <Card padding={16} style={{ marginBottom: 16, background: "var(--surface-2)" }}>
               {sol.resumen.solicitante && (
                 <div style={{ fontSize: 12, marginBottom: 4 }}>
                   <span className="label" style={{ color: "var(--text-muted)" }}>SOLICITANTE:</span>{" "}
@@ -112,7 +115,7 @@ export default function AuthorizePage() {
                   Expira: {new Date(sol.expira_at).toLocaleDateString("es-CL", { day: "numeric", month: "long", year: "numeric" })}
                 </div>
               )}
-            </div>
+            </Card>
 
             {/* Tabla de ítems */}
             {esLista && items.length > 0 && (
@@ -141,9 +144,11 @@ export default function AuthorizePage() {
                       <div style={{ fontSize: 12, fontWeight: 700, textAlign: "right" }}>
                         {it.precio_clp != null ? fmtCLP(it.precio_clp * it.cantidad) : "—"}
                       </div>
-                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                        <button onClick={() => setDecisionesItems(d => ({ ...d, [it.cotizacion_id || String(i)]: { estado: "aprobado" } }))} style={{ border: "1px solid var(--success)", background: decisionesItems[it.cotizacion_id || String(i)]?.estado === "aprobado" ? "var(--fill-success)" : "transparent", color: "var(--success)", cursor: "pointer", padding: "4px 6px", fontSize: 11 }}>Aceptar</button>
-                        <button onClick={() => setDecisionesItems(d => ({ ...d, [it.cotizacion_id || String(i)]: { estado: "rechazado", motivo: d[it.cotizacion_id || String(i)]?.motivo || "" } }))} style={{ border: "1px solid var(--border-accent)", background: decisionesItems[it.cotizacion_id || String(i)]?.estado === "rechazado" ? "var(--fill-error)" : "transparent", color: "var(--text-error)", cursor: "pointer", padding: "4px 6px", fontSize: 11 }}>Rechazar</button>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                        <BtnSecondary size="sm" icon={Check} onClick={() => setDecisionesItems(d => ({ ...d, [it.cotizacion_id || String(i)]: { estado: "aprobado" } }))} style={decisionesItems[it.cotizacion_id || String(i)]?.estado === "aprobado" ? { background: "var(--st-aprobada-bg)", color: "var(--st-aprobada-fg)", borderColor: "var(--st-aprobada-fg)" } : {}}>Aceptar</BtnSecondary>
+                        <BtnSecondary size="sm" icon={X} onClick={() => setDecisionesItems(d => ({ ...d, [it.cotizacion_id || String(i)]: { estado: "rechazado", motivo: d[it.cotizacion_id || String(i)]?.motivo || "" } }))} style={decisionesItems[it.cotizacion_id || String(i)]?.estado === "rechazado" ? { background: "var(--st-rechazada-bg)", color: "var(--st-rechazada-fg)", borderColor: "var(--st-rechazada-fg)" } : {}}>Rechazar</BtnSecondary>
+                        {decisionesItems[it.cotizacion_id || String(i)]?.estado === "aprobado" && <Badge status="aprobada">Aceptado</Badge>}
+                        {decisionesItems[it.cotizacion_id || String(i)]?.estado === "rechazado" && <Badge status="rechazada">Rechazado</Badge>}
                       </div>
                     </div>
                     {it.justificacion && (
@@ -153,9 +158,7 @@ export default function AuthorizePage() {
                     )}
                     {(it.alternativas?.length || 0) > 0 && (
                       <div style={{ padding: "0 14px 10px", borderBottom: i < items.length - 1 ? "1px solid var(--border-subtle)" : "none" }}>
-                        <button onClick={() => setAlternativasAbiertas(a => ({ ...a, [it.cotizacion_id || String(i)]: !a[it.cotizacion_id || String(i)] }))} style={{ border: 0, background: "none", padding: "5px 0", color: "var(--accent)", cursor: "pointer", fontSize: 11 }}>
-                          {alternativasAbiertas[it.cotizacion_id || String(i)] ? "Ocultar" : "Ver"} alternativas comparadas ({it.alternativas!.length})
-                        </button>
+                        <BtnSecondary size="sm" icon={ChevronDown} onClick={() => setAlternativasAbiertas(a => ({ ...a, [it.cotizacion_id || String(i)]: !a[it.cotizacion_id || String(i)] }))}>{alternativasAbiertas[it.cotizacion_id || String(i)] ? "Ocultar" : "Ver"} alternativas ({it.alternativas!.length})</BtnSecondary>
                         {alternativasAbiertas[it.cotizacion_id || String(i)] && it.alternativas!.map((alt, ai) => <div key={ai} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11, padding: "4px 0" }}><span>{alt.url ? <a href={alt.url} target="_blank" rel="noreferrer">{alt.proveedor || "Proveedor"} ↗</a> : alt.proveedor || "Proveedor"}</span><span>{alt.precio_clp != null ? `${alt.moneda === "CLP" ? fmtCLP(alt.precio_clp) : `${alt.precio_clp} ${alt.moneda || ""}`}` : "—"}</span></div>)}
                       </div>
                     )}
@@ -190,12 +193,12 @@ export default function AuthorizePage() {
             ) : (
               <>
                 {mostrarRechazo ? (
-                  <div style={{ border: "1px solid var(--border-accent)", padding: 16, marginBottom: 12 }}>
-                    <div className="label" style={{ color: "var(--text-error)", fontWeight: 700, marginBottom: 8 }}>Rechazar solicitud</div>
+                  <Card padding={16} style={{ borderColor: modoComentario === "rechazo" ? "var(--st-rechazada-fg)" : "var(--brand)", background: modoComentario === "rechazo" ? "var(--st-rechazada-bg)" : "var(--surface-2)", marginBottom: 12 }}>
+                    <div style={{ color: modoComentario === "rechazo" ? "var(--st-rechazada-fg)" : "var(--n-800)", fontWeight: 700, marginBottom: 8 }}>{modoComentario === "rechazo" ? "Rechazar solicitud" : "Aprobar con observaciones"}</div>
                     <textarea
                       value={comentario}
                       onChange={e => setComentario(e.target.value)}
-                      placeholder="Comentario para el solicitante (opcional): motivo del rechazo, qué cambiar…"
+                      placeholder="Escribe la observación o el motivo del rechazo…"
                       rows={3}
                       style={{
                         width: "100%", background: "var(--bg-base)", border: "1px solid var(--border-default)",
@@ -204,26 +207,15 @@ export default function AuthorizePage() {
                       }}
                     />
                     <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-                      <button className="btn-swiss-primary" style={{ flex: 1, padding: "10px 0", fontSize: 12, background: "var(--accent)" }}
-                        disabled={enviando} onClick={() => decidir("rechazar")}>
-                        Confirmar rechazo
-                      </button>
-                      <button className="btn-swiss-secondary" style={{ flex: 1, padding: "10px 0", fontSize: 12 }}
-                        onClick={() => setMostrarRechazo(false)}>
-                        Cancelar
-                      </button>
+                      <BtnPrimary style={{ flex: 1, background: modoComentario === "rechazo" ? "var(--st-rechazada-fg)" : undefined }} disabled={enviando} icon={modoComentario === "rechazo" ? X : Check} onClick={() => decidir(modoComentario === "rechazo" ? "rechazar" : "aprobar_con_observaciones")}>{modoComentario === "rechazo" ? "Rechazar solicitud" : "Aprobar con observaciones"}</BtnPrimary>
+                      <BtnSecondary style={{ flex: 1 }} onClick={() => setMostrarRechazo(false)}>Cancelar</BtnSecondary>
                     </div>
-                  </div>
+                  </Card>
                 ) : (
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <button className="btn-swiss-primary" style={{ flex: 1, padding: "12px 0", fontSize: 13 }}
-                      disabled={enviando} onClick={() => decidir("aprobar")}>
-                      Aprobar
-                    </button>
-                    <button className="btn-swiss-secondary" style={{ flex: 1, padding: "12px 0", fontSize: 13 }}
-                      disabled={enviando} onClick={() => setMostrarRechazo(true)}>
-                      Rechazar
-                    </button>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <BtnPrimary style={{ flex: 1 }} disabled={enviando} icon={Check} onClick={() => decidir("aprobar")}>Aprobar</BtnPrimary>
+                    <BtnSecondary style={{ flex: 1 }} disabled={enviando} icon={MessageSquare} onClick={() => { setModoComentario("observaciones"); setMostrarRechazo(true); }}>Aprobar con observaciones</BtnSecondary>
+                    <BtnSecondary style={{ flex: 1, color: "var(--st-rechazada-fg)", borderColor: "var(--st-rechazada-fg)" }} disabled={enviando} icon={X} onClick={() => { setModoComentario("rechazo"); setMostrarRechazo(true); }}>Rechazar</BtnSecondary>
                   </div>
                 )}
                 {decisionAuto && (
@@ -237,14 +229,14 @@ export default function AuthorizePage() {
         )}
 
         {resultado && (
-          <div style={{ padding: 20, textAlign: "center", background: resultado === "aprobado" ? "var(--fill-success)" : "var(--fill-error)", border: `1px solid ${resultado === "aprobado" ? "var(--palette-green-500)" : "var(--border-accent)"}` }}>
+          <Card padding={20} style={{ textAlign: "center", background: resultado !== "rechazado" ? "var(--st-aprobada-bg)" : "var(--st-rechazada-bg)", borderColor: resultado !== "rechazado" ? "var(--st-aprobada-fg)" : "var(--st-rechazada-fg)" }}>
             <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4 }}>
-              Solicitud {resultado === "aprobado" ? "aprobada" : "rechazada"}
+              Solicitud {resultado === "aprobado_con_observaciones" ? "aprobada con observaciones" : resultado === "aprobado" ? "registrada como aprobada" : "registrada como rechazada"}
             </div>
             <div className="label" style={{ color: "var(--text-muted)" }}>
               El solicitante será notificado. Ya puedes cerrar esta ventana.
             </div>
-          </div>
+          </Card>
         )}
       </div>
     </div>

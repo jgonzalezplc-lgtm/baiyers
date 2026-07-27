@@ -47,6 +47,7 @@ export interface ItemLista {
 
 interface Aprobacion {
   estado: "pendiente" | "aprobado" | "rechazado";
+  resultado?: "aprobado_con_observaciones";
   aprobador_email?: string;
   token?: string;
   comentario_rechazo?: string;
@@ -395,7 +396,12 @@ export default function ListaDetallePage() {
               {lista.items.length} ítems · {lista.items.filter(i => i.comparado).length} comparados · {definitivos.length} definitivos
             </div>
           </div>
-          <InformeLista listaId={lista.id} userId={userId ?? ""} nombreLista={lista.nombre} />
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {!lista.aprobacion && lista.items.some(it => it.comparados.some(c => (c.precio_cotizado ?? c.precio) != null)) && (
+              <BtnSecondary onClick={autoSeleccionarBaratos} icon={Wand2}>Escoger lo más barato</BtnSecondary>
+            )}
+            <InformeLista listaId={lista.id} userId={userId ?? ""} nombreLista={lista.nombre} />
+          </div>
         </div>
       </div>
 
@@ -425,7 +431,7 @@ export default function ListaDetallePage() {
       {lista.aprobacion && (() => {
         const est = lista.aprobacion.estado;
         const badge = est === "aprobado" ? "aprobada" : est === "rechazado" ? "rechazada" : "cotizando";
-        const texto = est === "aprobado" ? "Autorizada" : est === "rechazado" ? "Rechazada" : "Esperando autorización";
+        const texto = est === "aprobado" ? (lista.aprobacion?.resultado === "aprobado_con_observaciones" ? "Autorizada con observaciones" : "Autorizada") : est === "rechazado" ? "Rechazada" : "Esperando autorización";
         return (
           <Card padding={16} style={{ marginBottom: 20 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -441,9 +447,9 @@ export default function ListaDetallePage() {
                 </BtnSecondary>
               )}
             </div>
-            {est === "rechazado" && lista.aprobacion.comentario_rechazo && (
+            {(est === "rechazado" || lista.aprobacion?.resultado === "aprobado_con_observaciones") && lista.aprobacion.comentario_rechazo && (
               <SummaryPanel style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 12.5, color: "var(--n-500)", marginBottom: 4 }}>Comentario del autorizador</div>
+                <div style={{ fontSize: 12.5, color: "var(--n-500)", marginBottom: 4 }}>{est === "rechazado" ? "Motivo del autorizador" : "Observaciones del autorizador"}</div>
                 <div style={{ fontSize: 14, color: "var(--n-900)", lineHeight: 1.6 }}>
                   {lista.aprobacion.comentario_rechazo}
                 </div>
@@ -705,11 +711,6 @@ export default function ListaDetallePage() {
           <BtnPrimary onClick={() => router.push(`/listas/${id}/autorizacion`)} icon={Send}>
             Solicitar autorización
           </BtnPrimary>
-          {lista.items.some(it => it.comparados.some(c => (c.precio_cotizado ?? c.precio) != null)) && (
-            <BtnSecondary onClick={autoSeleccionarBaratos} icon={Wand2}>
-              Escoger lo más barato
-            </BtnSecondary>
-          )}
         </div>
       )}
 
