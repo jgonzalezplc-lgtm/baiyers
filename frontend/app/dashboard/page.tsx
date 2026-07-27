@@ -2,29 +2,21 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { FileText } from "lucide-react";
-import { Card, Badge, CategoryChip, EmptyState } from "@/components/ui";
-import { categoriaLabel, fmtCLP } from "@/components/ui/tokens";
+import { Card, Badge, EmptyState } from "@/components/ui";
+import { fmtCLP } from "@/components/ui/tokens";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-interface CotizacionReciente {
+interface ListaReciente {
   id: string;
-  nombre_identificado: string;
-  marca: string | null;
-  categoria: string | null;
-  confianza_ia: string | null;
-  created_at: string;
-  n_encontrados: number;
-  n_enviados: number;
-  n_respondieron: number;
-  precio_min: number | null;
+  nombre: string;
+  created_at: string | null;
+  monto_total: number;
+  n_items: number;
+  n_comparados: number;
+  n_definitivos: number;
+  aprobacion_estado: "aprobado" | "aprobado_con_observaciones" | "rechazado" | "pendiente" | null;
 }
-
-const CONFIANZA_COLORS: Record<string, string> = {
-  alto: "var(--text-success)",
-  medio: "#92400e",
-  bajo: "var(--text-error)",
-};
 
 function fmtFecha(iso: string) {
   const d = new Date(iso);
@@ -69,7 +61,7 @@ export default async function DashboardPage({
   // Fetch real stats & recent quotes — con timeout duro para que un backend
   // lento nunca cuelgue el SSR (usuario quedaba viendo la página en blanco).
   let stats = { cotizaciones: 0, proveedores: 0, ocs: 0, totalOC: 0 };
-  let cotizacionesRecientes: CotizacionReciente[] = [];
+  let listasRecientes: ListaReciente[] = [];
 
   const fetchConTimeout = async (url: string, ms = 5000): Promise<Response | null> => {
     const ctrl = new AbortController();
@@ -87,10 +79,10 @@ export default async function DashboardPage({
   try {
     const [statsRes, cotRes] = await Promise.all([
       fetchConTimeout(`${API_URL}/api/dashboard/stats?user_id=${user.id}`),
-      fetchConTimeout(`${API_URL}/api/cotizaciones?user_id=${user.id}&limit=5`),
+      fetchConTimeout(`${API_URL}/api/listas?user_id=${user.id}`),
     ]);
     if (statsRes?.ok) stats = await statsRes.json();
-    if (cotRes?.ok) cotizacionesRecientes = await cotRes.json();
+    if (cotRes?.ok) listasRecientes = (await cotRes.json()).slice(0, 5);
   } catch (_) { /* silent */ }
 
   return (
@@ -187,7 +179,7 @@ export default async function DashboardPage({
           marginBottom: 12,
         }}>
           <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--n-900)", margin: 0 }}>
-            Cotizaciones recientes
+            Listas de cotización recientes
           </h2>
           <a href="/listas" style={{ fontSize: 13.5, fontWeight: 500, color: "var(--brand)", textDecoration: "none" }}>
             Ver todas →
@@ -201,85 +193,54 @@ export default async function DashboardPage({
           {/* Cabecera */}
           <div style={{
             display: "grid",
-            gridTemplateColumns: "72px 1fr 110px 90px 110px 110px 100px 76px",
+            gridTemplateColumns: "1fr 90px 110px 110px 170px 120px 76px",
             gap: 10,
             padding: "10px 16px",
             borderBottom: "1px solid var(--n-200)",
             background: "var(--canvas)",
           }}>
-            {["ID", "Ítem", "Categoría", "Confianza", "Correos env.", "Respondieron", "Precio mín.", "Fecha"].map(h => (
+            {["Lista", "Ítems", "Comparados", "Elegidos", "Autorización", "Total", "Fecha"].map(h => (
               <div key={h} style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)" }}>{h}</div>
             ))}
           </div>
 
-          {cotizacionesRecientes.length === 0 ? (
+          {listasRecientes.length === 0 ? (
             <EmptyState
               icon={<FileText size={26} strokeWidth={1.5} />}
-              title="Aún no hay cotizaciones"
-              description="Describe lo que necesitas comprar y el sistema busca proveedores por ti."
+              title="Aún no hay listas de cotización"
+              description="Crea una cotización para comparar proveedores y organizar una lista de compra."
               action={<a href="/cotizar" className="btn-swiss-primary" style={{ textDecoration: "none" }}>Crear mi primera cotización</a>}
             />
           ) : (
-            cotizacionesRecientes.map((c, i) => {
-              const conf = c.confianza_ia?.toLowerCase();
-              const tieneRespuestas = c.n_respondieron > 0;
-              const tieneEnviados = c.n_enviados > 0;
+            listasRecientes.map((lista, i) => {
+              const estado = lista.aprobacion_estado;
+              const estadoUI = estado === "aprobado" ? "aprobada" : estado === "aprobado_con_observaciones" ? "en_curso" : estado === "rechazado" ? "rechazada" : "cotizando";
+              const estadoLabel = estado === "aprobado" ? "Aprobada" : estado === "aprobado_con_observaciones" ? "Aprobada con modificaciones" : estado === "rechazado" ? "Rechazada" : estado === "pendiente" ? "Esperando aprobación" : "Sin enviar";
 
               return (
-                <Link key={c.id} href={`/listas/${c.id}`}
+                <Link key={lista.id} href={`/listas/${lista.id}`}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "72px 1fr 110px 90px 110px 110px 100px 76px",
+                    gridTemplateColumns: "1fr 90px 110px 110px 170px 120px 76px",
                     gap: 10,
                     padding: "12px 16px",
-                    borderBottom: i < cotizacionesRecientes.length - 1 ? "1px solid var(--n-100)" : "none",
+                    borderBottom: i < listasRecientes.length - 1 ? "1px solid var(--n-100)" : "none",
                     alignItems: "center",
                     textDecoration: "none", color: "inherit",
-                    background: tieneRespuestas ? "var(--st-aprobada-bg)" : i % 2 ? "var(--canvas)" : undefined,
+                    background: i % 2 ? "var(--canvas)" : undefined,
                   }}>
-                  <div style={{ fontSize: 12, color: "var(--n-500)", fontFamily: "var(--font-mono)" }}>
-                    COT-{c.id.slice(-4).toUpperCase()}
-                  </div>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--n-900)" }}>{c.nombre_identificado}</div>
-                    {c.marca && <div style={{ fontSize: 12, color: "var(--n-500)" }}>{c.marca}</div>}
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--n-900)" }}>{lista.nombre}</div>
+                    <div style={{ fontSize: 12, color: "var(--n-500)", fontFamily: "var(--font-mono)" }}>LIST-{lista.id.slice(-4).toUpperCase()}</div>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-                    <CategoryChip categoria={c.categoria} size={26} />
-                    <span style={{ fontSize: 13, color: "var(--n-600)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {categoriaLabel(c.categoria)}
-                    </span>
-                  </div>
-                  <div>
-                    {conf ? (
-                      <Badge status={conf === "alto" ? "aprobada" : conf === "medio" ? "cotizando" : "rechazada"}>
-                        {conf}
-                      </Badge>
-                    ) : <span style={{ fontSize: 13, color: "var(--n-500)" }}>—</span>}
-                  </div>
-                  {/* Correos enviados */}
-                  <div>
-                    {tieneEnviados ? (
-                      <Badge status="en_curso">{c.n_enviados} enviado{c.n_enviados !== 1 ? "s" : ""}</Badge>
-                    ) : (
-                      <span style={{ fontSize: 13, color: "var(--n-500)" }}>
-                        {c.n_encontrados > 0 ? `${c.n_encontrados} encontr.` : "—"}
-                      </span>
-                    )}
-                  </div>
-                  {/* Respondieron */}
-                  <div>
-                    {tieneRespuestas ? (
-                      <Badge status="aprobada">{c.n_respondieron} respondió</Badge>
-                    ) : (
-                      <span style={{ fontSize: 13, color: "var(--n-500)" }}>{tieneEnviados ? "Esperando" : "—"}</span>
-                    )}
-                  </div>
-                  {/* Precio mínimo */}
+                  <div style={{ fontSize: 14, color: "var(--n-700)", fontFamily: "var(--font-mono)" }}>{lista.n_items}</div>
+                  <div style={{ fontSize: 14, color: "var(--n-700)", fontFamily: "var(--font-mono)" }}>{lista.n_comparados}/{lista.n_items}</div>
+                  <div style={{ fontSize: 14, color: "var(--n-700)", fontFamily: "var(--font-mono)" }}>{lista.n_definitivos}/{lista.n_items}</div>
+                  <div><Badge status={estadoUI}>{estadoLabel}</Badge></div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: "var(--n-900)", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
-                    {c.precio_min != null ? fmtCLP(c.precio_min) : "—"}
+                    {lista.monto_total ? fmtCLP(lista.monto_total) : "—"}
                   </div>
-                  <div style={{ fontSize: 12.5, color: "var(--n-500)" }}>{fmtFecha(c.created_at)}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--n-500)" }}>{lista.created_at ? fmtFecha(lista.created_at) : "—"}</div>
                 </Link>
               );
             })
@@ -288,8 +249,7 @@ export default async function DashboardPage({
       </div>
 
       {/* Gmail integration (compacto, al final) */}
-      {!gmailRecienConectado && (
-        <div style={{
+      <div style={{
           marginTop: 24,
           background: "var(--surface)",
           border: "1px solid var(--n-200)",
@@ -309,11 +269,15 @@ export default async function DashboardPage({
               Conecta Gmail para enviar cotizaciones automáticamente.
             </div>
           </div>
-          <a href={`${API_URL}/api/gmail/auth?user_id=${user.id}`} className="btn-swiss-secondary" style={{ textDecoration: "none" }}>
-            Conectar Gmail
-          </a>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {!gmailRecienConectado && <a href={`${API_URL}/api/gmail/auth?user_id=${user.id}`} className="btn-swiss-secondary" style={{ textDecoration: "none" }}>
+              Conectar Gmail
+            </a>}
+            <Link href="/settings?section=autorizaciones" className="btn-swiss-secondary" style={{ textDecoration: "none" }}>
+              Editar ciclo de autorizaciones
+            </Link>
+          </div>
         </div>
-      )}
     </div>
   );
 }
