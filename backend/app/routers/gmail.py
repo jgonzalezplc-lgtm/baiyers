@@ -410,8 +410,8 @@ def _items_contexto(sb, conv: dict) -> list[dict]:
 # se guarda igual como propuesta (audit log), pero al aplicarla cae en
 # notas_respuesta como texto libre en vez de una columna dedicada.
 _FIELD_MAP_RESULTADOS = {
-    "precio_unitario": "precio_respuesta",
-    "moneda": "moneda_respuesta",
+    "precio_unitario": "precio_cotizado",
+    "moneda": "moneda_cotizada",
     "plazo_entrega": "plazo_entrega",
     "condiciones_pago": "condiciones_pago",
 }
@@ -423,7 +423,7 @@ def _aplicar_campo_resultado(sb, entity_id: str, field: str, valor, cuando_iso: 
     tiene columna propia). Usado tanto por la auto-aplicación en
     /sincronizar-respuestas como por /propuestas/{id}/aplicar."""
     columna = _FIELD_MAP_RESULTADOS.get(field)
-    cambios = {"estado": "respondio", "respuesta_at": cuando_iso}
+    cambios = {"estado": "respondio", "respuesta_recibida_at": cuando_iso}
     if columna:
         cambios[columna] = valor
     else:
