@@ -89,6 +89,70 @@ def send_email(service, to: str, subject: str, body: str, from_email: str) -> di
     return service.users().messages().send(userId="me", body={"raw": raw}).execute()
 
 
+def extraer_texto_plano(payload: dict) -> str:
+    """Extrae el body de texto plano de un mensaje de Gmail (formato 'full'),
+    recorriendo las partes MIME si es multipart."""
+    def _decode(data: str) -> str:
+        return base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
+
+    if payload.get("body", {}).get("data"):
+        return _decode(payload["body"]["data"])
+
+    for part in payload.get("parts", []) or []:
+        if part.get("mimeType") == "text/plain" and part.get("body", {}).get("data"):
+            return _decode(part["body"]["data"])
+    # Sin texto plano directo: intenta bajar por sub-partes, y como último
+    # recurso el html (sin limpiar tags — mejor que perder el contenido).
+    for part in payload.get("parts", []) or []:
+        if part.get("parts"):
+            texto = extraer_texto_plano(part)
+            if texto:
+                return texto
+        if part.get("mimeType") == "text/html" and part.get("body", {}).get("data"):
+            return _decode(part["body"]["data"])
+    return ""
+
+
+def extraer_adjuntos_meta(payload: dict) -> list[dict]:
+    """Lista los adjuntos de un mensaje (sin descargar el contenido todavía):
+    filename, mimeType y attachmentId para pedirlos después con
+    `descargar_adjunto`."""
+    adjuntos: list[dict] = []
+
+    def _recorrer(parte: dict):
+        filename = parte.get("filename")
+        body = parte.get("body", {})
+        if filename and body.get("attachmentId"):
+            adjuntos.append({
+                "filename": filename,
+                "mime_type": parte.get("mimeType"),
+                "attachment_id": body["attachmentId"],
+                "size": body.get("size"),
+            })
+        for sub in parte.get("parts", []) or []:
+            _recorrer(sub)
+
+    _recorrer(payload)
+    return adjuntos
+
+
+def descargar_adjunto(service, message_id: str, attachment_id: str) -> bytes:
+    att = service.users().messages().attachments().get(
+        userId="me", messageId=message_id, id=attachment_id
+    ).execute()
+    return base64.urlsafe_b64decode(att["data"])
+
+
+def listar_mensajes_thread(service, thread_id: str) -> list[dict]:
+    """Todos los mensajes (formato 'full') de un hilo de Gmail, en orden cronológico."""
+    thread = service.users().threads().get(userId="me", id=thread_id, format="full").execute()
+    return thread.get("messages", [])
+
+
+def headers_de(msg: dict) -> dict:
+    return {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
+
+
 def get_refreshed_tokens(access_token: str, refresh_token: str) -> dict:
     """Renueva tokens y retorna los nuevos valores."""
     secrets = _load_client_secrets()

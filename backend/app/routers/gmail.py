@@ -255,7 +255,39 @@ async def enviar_correo(req: EnviarRequest):
     except Exception as e:
         print(f"[Gmail] SI error: {e}")
 
-    return {"success": True, "message_id": msg.get("id")}
+    # Agente de Gmail: registra la conversación y el mensaje saliente para
+    # poder trackear el hilo y leer las respuestas más adelante.
+    thread_id = msg.get("threadId")
+    try:
+        conv = sb.table("gmail_conversations").upsert({
+            "user_id": req.user_id,
+            "gmail_thread_id": thread_id,
+            "proveedor_nombre": req.proveedor_nombre or None,
+            "proveedor_email": req.to_email,
+            "cotizacion_id": req.cotizacion_id if req.cotizacion_id != "demo" else None,
+            "resultado_id": req.resultado_id,
+            "subject": subject_final,
+            "estado": "sent",
+            "last_message_at": now_iso,
+        }, on_conflict="user_id,gmail_thread_id").execute()
+        conversation_id = conv.data[0]["id"]
+        sb.table("gmail_messages").upsert({
+            "conversation_id": conversation_id,
+            "gmail_message_id": msg.get("id"),
+            "gmail_thread_id": thread_id,
+            "direction": "outbound",
+            "from_email": integration["email"],
+            "to_email": req.to_email,
+            "subject": subject_final,
+            "body_text": body_final,
+            "received_at": now_iso,
+            "procesado": True,
+        }, on_conflict="gmail_message_id").execute()
+    except Exception as e:
+        # No bloquea el envío si el esquema del agente aún no está migrado.
+        print(f"[Gmail] No se pudo registrar la conversación: {e}")
+
+    return {"success": True, "message_id": msg.get("id"), "thread_id": thread_id}
 
 
 # ─── Sync email (fix para cuentas con email hardcodeado) ──────────────────────
@@ -313,79 +345,248 @@ async def gmail_webhook(request: Request):
     return {"status": "received"}
 
 
-# ─── Check replies (polling para desarrollo) ───────────────────────────────────
+# ─── Agente de Gmail: sincronizar respuestas ──────────────────────────────────
+# Fase 1: sólo lee y PROPONE actualizaciones (item_field_updates.estado='propuesta').
+# No envía correos automáticos ni escribe en `resultados` sin que un humano
+# apruebe la propuesta vía /propuestas/{id}/aplicar.
 
-@router.get("/check-replies/{cotizacion_id}")
-async def check_replies(cotizacion_id: str, user_id: str):
-    """Busca manualmente respuestas en Gmail para una cotizacion."""
-    from app.services.gmail_service import get_gmail_service
+_AUTO_REPLY_HINTS = (
+    "out of office", "fuera de la oficina", "fuera de oficina", "respuesta automática",
+    "automatic reply", "no-reply", "noreply", "vacaciones", "delivery status notification",
+    "undelivered mail", "mailer-daemon",
+)
+
+
+def _parece_automatico(subject: str, from_email: str, cuerpo: str) -> bool:
+    blob = f"{subject} {from_email} {cuerpo[:300]}".lower()
+    return any(h in blob for h in _AUTO_REPLY_HINTS)
+
+
+def _items_contexto(sb, conv: dict) -> list[dict]:
+    """Ítem(s) sobre los que trata esta conversación, para dárselos como
+    contexto al Email Understanding Agent."""
+    items = []
+    if conv.get("resultado_id"):
+        r = sb.table("resultados").select("id,proveedor_nombre,cotizacion_id").eq("id", conv["resultado_id"]).maybe_single().execute()
+        if r.data:
+            nombre_item = None
+            try:
+                cot = sb.table("cotizaciones").select("nombre_item").eq("id", r.data["cotizacion_id"]).maybe_single().execute()
+                nombre_item = cot.data.get("nombre_item") if cot.data else None
+            except Exception:
+                pass
+            items.append({"entity_id": r.data["id"], "nombre": nombre_item or "ítem cotizado", "proveedor": r.data.get("proveedor_nombre")})
+    elif conv.get("cotizacion_id"):
+        rs = sb.table("resultados").select("id,proveedor_nombre").eq("cotizacion_id", conv["cotizacion_id"]).eq("proveedor_nombre", conv.get("proveedor_nombre") or "").execute()
+        for r in (rs.data or []):
+            items.append({"entity_id": r["id"], "nombre": "ítem cotizado", "proveedor": r.get("proveedor_nombre")})
+    return items
+
+
+# Mapea campos extraídos a columnas reales de `resultados`. Lo que no está acá
+# se guarda igual como propuesta (audit log), pero al aplicarla cae en
+# notas_respuesta como texto libre en vez de una columna dedicada.
+_FIELD_MAP_RESULTADOS = {
+    "precio_unitario": "precio_respuesta",
+    "moneda": "moneda_respuesta",
+    "plazo_entrega": "plazo_entrega",
+    "condiciones_pago": "condiciones_pago",
+}
+
+
+@router.post("/sincronizar-respuestas")
+async def sincronizar_respuestas(user_id: str):
+    """Recorre las conversaciones activas del usuario, trae mensajes nuevos del
+    hilo de Gmail, los persiste (idempotente por gmail_message_id) y para los
+    inbound corre el Email Understanding Agent, guardando sus propuestas."""
+    from app.services.gmail_service import get_gmail_service, listar_mensajes_thread, headers_de, extraer_texto_plano, extraer_adjuntos_meta
+    from app.services.email_understanding import extraer_actualizaciones
     from app.services.supabase import get_supabase
-    import google.generativeai as genai
-    from app.config import settings
 
     sb = get_supabase()
     res = sb.table("user_integrations").select("*").eq("user_id", user_id).eq("provider", "gmail").single().execute()
     if not res.data:
         raise HTTPException(status_code=400, detail="Gmail no conectado")
-
     integration = res.data
     service, _ = get_gmail_service(integration["access_token"], integration["refresh_token"])
+    mi_email = (integration["email"] or "").lower()
 
-    # Buscar emails recientes en inbox con asunto "RE:" o "Cotizacion"
-    results = service.users().messages().list(
-        userId="me",
-        q="subject:(RE: cotizacion OR RE: quotation) newer_than:7d",
-        maxResults=10,
-    ).execute()
+    activas = sb.table("gmail_conversations").select("*").eq("user_id", user_id).in_(
+        "estado", ["sent", "waiting_for_supplier", "supplier_replied", "partially_answered"]
+    ).execute().data or []
 
-    messages = results.get("messages", [])
-    parsed_replies = []
+    resumen = {"conversaciones_revisadas": len(activas), "mensajes_nuevos": 0, "propuestas_generadas": 0}
 
-    for msg_ref in messages[:5]:
+    for conv in activas:
         try:
-            msg = service.users().messages().get(userId="me", id=msg_ref["id"], format="full").execute()
-            headers = {h["name"]: h["value"] for h in msg["payload"].get("headers", [])}
-            subject = headers.get("Subject", "")
-            from_email = headers.get("From", "")
+            existentes = {
+                m["gmail_message_id"]
+                for m in sb.table("gmail_messages").select("gmail_message_id").eq("conversation_id", conv["id"]).execute().data or []
+            }
+            mensajes = listar_mensajes_thread(service, conv["gmail_thread_id"])
+        except Exception as e:
+            print(f"[Gmail sync] thread {conv.get('gmail_thread_id')}: {e}")
+            continue
 
-            # Extraer body del mensaje
-            body_text = ""
-            payload = msg.get("payload", {})
-            if payload.get("body", {}).get("data"):
-                body_text = base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="ignore")
-            elif payload.get("parts"):
-                for part in payload["parts"]:
-                    if part.get("mimeType") == "text/plain" and part.get("body", {}).get("data"):
-                        body_text = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", errors="ignore")
-                        break
+        for msg in mensajes:
+            if msg["id"] in existentes:
+                continue
+            h = headers_de(msg)
+            from_email = h.get("From", "")
+            direction = "outbound" if mi_email and mi_email in from_email.lower() else "inbound"
+            cuerpo = extraer_texto_plano(msg.get("payload", {}))
+            adjuntos_meta = extraer_adjuntos_meta(msg.get("payload", {}))
+            recibido_iso = datetime.now(timezone.utc).isoformat()
 
-            if not body_text:
+            row = sb.table("gmail_messages").insert({
+                "conversation_id": conv["id"],
+                "gmail_message_id": msg["id"],
+                "gmail_thread_id": conv["gmail_thread_id"],
+                "direction": direction,
+                "from_email": from_email,
+                "to_email": h.get("To", ""),
+                "subject": h.get("Subject", ""),
+                "body_text": cuerpo,
+                "received_at": recibido_iso,
+                "procesado": direction == "outbound",
+            }).execute().data[0]
+            resumen["mensajes_nuevos"] += 1
+
+            for a in adjuntos_meta:
+                sb.table("gmail_attachments").insert({
+                    "message_id": row["id"],
+                    "filename": a["filename"],
+                    "mime_type": a["mime_type"],
+                    "gmail_attachment_id": a["attachment_id"],
+                }).execute()
+
+            if direction != "inbound":
                 continue
 
-            # Parsear con Gemini
-            if settings.gemini_api_key:
-                genai.configure(api_key=settings.gemini_api_key)
-                model = genai.GenerativeModel("gemini-2.5-flash")
-                parse_prompt = f"""Del siguiente email de proveedor, extrae en JSON (SOLO JSON sin markdown):
-{{"precio_unitario": number|null, "moneda": "CLP|USD|EUR", "disponibilidad": "string", "plazo_entrega": "string", "condiciones_pago": "string"}}
+            nuevo_estado = "supplier_replied"
+            if _parece_automatico(h.get("Subject", ""), from_email, cuerpo):
+                nuevo_estado = "human_review_required"
+            else:
+                items_ctx = _items_contexto(sb, conv)
+                extraccion = await extraer_actualizaciones(cuerpo, items_ctx)
+                entity_unico = items_ctx[0]["entity_id"] if len(items_ctx) == 1 else None
 
-Email:
-{body_text[:2000]}"""
-                try:
-                    response = await asyncio.wait_for(model.generate_content_async(parse_prompt), timeout=20.0)
-                    text = response.text.strip()
-                    if "```" in text:
-                        text = text.split("```")[1]
-                        if text.startswith("json"):
-                            text = text[4:].strip()
-                    data = json.loads(text)
-                    data["from"] = from_email
-                    data["subject"] = subject
-                    data["message_id"] = msg_ref["id"]
-                    parsed_replies.append(data)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                for p in extraccion["propuestas"]:
+                    entity_id = p["entity_id"] or entity_unico
+                    if not entity_id:
+                        continue  # ambiguo y no hay un único ítem al que asociarlo por defecto
+                    previo = None
+                    columna = _FIELD_MAP_RESULTADOS.get(p["field"])
+                    if columna:
+                        r = sb.table("resultados").select(columna).eq("id", entity_id).maybe_single().execute()
+                        previo = r.data.get(columna) if r.data else None
+                    sb.table("item_field_updates").insert({
+                        "user_id": user_id,
+                        "entity_type": "resultado",
+                        "entity_id": entity_id,
+                        "field": p["field"],
+                        "previous_value": json.dumps(previo, default=str),
+                        "new_value": json.dumps(p["new_value"], default=str),
+                        "currency": p.get("currency"),
+                        "source_type": "gmail_message",
+                        "source_id": row["id"],
+                        "supplier_nombre": conv.get("proveedor_nombre"),
+                        "supplier_email": conv.get("proveedor_email"),
+                        "confidence": p["confidence"],
+                    }).execute()
+                    resumen["propuestas_generadas"] += 1
 
-    return {"replies": parsed_replies, "total": len(parsed_replies)}
+                if extraccion["requiere_aclaracion"]:
+                    nuevo_estado = "clarification_required"
+                elif extraccion["respondio_todo"]:
+                    nuevo_estado = "complete"
+                elif extraccion["propuestas"]:
+                    nuevo_estado = "partially_answered"
+
+            sb.table("gmail_messages").update({"procesado": True}).eq("id", row["id"]).execute()
+            sb.table("gmail_conversations").update({
+                "estado": nuevo_estado, "last_message_at": recibido_iso,
+            }).eq("id", conv["id"]).execute()
+
+    return resumen
+
+
+@router.get("/conversaciones")
+async def listar_conversaciones(user_id: str):
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+    convs = sb.table("gmail_conversations").select("*").eq("user_id", user_id).order("last_message_at", desc=True).execute().data or []
+    for c in convs:
+        c["gmail_url"] = f"https://mail.google.com/mail/u/0/#all/{c['gmail_thread_id']}"
+    return convs
+
+
+@router.get("/conversaciones/{conversation_id}")
+async def detalle_conversacion(conversation_id: str, user_id: str):
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+    conv = sb.table("gmail_conversations").select("*").eq("id", conversation_id).eq("user_id", user_id).maybe_single().execute().data
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    conv["gmail_url"] = f"https://mail.google.com/mail/u/0/#all/{conv['gmail_thread_id']}"
+
+    mensajes = sb.table("gmail_messages").select("*").eq("conversation_id", conversation_id).order("received_at").execute().data or []
+    ids_mensajes = [m["id"] for m in mensajes]
+    adjuntos = []
+    propuestas = []
+    if ids_mensajes:
+        adjuntos = sb.table("gmail_attachments").select("*").in_("message_id", ids_mensajes).execute().data or []
+        propuestas = sb.table("item_field_updates").select("*").in_("source_id", ids_mensajes).order("created_at", desc=True).execute().data or []
+
+    return {"conversacion": conv, "mensajes": mensajes, "adjuntos": adjuntos, "propuestas": propuestas}
+
+
+class RevisarPropuestaRequest(BaseModel):
+    user_id: str
+
+
+@router.post("/propuestas/{propuesta_id}/aplicar")
+async def aplicar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest):
+    """Aprueba una propuesta: la marca aplicada y, si el campo mapea a una
+    columna real de `resultados`, la escribe. Acción explícita de un humano —
+    el agente nunca llega a este estado por sí solo."""
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+
+    p = sb.table("item_field_updates").select("*").eq("id", propuesta_id).eq("user_id", req.user_id).maybe_single().execute().data
+    if not p:
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    if p["estado"] != "propuesta":
+        raise HTTPException(status_code=400, detail=f"Ya estaba '{p['estado']}'")
+
+    nuevo_valor = json.loads(p["new_value"]) if isinstance(p["new_value"], str) else p["new_value"]
+
+    if p["entity_type"] == "resultado":
+        columna = _FIELD_MAP_RESULTADOS.get(p["field"])
+        cambios = {"estado": "respondio", "respuesta_at": datetime.now(timezone.utc).isoformat()}
+        if columna:
+            cambios[columna] = nuevo_valor
+        else:
+            actual = sb.table("resultados").select("notas_respuesta").eq("id", p["entity_id"]).maybe_single().execute()
+            previa = (actual.data or {}).get("notas_respuesta") or ""
+            cambios["notas_respuesta"] = (previa + f"\n{p['field']}: {nuevo_valor}").strip()
+        sb.table("resultados").update(cambios).eq("id", p["entity_id"]).execute()
+
+    sb.table("item_field_updates").update({
+        "estado": "aplicado", "reviewed_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": req.user_id,
+    }).eq("id", propuesta_id).execute()
+
+    return {"success": True}
+
+
+@router.post("/propuestas/{propuesta_id}/rechazar")
+async def rechazar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest):
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+    p = sb.table("item_field_updates").select("id,estado").eq("id", propuesta_id).eq("user_id", req.user_id).maybe_single().execute().data
+    if not p:
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    sb.table("item_field_updates").update({
+        "estado": "descartado", "reviewed_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": req.user_id,
+    }).eq("id", propuesta_id).execute()
+    return {"success": True}
