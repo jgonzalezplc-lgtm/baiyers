@@ -435,6 +435,12 @@ def _aplicar_campo_resultado(sb, entity_id: str, field: str, valor, cuando_iso: 
 
 @router.post("/sincronizar-respuestas")
 async def sincronizar_respuestas(user_id: str):
+    """Trigger manual (botón en /conversaciones) — delega en la misma función
+    que corre sola cada pocos minutos vía cron (ver sincronizar_todos_los_usuarios)."""
+    return await _sincronizar_usuario(user_id)
+
+
+async def _sincronizar_usuario(user_id: str) -> dict:
     """Recorre las conversaciones activas del usuario, trae mensajes nuevos del
     hilo de Gmail, los persiste (idempotente por gmail_message_id) y para los
     inbound corre el Email Understanding Agent, guardando sus propuestas."""
@@ -639,6 +645,29 @@ async def sincronizar_respuestas(user_id: str):
                     "estado": nuevo_estado, "last_message_at": recibido_iso,
                 }).eq("id", conv["id"]).execute()
 
+    return resumen
+
+
+async def sincronizar_todos_los_usuarios() -> dict:
+    """Corre _sincronizar_usuario para cada usuario con al menos una
+    conversación activa. La llama el cron cada pocos minutos (ver
+    services/cron.py) — así el usuario no tiene que acordarse de apretar
+    'Sincronizar respuestas': el agente revisa Gmail solo."""
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+
+    activas = sb.table("gmail_conversations").select("user_id").in_(
+        "estado", ["sent", "waiting_for_supplier", "supplier_replied", "partially_answered"]
+    ).execute().data or []
+    usuarios = {c["user_id"] for c in activas}
+
+    resumen = {"usuarios_revisados": len(usuarios), "errores": 0}
+    for uid in usuarios:
+        try:
+            await _sincronizar_usuario(uid)
+        except Exception as e:
+            resumen["errores"] += 1
+            print(f"[Gmail cron] error sincronizando user_id={uid}: {e}")
     return resumen
 
 

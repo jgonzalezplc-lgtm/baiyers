@@ -57,10 +57,25 @@ def _check_recurrencias():
     check_recurrencias()
 
 
+def _sincronizar_gmail():
+    """El usuario no debería tener que acordarse de apretar 'Sincronizar
+    respuestas' — el agente revisa Gmail solo cada pocos minutos."""
+    import asyncio
+    from app.routers.gmail import sincronizar_todos_los_usuarios
+
+    try:
+        resultado = asyncio.run(sincronizar_todos_los_usuarios())
+        if resultado.get("usuarios_revisados"):
+            print(f"[Cron] Gmail sync: {resultado}")
+    except Exception as e:
+        print(f"[Cron] Error en sync de Gmail: {e}")
+
+
 def start_cron():
     scheduler = BackgroundScheduler()
     scheduler.add_job(_enviar_ratings_pendientes, "interval", hours=1, id="ratings_cron")
     scheduler.add_job(_check_recurrencias, "interval", hours=1, id="recurrencias_cron")
+    scheduler.add_job(_sincronizar_gmail, "interval", minutes=5, id="gmail_sync_cron")
     scheduler.start()
-    print("[Cron] Scheduler iniciado — ratings y recurrencias cada 1 hora")
+    print("[Cron] Scheduler iniciado — ratings/recurrencias cada 1h, Gmail cada 5min")
     return scheduler

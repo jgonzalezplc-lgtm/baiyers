@@ -89,7 +89,7 @@ export default function ConversacionesPage() {
     <>
       <PageHeader
         title="Conversaciones"
-        subtitle="Correos con proveedores, con lo que el agente entendió de cada respuesta."
+        subtitle="Correos con proveedores, con lo que el agente entendió de cada respuesta. Se revisan solas cada pocos minutos — el botón es para forzarlo ahora mismo."
         actions={
           <BtnSecondary onClick={sincronizar} disabled={sincronizando || !userId}>
             <RefreshCw size={15} strokeWidth={1.75} style={{ marginRight: 6, animation: sincronizando ? "spin 1s linear infinite" : undefined }} />
