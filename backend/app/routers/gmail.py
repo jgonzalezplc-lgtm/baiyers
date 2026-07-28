@@ -379,6 +379,16 @@ def _extraer_email(header_from: str) -> str:
     return email if "@" in email else ""
 
 
+def _nombre_cotizacion(sb, cotizacion_id: str) -> str:
+    try:
+        cot = sb.table("cotizaciones").select("nombre_identificado,descripcion").eq("id", cotizacion_id).maybe_single().execute()
+        if cot.data:
+            return cot.data.get("nombre_identificado") or cot.data.get("descripcion") or "ítem cotizado"
+    except Exception:
+        pass
+    return "ítem cotizado"
+
+
 def _items_contexto(sb, conv: dict) -> list[dict]:
     """Ítem(s) sobre los que trata esta conversación, para dárselos como
     contexto al Email Understanding Agent."""
@@ -386,17 +396,13 @@ def _items_contexto(sb, conv: dict) -> list[dict]:
     if conv.get("resultado_id"):
         r = sb.table("resultados").select("id,proveedor_nombre,cotizacion_id").eq("id", conv["resultado_id"]).maybe_single().execute()
         if r.data:
-            nombre_item = None
-            try:
-                cot = sb.table("cotizaciones").select("nombre_item").eq("id", r.data["cotizacion_id"]).maybe_single().execute()
-                nombre_item = cot.data.get("nombre_item") if cot.data else None
-            except Exception:
-                pass
-            items.append({"entity_id": r.data["id"], "nombre": nombre_item or "ítem cotizado", "proveedor": r.data.get("proveedor_nombre")})
+            nombre_item = _nombre_cotizacion(sb, r.data["cotizacion_id"])
+            items.append({"entity_id": r.data["id"], "nombre": nombre_item, "proveedor": r.data.get("proveedor_nombre")})
     elif conv.get("cotizacion_id"):
+        nombre_item = _nombre_cotizacion(sb, conv["cotizacion_id"])
         rs = sb.table("resultados").select("id,proveedor_nombre").eq("cotizacion_id", conv["cotizacion_id"]).eq("proveedor_nombre", conv.get("proveedor_nombre") or "").execute()
         for r in (rs.data or []):
-            items.append({"entity_id": r["id"], "nombre": "ítem cotizado", "proveedor": r.get("proveedor_nombre")})
+            items.append({"entity_id": r["id"], "nombre": nombre_item, "proveedor": r.get("proveedor_nombre")})
     return items
 
 

@@ -646,7 +646,7 @@ export default function ResultadosPage() {
         setTimeout(() => setToast(""), 3000);
         return;
       }
-      const nuevo: Resultado & { contacto?: string } = {
+      const nuevo: Resultado & { contacto?: string; resultado_id?: string } = {
         titulo: fila.proveedor_nombre,
         precio: null,
         moneda: fila.moneda ?? "CLP",
@@ -657,6 +657,7 @@ export default function ResultadosPage() {
         tipo_proveedor: "desconocido",
         relevante: true,
         contacto: fila.proveedor_email,
+        resultado_id: fila.id,
       };
       setResultados(prev => [...prev, nuevo]);
       setSeleccionados(prev => new Set(prev).add(nuevo.url));
@@ -706,6 +707,7 @@ export default function ResultadosPage() {
         nombre: r.proveedor || r.titulo,
         url: r.url,
         email: (r as unknown as { contacto?: string }).contacto || "",
+        resultado_id: (r as unknown as { resultado_id?: string }).resultado_id,
       })));
       setEnviados(new Set());
       setModalEmailAbierto(true);
@@ -770,7 +772,7 @@ export default function ResultadosPage() {
         const res = await fetch(`${API_URL}/api/gmail/enviar`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cotizacion_id: id, to_email: dest.email, subject: emailSubject, body: emailBody, user_id: userId, proveedor_nombre: dest.nombre }),
+          body: JSON.stringify({ cotizacion_id: id, resultado_id: dest.resultado_id, to_email: dest.email, subject: emailSubject, body: emailBody, user_id: userId, proveedor_nombre: dest.nombre }),
         });
         if (!res.ok) {
           const d = await res.json().catch(() => ({}));
