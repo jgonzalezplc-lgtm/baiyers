@@ -450,7 +450,18 @@ async def sincronizar_respuestas(user_id: str):
                 continue
             h = headers_de(msg)
             from_email = h.get("From", "")
-            direction = "outbound" if mi_email and mi_email in from_email.lower() else "inbound"
+            # La etiqueta SENT de Gmail es más confiable que comparar el
+            # remitente por texto (evita falsos "outbound"/"inbound" con
+            # alias o nombres de display). Nota: si te respondes a ti mismo
+            # dentro del mismo hilo para probar, Gmail igual lo marca SENT
+            # (porque lo enviaste tú) — no hay forma de distinguirlo de un
+            # envío real; para simular una respuesta de proveedor hay que
+            # responder desde OTRA cuenta de correo.
+            labels = msg.get("labelIds", []) or []
+            if labels:
+                direction = "outbound" if "SENT" in labels else "inbound"
+            else:
+                direction = "outbound" if mi_email and mi_email in from_email.lower() else "inbound"
             cuerpo = extraer_texto_plano(msg.get("payload", {}))
             adjuntos_meta = extraer_adjuntos_meta(msg.get("payload", {}))
             recibido_iso = datetime.now(timezone.utc).isoformat()
