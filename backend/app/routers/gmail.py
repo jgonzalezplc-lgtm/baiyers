@@ -463,8 +463,8 @@ async def sincronizar_respuestas(user_id: str):
     for conv in activas:
         try:
             existentes = {
-                m["gmail_message_id"]
-                for m in sb.table("gmail_messages").select("gmail_message_id").eq("conversation_id", conv["id"]).execute().data or []
+                m["gmail_message_id"]: m
+                for m in sb.table("gmail_messages").select("id,gmail_message_id,procesado").eq("conversation_id", conv["id"]).execute().data or []
             }
             mensajes = listar_mensajes_thread(service, conv["gmail_thread_id"])
         except Exception as e:
@@ -472,7 +472,12 @@ async def sincronizar_respuestas(user_id: str):
             continue
 
         for msg in mensajes:
-            if msg["id"] in existentes:
+            ya_guardado = existentes.get(msg["id"])
+            # Idempotente por procesado, no sólo por existencia: si un intento
+            # anterior guardó el mensaje pero se cayó antes de terminar de
+            # procesarlo (ej: error extrayendo datos), acá se reintenta en vez
+            # de saltarlo para siempre.
+            if ya_guardado and ya_guardado.get("procesado"):
                 continue
             h = headers_de(msg)
             from_email = h.get("From", "")
@@ -492,124 +497,138 @@ async def sincronizar_respuestas(user_id: str):
             adjuntos_meta = extraer_adjuntos_meta(msg.get("payload", {}))
             recibido_iso = datetime.now(timezone.utc).isoformat()
 
-            row = sb.table("gmail_messages").insert({
-                "conversation_id": conv["id"],
-                "gmail_message_id": msg["id"],
-                "gmail_thread_id": conv["gmail_thread_id"],
-                "direction": direction,
-                "from_email": from_email,
-                "to_email": h.get("To", ""),
-                "subject": h.get("Subject", ""),
-                "body_text": cuerpo,
-                "received_at": recibido_iso,
-                "procesado": direction == "outbound",
-            }).execute().data[0]
-            resumen["mensajes_nuevos"] += 1
+            if ya_guardado:
+                # Reintento de un mensaje que se guardó pero no se terminó de
+                # procesar — reusa la fila en vez de reinsertar (gmail_message_id
+                # es único).
+                row = {"id": ya_guardado["id"]}
+            else:
+                row = sb.table("gmail_messages").insert({
+                    "conversation_id": conv["id"],
+                    "gmail_message_id": msg["id"],
+                    "gmail_thread_id": conv["gmail_thread_id"],
+                    "direction": direction,
+                    "from_email": from_email,
+                    "to_email": h.get("To", ""),
+                    "subject": h.get("Subject", ""),
+                    "body_text": cuerpo,
+                    "received_at": recibido_iso,
+                    "procesado": direction == "outbound",
+                }).execute().data[0]
+                resumen["mensajes_nuevos"] += 1
 
-            for a in adjuntos_meta:
-                sb.table("gmail_attachments").insert({
-                    "message_id": row["id"],
-                    "filename": a["filename"],
-                    "mime_type": a["mime_type"],
-                    "gmail_attachment_id": a["attachment_id"],
-                }).execute()
+                for a in adjuntos_meta:
+                    sb.table("gmail_attachments").insert({
+                        "message_id": row["id"],
+                        "filename": a["filename"],
+                        "mime_type": a["mime_type"],
+                        "gmail_attachment_id": a["attachment_id"],
+                    }).execute()
 
             if direction != "inbound":
+                if not ya_guardado:
+                    sb.table("gmail_messages").update({"procesado": True}).eq("id", row["id"]).execute()
                 continue
 
-            # El proveedor respondió desde un correo distinto al contacto
-            # registrado: NO se crea otro proveedor ni se agrega el contacto
-            # solo — la respuesta ya quedó asociada al hilo (prioridad #1 de
-            # asociación), y se propone el contacto nuevo para confirmación.
-            remitente = _extraer_email(from_email)
-            if conv.get("proveedor_id") and remitente and remitente != (conv.get("proveedor_email") or "").lower():
-                ya_conocido = sb.table("proveedor_contactos").select("id").eq("proveedor_id", conv["proveedor_id"]).eq("email", remitente).execute().data
-                ya_propuesto = sb.table("item_field_updates").select("id").eq("entity_type", "proveedor_contacto").eq("entity_id", conv["proveedor_id"]).eq("new_value", json.dumps(remitente)).eq("estado", "propuesta").execute().data
-                if not ya_conocido and not ya_propuesto:
-                    sb.table("item_field_updates").insert({
-                        "user_id": user_id,
-                        "entity_type": "proveedor_contacto",
-                        "entity_id": conv["proveedor_id"],
-                        "field": "email",
-                        "previous_value": None,
-                        "new_value": json.dumps(remitente),
-                        "source_type": "gmail_message",
-                        "source_id": row["id"],
-                        "supplier_nombre": conv.get("proveedor_nombre"),
-                        "supplier_email": conv.get("proveedor_email"),
-                        "confidence": 0.9,
-                    }).execute()
-                    resumen["propuestas_generadas"] += 1
-
             nuevo_estado = "supplier_replied"
-            if _parece_automatico(h.get("Subject", ""), from_email, cuerpo):
+            try:
+                # El proveedor respondió desde un correo distinto al contacto
+                # registrado: NO se crea otro proveedor ni se agrega el contacto
+                # solo — la respuesta ya quedó asociada al hilo (prioridad #1 de
+                # asociación), y se propone el contacto nuevo para confirmación.
+                remitente = _extraer_email(from_email)
+                if conv.get("proveedor_id") and remitente and remitente != (conv.get("proveedor_email") or "").lower():
+                    ya_conocido = sb.table("proveedor_contactos").select("id").eq("proveedor_id", conv["proveedor_id"]).eq("email", remitente).execute().data
+                    ya_propuesto = sb.table("item_field_updates").select("id").eq("entity_type", "proveedor_contacto").eq("entity_id", conv["proveedor_id"]).eq("new_value", json.dumps(remitente)).eq("estado", "propuesta").execute().data
+                    if not ya_conocido and not ya_propuesto:
+                        sb.table("item_field_updates").insert({
+                            "user_id": user_id,
+                            "entity_type": "proveedor_contacto",
+                            "entity_id": conv["proveedor_id"],
+                            "field": "email",
+                            "previous_value": None,
+                            "new_value": json.dumps(remitente),
+                            "source_type": "gmail_message",
+                            "source_id": row["id"],
+                            "supplier_nombre": conv.get("proveedor_nombre"),
+                            "supplier_email": conv.get("proveedor_email"),
+                            "confidence": 0.9,
+                        }).execute()
+                        resumen["propuestas_generadas"] += 1
+
+                if _parece_automatico(h.get("Subject", ""), from_email, cuerpo):
+                    nuevo_estado = "human_review_required"
+                else:
+                    items_ctx = _items_contexto(sb, conv)
+                    extraccion = await extraer_actualizaciones(cuerpo, items_ctx)
+                    entity_unico = items_ctx[0]["entity_id"] if len(items_ctx) == 1 else None
+
+                    # Campos "core" (precio/disponibilidad/plazo/condiciones) con
+                    # confianza alta se aplican solos — son los datos operativos
+                    # de la cotización, no datos maestros del proveedor. Todo lo
+                    # demás (u otra confianza) queda como propuesta para revisar.
+                    campos_recibidos: set[str] = set()
+                    for p in extraccion["propuestas"]:
+                        entity_id = p["entity_id"] or entity_unico
+                        if not entity_id:
+                            continue  # ambiguo y no hay un único ítem al que asociarlo por defecto
+                        # "disponibilidad" y "stock_disponible" cuentan como el mismo
+                        # dato de seguimiento (la tabla no tiene columna dedicada,
+                        # ambas caen en notas_respuesta vía _aplicar_campo_resultado).
+                        campo_seguimiento = "disponibilidad" if p["field"] in ("disponibilidad", "stock_disponible") else p["field"]
+                        columna = _FIELD_MAP_RESULTADOS.get(p["field"])
+                        previo = None
+                        if columna:
+                            r = sb.table("resultados").select(columna).eq("id", entity_id).maybe_single().execute()
+                            previo = r.data.get(columna) if r.data else None
+
+                        auto_aplicar = campo_seguimiento in CAMPOS_SEGUIMIENTO and p["confidence"] >= UMBRAL_AUTO_APLICAR
+                        fila_propuesta = {
+                            "user_id": user_id,
+                            "entity_type": "resultado",
+                            "entity_id": entity_id,
+                            "field": p["field"],
+                            "previous_value": json.dumps(previo, default=str),
+                            "new_value": json.dumps(p["new_value"], default=str),
+                            "currency": p.get("currency"),
+                            "source_type": "gmail_message",
+                            "source_id": row["id"],
+                            "supplier_nombre": conv.get("proveedor_nombre"),
+                            "supplier_email": conv.get("proveedor_email"),
+                            "confidence": p["confidence"],
+                        }
+                        if auto_aplicar:
+                            fila_propuesta.update({
+                                "estado": "aplicado", "updated_by": "gmail_agent",
+                                "reviewed_at": recibido_iso, "reviewed_by": "gmail_agent_auto",
+                            })
+                        sb.table("item_field_updates").insert(fila_propuesta).execute()
+                        resumen["propuestas_generadas"] += 1
+
+                        if auto_aplicar:
+                            _aplicar_campo_resultado(sb, entity_id, p["field"], p["new_value"], recibido_iso)
+                            campos_recibidos.add(campo_seguimiento)
+
+                    pendientes = CAMPOS_SEGUIMIENTO - campos_recibidos
+                    if extraccion["requiere_aclaracion"] and not campos_recibidos:
+                        nuevo_estado = "clarification_required"
+                    elif campos_recibidos:
+                        # Hubo al menos un dato core con confianza suficiente para
+                        # aplicarse solo → el agente sigue la conversación sin
+                        # esperar aprobación humana para ESTE paso puntual.
+                        try:
+                            gmail_conversation_agent.seguimiento_automatico(sb, service, conv, mi_email, pendientes)
+                            nuevo_estado = "closed" if not pendientes else "partially_answered"
+                        except Exception as e:
+                            print(f"[Gmail sync] seguimiento automático falló: {e}")
+                            nuevo_estado = "complete" if not pendientes else "partially_answered"
+                    elif extraccion["propuestas"]:
+                        nuevo_estado = "partially_answered"
+            except Exception as e:
+                # Un mensaje problemático no debe dejar la conversación
+                # colgada: se marca para revisión humana y sigue con el resto.
+                print(f"[Gmail sync] error procesando mensaje {msg['id']}: {e}")
                 nuevo_estado = "human_review_required"
-            else:
-                items_ctx = _items_contexto(sb, conv)
-                extraccion = await extraer_actualizaciones(cuerpo, items_ctx)
-                entity_unico = items_ctx[0]["entity_id"] if len(items_ctx) == 1 else None
-
-                # Campos "core" (precio/disponibilidad/plazo/condiciones) con
-                # confianza alta se aplican solos — son los datos operativos
-                # de la cotización, no datos maestros del proveedor. Todo lo
-                # demás (u otra confianza) queda como propuesta para revisar.
-                campos_recibidos: set[str] = set()
-                for p in extraccion["propuestas"]:
-                    entity_id = p["entity_id"] or entity_unico
-                    if not entity_id:
-                        continue  # ambiguo y no hay un único ítem al que asociarlo por defecto
-                    # "disponibilidad" y "stock_disponible" cuentan como el mismo
-                    # dato de seguimiento (la tabla no tiene columna dedicada,
-                    # ambas caen en notas_respuesta vía _aplicar_campo_resultado).
-                    campo_seguimiento = "disponibilidad" if p["field"] in ("disponibilidad", "stock_disponible") else p["field"]
-                    columna = _FIELD_MAP_RESULTADOS.get(p["field"])
-                    previo = None
-                    if columna:
-                        r = sb.table("resultados").select(columna).eq("id", entity_id).maybe_single().execute()
-                        previo = r.data.get(columna) if r.data else None
-
-                    auto_aplicar = campo_seguimiento in CAMPOS_SEGUIMIENTO and p["confidence"] >= UMBRAL_AUTO_APLICAR
-                    fila_propuesta = {
-                        "user_id": user_id,
-                        "entity_type": "resultado",
-                        "entity_id": entity_id,
-                        "field": p["field"],
-                        "previous_value": json.dumps(previo, default=str),
-                        "new_value": json.dumps(p["new_value"], default=str),
-                        "currency": p.get("currency"),
-                        "source_type": "gmail_message",
-                        "source_id": row["id"],
-                        "supplier_nombre": conv.get("proveedor_nombre"),
-                        "supplier_email": conv.get("proveedor_email"),
-                        "confidence": p["confidence"],
-                    }
-                    if auto_aplicar:
-                        fila_propuesta.update({
-                            "estado": "aplicado", "updated_by": "gmail_agent",
-                            "reviewed_at": recibido_iso, "reviewed_by": "gmail_agent_auto",
-                        })
-                    sb.table("item_field_updates").insert(fila_propuesta).execute()
-                    resumen["propuestas_generadas"] += 1
-
-                    if auto_aplicar:
-                        _aplicar_campo_resultado(sb, entity_id, p["field"], p["new_value"], recibido_iso)
-                        campos_recibidos.add(campo_seguimiento)
-
-                pendientes = CAMPOS_SEGUIMIENTO - campos_recibidos
-                if extraccion["requiere_aclaracion"] and not campos_recibidos:
-                    nuevo_estado = "clarification_required"
-                elif campos_recibidos:
-                    # Hubo al menos un dato core con confianza suficiente para
-                    # aplicarse solo → el agente sigue la conversación sin
-                    # esperar aprobación humana para ESTE paso puntual.
-                    try:
-                        gmail_conversation_agent.seguimiento_automatico(sb, service, conv, mi_email, pendientes)
-                        nuevo_estado = "closed" if not pendientes else "partially_answered"
-                    except Exception as e:
-                        print(f"[Gmail sync] seguimiento automático falló: {e}")
-                        nuevo_estado = "complete" if not pendientes else "partially_answered"
-                elif extraccion["propuestas"]:
-                    nuevo_estado = "partially_answered"
 
             sb.table("gmail_messages").update({"procesado": True}).eq("id", row["id"]).execute()
             # seguimiento_automatico ya actualiza estado+last_message_at cuando
