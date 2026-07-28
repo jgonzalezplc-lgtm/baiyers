@@ -75,7 +75,7 @@ def start_cron():
     scheduler = BackgroundScheduler()
     scheduler.add_job(_enviar_ratings_pendientes, "interval", hours=1, id="ratings_cron")
     scheduler.add_job(_check_recurrencias, "interval", hours=1, id="recurrencias_cron")
-    scheduler.add_job(_sincronizar_gmail, "interval", minutes=5, id="gmail_sync_cron")
+    scheduler.add_job(_sincronizar_gmail, "interval", minutes=1, id="gmail_sync_cron")
     scheduler.start()
-    print("[Cron] Scheduler iniciado — ratings/recurrencias cada 1h, Gmail cada 5min")
+    print("[Cron] Scheduler iniciado — ratings/recurrencias cada 1h, Gmail cada 1min")
     return scheduler
