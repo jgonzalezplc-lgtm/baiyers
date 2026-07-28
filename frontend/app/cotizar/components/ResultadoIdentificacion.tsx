@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { Card, Badge, Input, BtnPrimary, BtnSecondary } from "@/components/ui";
 
 interface Resultado {
   nombre_tecnico: string;
@@ -19,16 +20,10 @@ interface Props {
   isLoggedIn: boolean;
 }
 
-const CONFIANZA_COLOR: Record<string, string> = {
-  alto: "var(--text-success)",
-  medio: "var(--text-warning)",
-  bajo: "var(--text-error)",
-};
-
-const CONFIANZA_FILL: Record<string, string> = {
-  alto: "var(--fill-success)",
-  medio: "var(--fill-warning)",
-  bajo: "var(--fill-error)",
+const CONFIANZA_BADGE: Record<string, "success" | "warning" | "error"> = {
+  alto: "success",
+  medio: "warning",
+  bajo: "error",
 };
 
 // Mismas claves que categoria_mapper.py (backend)
@@ -48,8 +43,7 @@ export const CATEGORIAS: { key: string; label: string }[] = [
 ];
 
 export default function ResultadoIdentificacion({ resultado, onConfirmar, onCorregir, guardando, isLoggedIn }: Props) {
-  const confColor = CONFIANZA_COLOR[resultado.confianza] ?? "var(--text-muted)";
-  const confFill = CONFIANZA_FILL[resultado.confianza] ?? "var(--bg-surface)";
+  const tipoConfianza = CONFIANZA_BADGE[resultado.confianza] ?? "default";
 
   // La categoría identificada por la IA parte seleccionada; el usuario puede
   // agregar o quitar categorías para orientar la búsqueda de proveedores.
@@ -74,54 +68,41 @@ export default function ResultadoIdentificacion({ resultado, onConfirmar, onCorr
     <div>
       {/* Header resultado */}
       <div style={{
-        background: confFill,
-        border: `1px solid ${confColor}`,
-        padding: "10px 16px",
-        fontSize: 11,
-        color: confColor,
-        marginBottom: 20,
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        fontFamily: "var(--font-mono)",
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        marginBottom: 16,
       }}>
-        <span>Item identificado, confianza: <strong>{resultado.confianza}</strong></span>
-        <span style={{ width: 8, height: 8, background: confColor, display: "inline-block" }} />
+        <span style={{ fontSize: 13.5, color: "var(--n-700)" }}>Ítem identificado</span>
+        <Badge tipo={tipoConfianza}>Confianza {resultado.confianza}</Badge>
       </div>
 
       {/* Card principal */}
-      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: 20, marginBottom: 16 }}>
+      <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
-            <div className="label" style={{ color: "var(--text-muted)", marginBottom: 4 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-500)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.02em" }}>
               {resultado.categoria}
             </div>
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)", margin: 0, letterSpacing: "-0.01em" }}>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--n-900)", margin: 0, letterSpacing: "-0.01em" }}>
               {resultado.nombre_tecnico}
             </h2>
           </div>
-          <span className="label" style={{
-            color: confColor,
-            border: `1px solid ${confColor}`,
-            padding: "3px 8px",
-            whiteSpace: "nowrap",
-          }}>
-            {resultado.confianza}
-          </span>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, marginBottom: 16, border: "1px solid var(--border-default)" }}>
+        <div style={{
+          display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, marginBottom: 16,
+          border: "1px solid var(--n-200)", borderRadius: "var(--r-md)", overflow: "hidden",
+        }}>
           {[
             { label: "Marca", value: resultado.marca ?? "No identificada", hasValue: !!resultado.marca },
-            { label: "Numero de parte", value: resultado.numero_parte ?? "No identificado", hasValue: !!resultado.numero_parte },
+            { label: "Número de parte", value: resultado.numero_parte ?? "No identificado", hasValue: !!resultado.numero_parte },
           ].map((field, i) => (
             <div key={field.label} style={{
-              background: "var(--bg-base)",
+              background: "var(--canvas)",
               padding: "10px 12px",
-              borderRight: i === 0 ? "1px solid var(--border-default)" : "none",
+              borderRight: i === 0 ? "1px solid var(--n-200)" : "none",
             }}>
-              <div className="label" style={{ color: "var(--text-muted)", marginBottom: 4 }}>{field.label}</div>
-              <div style={{ fontSize: 13, color: field.hasValue ? "var(--text-primary)" : "var(--text-muted)", fontWeight: 600 }}>
+              <div style={{ fontSize: 12, color: "var(--n-500)", marginBottom: 4 }}>{field.label}</div>
+              <div style={{ fontSize: 13.5, color: field.hasValue ? "var(--n-900)" : "var(--n-500)", fontWeight: 500 }}>
                 {field.value}
               </div>
             </div>
@@ -130,24 +111,24 @@ export default function ResultadoIdentificacion({ resultado, onConfirmar, onCorr
 
         {/* Categorías, orientan qué fuentes se consultan en la búsqueda */}
         <div style={{ marginBottom: 16 }}>
-          <div className="label" style={{ color: "var(--text-muted)", marginBottom: 8 }}>
-            Categorías, selecciona una o más para orientar la búsqueda
+          <div style={{ fontSize: 12, color: "var(--n-500)", marginBottom: 8 }}>
+            Categorías — selecciona una o más para orientar la búsqueda
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {CATEGORIAS.map(c => {
               const activa = categorias.has(c.key);
               return (
                 <button
                   key={c.key}
                   onClick={() => toggleCategoria(c.key)}
-                  className="label"
                   style={{
-                    color: activa ? "var(--text-inverse)" : "var(--text-secondary)",
-                    background: activa ? "var(--bg-inverse)" : "var(--bg-base)",
-                    border: `1px solid ${activa ? "var(--border-strong)" : "var(--border-default)"}`,
-                    padding: "4px 10px",
+                    fontSize: 13, fontWeight: 500, fontFamily: "var(--font-sans)",
+                    color: activa ? "#fff" : "var(--n-700)",
+                    background: activa ? "var(--brand)" : "var(--canvas)",
+                    border: `1px solid ${activa ? "var(--brand)" : "var(--n-200)"}`,
+                    borderRadius: "var(--r-pill)",
+                    padding: "5px 12px",
                     cursor: "pointer",
-                    fontFamily: "var(--font-mono)",
                   }}
                 >
                   {activa ? "✓ " : ""}{c.label}
@@ -158,71 +139,63 @@ export default function ResultadoIdentificacion({ resultado, onConfirmar, onCorr
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <div className="label" style={{ color: "var(--text-muted)", marginBottom: 8 }}>Terminos de busqueda, Espanol</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          <div style={{ fontSize: 12, color: "var(--n-500)", marginBottom: 8 }}>Términos de búsqueda, español</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {resultado.terminos_busqueda_es.map((t, i) => (
-              <span key={i} className="label" style={{
-                color: "var(--accent)",
-                background: "var(--fill-error)",
-                border: "1px solid var(--border-accent)",
-                padding: "3px 8px",
+              <span key={i} style={{
+                fontSize: 12.5, color: "var(--brand-700)",
+                background: "var(--brand-50)",
+                border: "1px solid var(--brand-100)",
+                borderRadius: "var(--r-pill)",
+                padding: "3px 10px",
               }}>{t}</span>
             ))}
           </div>
         </div>
 
         <div>
-          <div className="label" style={{ color: "var(--text-muted)", marginBottom: 8 }}>Search terms, English</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          <div style={{ fontSize: 12, color: "var(--n-500)", marginBottom: 8 }}>Search terms, English</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {resultado.terminos_busqueda_en.map((t, i) => (
-              <span key={i} className="label" style={{
-                color: "var(--text-secondary)",
-                background: "var(--bg-base)",
-                border: "1px solid var(--border-default)",
-                padding: "3px 8px",
+              <span key={i} style={{
+                fontSize: 12.5, color: "var(--n-600)",
+                background: "var(--canvas)",
+                border: "1px solid var(--n-200)",
+                borderRadius: "var(--r-pill)",
+                padding: "3px 10px",
               }}>{t}</span>
             ))}
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Nombre de lista / proyecto (opcional) */}
-      <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: "12px 16px", marginBottom: 16 }}>
-        <div className="label" style={{ color: "var(--text-muted)", marginBottom: 6 }}>
-          Nombre de lista de cotización o proyecto, opcional
-        </div>
-        <input
-          type="text"
+      <div style={{ marginBottom: 16 }}>
+        <Input
+          label="Nombre de lista de cotización o proyecto, opcional"
           value={nombreLista}
           onChange={e => setNombreLista(e.target.value)}
           placeholder='Ej: "Mantención bodega julio", se usa si agrupas varios ítems'
-          style={{
-            width: "100%", boxSizing: "border-box",
-            background: "var(--bg-base)", border: "1px solid var(--border-default)",
-            padding: "8px 12px", fontSize: 11, color: "var(--text-primary)",
-            fontFamily: "var(--font-mono)", outline: "none",
-          }}
         />
       </div>
 
       {/* Acciones */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8 }}>
-        <button onClick={onCorregir} className="btn-swiss-secondary" style={{ padding: 12 }}>
+        <BtnSecondary onClick={onCorregir} style={{ width: "100%" }}>
           Corregir
-        </button>
-        <button
+        </BtnSecondary>
+        <BtnPrimary
           onClick={() => onConfirmar(Array.from(categorias), nombreLista.trim())}
           disabled={guardando}
-          className={guardando ? "btn-swiss-secondary" : "btn-swiss-primary"}
-          style={{ padding: 12 }}
+          style={{ width: "100%" }}
         >
-          {guardando ? "Guardando..." : isLoggedIn ? "Confirmar y buscar proveedores →" : "Continuar sin guardar →"}
-        </button>
+          {guardando ? "Guardando…" : isLoggedIn ? "Confirmar y buscar proveedores →" : "Continuar sin guardar →"}
+        </BtnPrimary>
       </div>
 
       {!isLoggedIn && (
-        <p className="label" style={{ textAlign: "center", color: "var(--text-muted)", marginTop: 10 }}>
-          <a href="/register" style={{ color: "var(--accent)", textDecoration: "none" }}>Crea una cuenta gratis</a> para guardar tus cotizaciones
+        <p style={{ textAlign: "center", fontSize: 13, color: "var(--n-500)", marginTop: 10 }}>
+          <a href="/register" style={{ color: "var(--brand)", textDecoration: "none" }}>Crea una cuenta gratis</a> para guardar tus cotizaciones
         </p>
       )}
     </div>
