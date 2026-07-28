@@ -8,6 +8,9 @@ pydantic-settings>=2.6.0
 apscheduler>=3.10.0
 beautifulsoup4>=4.12.0
 anthropic>=0.115.0
+# Import/export de proveedores por Excel
+pandas>=2.2.0
+openpyxl>=3.1.0
 # IA (Gemini) e integración Gmail
 google-generativeai>=0.8.0
 google-api-python-client>=2.190.0
