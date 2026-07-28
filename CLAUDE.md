@@ -44,6 +44,14 @@ cd frontend && npx tsc --noEmit
 - `listas.py` — listas de cotización multi-ítem (guardadas como JSON en `proyectos.descripcion`; lock por lista).
 - Otros: `cotizaciones`, `oc`, `aprobaciones`, `proyectos` (Gantt), `analisis` (IA), `gmail`, `facturas` (parser de correos entrantes), `procurement`, `ledger`, `recurrencias`, `estadisticas`, `chat`, `historico`, `suppliers`, `proveedores_import`, MCP + API pública.
 
+### Agente de Gmail
+- Migraciones **019, 020 y 021 aplicadas en producción**: conversaciones/mensajes/adjuntos/propuestas, contactos multi-proveedor y etapa `compra_iniciada`.
+- `services/cron.py` llama `sincronizar_todos_los_usuarios()` cada **1 minuto**. El agente trae mensajes del hilo, interpreta el cuerpo con Gemini, asocia proveedor/contacto, guarda metadata de adjuntos y auto-aplica campos core con confianza `>= 0.85`.
+- Mapeo real hacia `resultados`: `precio_unitario → precio_cotizado`, `moneda → moneda_cotizada`, `plazo_entrega → plazo_entrega`, `condiciones_pago → condiciones_pago`; disponibilidad queda en `notas_respuesta`. El estado válido es **`respondido`** y el timestamp es `respuesta_recibida_at`.
+- Si faltan campos, envía seguimiento; si recibe todo, envía agradecimiento y cierra. Al aprobar una lista **sin observaciones**, `aprobaciones.py` llama `iniciar_proceso_compra()` por cada resultado definitivo asociado a Gmail; es idempotente y cambia la conversación a `compra_iniciada`.
+- UI: `/conversaciones` muestra actividad/propuestas y permite sincronización manual; `/conversaciones/[id]` permite aplicar/rechazar propuestas; el comparador permite agregar un proveedor del directorio.
+- El contenido de PDF/Excel adjunto todavía **no se parsea**: sólo se guarda metadata en `gmail_attachments`. El webhook Gmail Pub/Sub sigue siendo stub; producción usa polling.
+
 ### Ruteo por categoría (`services/categoria_mapper.py`)
 Cada categoría → set de fuentes. **carpinteria** = maderas + retail construcción (SIN eléctrico). **construccion/mecanico/consumible** sin eléctrico. **electrico/electronica** = electrónica + eléctrico CL. Fuentes de madera tienen gate de keywords (se auto-filtran). **Pendiente:** el bucket electrónica/eléctrico aún mezcla componentes (arduino) con materiales eléctricos (cables) — falta afinar.
 
@@ -60,7 +68,8 @@ Descarta derivados/accesorios (ej: "barniz de madera" al buscar tablones) con ne
 - Dashboard saluda con logo+nombre; búsquedas usan `industria` como contexto.
 
 ## Gotchas importantes
-- **Migraciones = manuales.** El service key de Supabase NO hace DDL. Correr los `.sql` de `backend/migrations/` en el SQL Editor de Supabase. Aplicadas: 015 (columna `metadata` en resultados + constraint fuente), 016 (fuentes madera), 017 (plan 'free' permitido). El código tiene degradación si `metadata` falta, pero se pierde título/descr.
+- **Migraciones = manuales.** El service key de Supabase NO hace DDL. Correr los `.sql` de `backend/migrations/` en el SQL Editor de Supabase. Aplicadas al menos hasta **021** (incluye 018 aprobaciones y 019–021 agente Gmail). Los SQL legacy sin número no representan necesariamente producción: antes de tocar `resultados`, `cotizaciones` o `proveedores`, consultar el esquema real.
+- **Orden de auto-aplicación Gmail:** hoy `item_field_updates` se inserta como `aplicado` antes de actualizar `resultados`. Si el segundo paso falla, la auditoría puede decir “Aplicada” sin que el dato exista. Esto ocurrió en datos antiguos y sigue siendo un riesgo del código actual; conviene hacer la escritura atómica o marcar `aplicado` sólo después del update exitoso.
 - **credentials.json** (OAuth Gmail) está **gitignored** — en prod se usan env vars `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`.
 - **SMTP:** Resend configurado en Supabase (dominio baiyer.cl verificado). Correos de auth (confirmación/recuperación) salen desde `no-reply@baiyer.cl`.
 - **Serper.dev** integrado (2.500 búsquedas gratis; `SERPER_API_KEY`). Prioriza sobre SerpAPI.
@@ -73,5 +82,18 @@ Descarta derivados/accesorios (ej: "barniz de madera" al buscar tablones) con ne
 ## Costos infra
 Railway ~$5-10/mes · Supabase free · Serper 2.500 gratis→$50/50k · Gemini free tier. WhatsApp y SII (futuros) sí cuestan.
 
-## Estado y roadmap
-Ver `handoff.md` para el estado detallado y las 4 fases del roadmap.
+## Estado verificado en producción (28-jul-2026)
+- Git local y `origin/main` alineados en `726debd`; el único cambio preexistente del worktree es `frontend/next-env.d.ts` y debe conservarse.
+- Backend `GET /api/health` responde healthy y `https://www.baiyer.cl` responde HTTP 200.
+- Supabase confirma las tablas/columnas de 019–021 y las columnas reales de respuesta en `resultados`.
+- Hay actividad reciente procesada por el agente: respuestas inbound seguidas por mensajes outbound automáticos. Dos resultados recientes están en `respondido` con precio y plazo; uno también tiene condiciones de pago. Esto confirma escritura real parcial y seguimiento automático.
+- El flujo **no está verificado punta a punta**: las conversaciones recientes siguen `partially_answered`, no hay ninguna `compra_iniciada`, no se comprobó visualmente el comparador ni se confirmó un agradecimiento final.
+- Además, dos entidades antiguas tienen actualizaciones auditadas como `aplicado` pero siguen `contactado` y sin precio/plazo/timestamp, evidencia del riesgo de orden de escritura descrito arriba.
+
+## Próximos pasos
+1. Ejecutar una prueba nueva y trazable en producción: enviar cotización a otra cuenta, responder con precio, disponibilidad, plazo y condiciones de pago, y esperar al cron sin usar sincronización manual.
+2. Verificar que el resultado queda `respondido`, que los cuatro datos aparecen en el comparador y que llega el agradecimiento automático.
+3. Aprobar esa lista sin observaciones y comprobar el correo de inicio de compra y el estado `compra_iniciada`.
+4. Después, corregir la atomicidad/orden de auto-aplicación y reconciliar las auditorías antiguas inconsistentes.
+
+Ver `PROJECT_STATUS.md` para el handoff detallado y `handoff.md` para las 4 fases del roadmap.
