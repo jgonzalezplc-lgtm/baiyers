@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mail, ExternalLink, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { Mail, ExternalLink, RefreshCw, ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader, Table, TableHead, TableRow, EmptyState, Spinner, Badge, BtnSecondary } from "@/components/ui";
 
@@ -87,6 +88,13 @@ export default function ConversacionesPage() {
 
   return (
     <>
+      <Link
+        href="/dashboard"
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13.5, color: "var(--n-600)", textDecoration: "none", marginBottom: 16 }}
+      >
+        <ArrowLeft size={15} strokeWidth={1.75} /> Inicio
+      </Link>
+
       <PageHeader
         title="Conversaciones"
         subtitle="Correos con proveedores, con lo que el agente entendió de cada respuesta. Se revisan solas cada pocos minutos — el botón es para forzarlo ahora mismo."
