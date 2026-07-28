@@ -32,6 +32,7 @@ const ESTADO_LABEL: Record<string, { label: string; tipo: "success" | "warning" 
   closed: { label: "Cerrada", tipo: "default" },
   human_review_required: { label: "Revisar manualmente", tipo: "warning" },
   failed: { label: "Falló", tipo: "error" },
+  compra_iniciada: { label: "Iniciando compra", tipo: "info" },
 };
 
 function fmtFecha(iso: string | null) {

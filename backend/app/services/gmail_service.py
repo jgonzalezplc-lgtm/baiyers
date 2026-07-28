@@ -89,6 +89,26 @@ def send_email(service, to: str, subject: str, body: str, from_email: str) -> di
     return service.users().messages().send(userId="me", body={"raw": raw}).execute()
 
 
+def send_email_threaded(
+    service, to: str, subject: str, body: str, from_email: str,
+    thread_id: str, in_reply_to_msgid: str | None = None,
+) -> dict:
+    """Envía dentro de un hilo existente (usado por el agente para
+    agradecimientos/seguimientos automáticos). `in_reply_to_msgid` es el
+    header Message-ID (RFC) del mensaje al que se responde, no el id interno
+    de Gmail — mantiene el threading también en el cliente del proveedor."""
+    msg = MIMEMultipart("alternative")
+    msg["to"] = to
+    msg["from"] = from_email
+    msg["subject"] = subject if subject.lower().startswith("re:") else f"Re: {subject}"
+    if in_reply_to_msgid:
+        msg["In-Reply-To"] = in_reply_to_msgid
+        msg["References"] = in_reply_to_msgid
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+    return service.users().messages().send(userId="me", body={"raw": raw, "threadId": thread_id}).execute()
+
+
 def extraer_texto_plano(payload: dict) -> str:
     """Extrae el body de texto plano de un mensaje de Gmail (formato 'full'),
     recorriendo las partes MIME si es multipart."""

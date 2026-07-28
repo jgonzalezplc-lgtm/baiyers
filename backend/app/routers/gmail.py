@@ -417,6 +417,22 @@ _FIELD_MAP_RESULTADOS = {
 }
 
 
+def _aplicar_campo_resultado(sb, entity_id: str, field: str, valor, cuando_iso: str) -> None:
+    """Escribe un valor extraído en `resultados`: a su columna dedicada si
+    existe, o acumulado en notas_respuesta si no (ej: disponibilidad, que no
+    tiene columna propia). Usado tanto por la auto-aplicación en
+    /sincronizar-respuestas como por /propuestas/{id}/aplicar."""
+    columna = _FIELD_MAP_RESULTADOS.get(field)
+    cambios = {"estado": "respondio", "respuesta_at": cuando_iso}
+    if columna:
+        cambios[columna] = valor
+    else:
+        actual = sb.table("resultados").select("notas_respuesta").eq("id", entity_id).maybe_single().execute()
+        previa = (actual.data or {}).get("notas_respuesta") or ""
+        cambios["notas_respuesta"] = (previa + f"\n{field}: {valor}").strip()
+    sb.table("resultados").update(cambios).eq("id", entity_id).execute()
+
+
 @router.post("/sincronizar-respuestas")
 async def sincronizar_respuestas(user_id: str):
     """Recorre las conversaciones activas del usuario, trae mensajes nuevos del
@@ -425,6 +441,10 @@ async def sincronizar_respuestas(user_id: str):
     from app.services.gmail_service import get_gmail_service, listar_mensajes_thread, headers_de, extraer_texto_plano, extraer_adjuntos_meta
     from app.services.email_understanding import extraer_actualizaciones
     from app.services.supabase import get_supabase
+    from app.services import gmail_conversation_agent
+    from app.services.gmail_conversation_agent import CAMPOS_SEGUIMIENTO
+
+    UMBRAL_AUTO_APLICAR = 0.85
 
     sb = get_supabase()
     res = sb.table("user_integrations").select("*").eq("user_id", user_id).eq("provider", "gmail").single().execute()
@@ -529,16 +549,27 @@ async def sincronizar_respuestas(user_id: str):
                 extraccion = await extraer_actualizaciones(cuerpo, items_ctx)
                 entity_unico = items_ctx[0]["entity_id"] if len(items_ctx) == 1 else None
 
+                # Campos "core" (precio/disponibilidad/plazo/condiciones) con
+                # confianza alta se aplican solos — son los datos operativos
+                # de la cotización, no datos maestros del proveedor. Todo lo
+                # demás (u otra confianza) queda como propuesta para revisar.
+                campos_recibidos: set[str] = set()
                 for p in extraccion["propuestas"]:
                     entity_id = p["entity_id"] or entity_unico
                     if not entity_id:
                         continue  # ambiguo y no hay un único ítem al que asociarlo por defecto
-                    previo = None
+                    # "disponibilidad" y "stock_disponible" cuentan como el mismo
+                    # dato de seguimiento (la tabla no tiene columna dedicada,
+                    # ambas caen en notas_respuesta vía _aplicar_campo_resultado).
+                    campo_seguimiento = "disponibilidad" if p["field"] in ("disponibilidad", "stock_disponible") else p["field"]
                     columna = _FIELD_MAP_RESULTADOS.get(p["field"])
+                    previo = None
                     if columna:
                         r = sb.table("resultados").select(columna).eq("id", entity_id).maybe_single().execute()
                         previo = r.data.get(columna) if r.data else None
-                    sb.table("item_field_updates").insert({
+
+                    auto_aplicar = campo_seguimiento in CAMPOS_SEGUIMIENTO and p["confidence"] >= UMBRAL_AUTO_APLICAR
+                    fila_propuesta = {
                         "user_id": user_id,
                         "entity_type": "resultado",
                         "entity_id": entity_id,
@@ -551,20 +582,43 @@ async def sincronizar_respuestas(user_id: str):
                         "supplier_nombre": conv.get("proveedor_nombre"),
                         "supplier_email": conv.get("proveedor_email"),
                         "confidence": p["confidence"],
-                    }).execute()
+                    }
+                    if auto_aplicar:
+                        fila_propuesta.update({
+                            "estado": "aplicado", "updated_by": "gmail_agent",
+                            "reviewed_at": recibido_iso, "reviewed_by": "gmail_agent_auto",
+                        })
+                    sb.table("item_field_updates").insert(fila_propuesta).execute()
                     resumen["propuestas_generadas"] += 1
 
-                if extraccion["requiere_aclaracion"]:
+                    if auto_aplicar:
+                        _aplicar_campo_resultado(sb, entity_id, p["field"], p["new_value"], recibido_iso)
+                        campos_recibidos.add(campo_seguimiento)
+
+                pendientes = CAMPOS_SEGUIMIENTO - campos_recibidos
+                if extraccion["requiere_aclaracion"] and not campos_recibidos:
                     nuevo_estado = "clarification_required"
-                elif extraccion["respondio_todo"]:
-                    nuevo_estado = "complete"
+                elif campos_recibidos:
+                    # Hubo al menos un dato core con confianza suficiente para
+                    # aplicarse solo → el agente sigue la conversación sin
+                    # esperar aprobación humana para ESTE paso puntual.
+                    try:
+                        gmail_conversation_agent.seguimiento_automatico(sb, service, conv, mi_email, pendientes)
+                        nuevo_estado = "closed" if not pendientes else "partially_answered"
+                    except Exception as e:
+                        print(f"[Gmail sync] seguimiento automático falló: {e}")
+                        nuevo_estado = "complete" if not pendientes else "partially_answered"
                 elif extraccion["propuestas"]:
                     nuevo_estado = "partially_answered"
 
             sb.table("gmail_messages").update({"procesado": True}).eq("id", row["id"]).execute()
-            sb.table("gmail_conversations").update({
-                "estado": nuevo_estado, "last_message_at": recibido_iso,
-            }).eq("id", conv["id"]).execute()
+            # seguimiento_automatico ya actualiza estado+last_message_at cuando
+            # envía; si no se llamó (o falló el envío), lo hacemos acá.
+            conv_actual = sb.table("gmail_conversations").select("estado").eq("id", conv["id"]).maybe_single().execute().data
+            if not conv_actual or conv_actual.get("estado") not in ("closed", "compra_iniciada"):
+                sb.table("gmail_conversations").update({
+                    "estado": nuevo_estado, "last_message_at": recibido_iso,
+                }).eq("id", conv["id"]).execute()
 
     return resumen
 
@@ -634,15 +688,7 @@ async def aplicar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest):
     nuevo_valor = json.loads(p["new_value"]) if isinstance(p["new_value"], str) else p["new_value"]
 
     if p["entity_type"] == "resultado":
-        columna = _FIELD_MAP_RESULTADOS.get(p["field"])
-        cambios = {"estado": "respondio", "respuesta_at": datetime.now(timezone.utc).isoformat()}
-        if columna:
-            cambios[columna] = nuevo_valor
-        else:
-            actual = sb.table("resultados").select("notas_respuesta").eq("id", p["entity_id"]).maybe_single().execute()
-            previa = (actual.data or {}).get("notas_respuesta") or ""
-            cambios["notas_respuesta"] = (previa + f"\n{p['field']}: {nuevo_valor}").strip()
-        sb.table("resultados").update(cambios).eq("id", p["entity_id"]).execute()
+        _aplicar_campo_resultado(sb, p["entity_id"], p["field"], nuevo_valor, datetime.now(timezone.utc).isoformat())
     elif p["entity_type"] == "proveedor_contacto" and p["field"] == "email":
         from app.services.proveedores_matching import resolver_o_crear_contacto
         resolver_o_crear_contacto(sb, req.user_id, p["entity_id"], nuevo_valor, origen="gmail_agent")

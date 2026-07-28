@@ -184,7 +184,7 @@ async def decidir(token: str, req: DecisionRequest):
         import json
         lista_id = row["referencia"].split(":", 1)[1]
         try:
-            proy = sb.table("proyectos").select("descripcion").eq("id", lista_id).single().execute()
+            proy = sb.table("proyectos").select("descripcion, user_id").eq("id", lista_id).single().execute()
             if proy.data:
                 data = json.loads(proy.data.get("descripcion") or "{}")
                 if data.get("tipo") == "lista_cotizacion":
@@ -206,6 +206,19 @@ async def decidir(token: str, req: DecisionRequest):
                     sb.table("proyectos").update({
                         "descripcion": json.dumps(data, ensure_ascii=False),
                     }).eq("id", lista_id).execute()
+
+                    # Aprobación limpia (sin observaciones): el proveedor
+                    # elegido para cada ítem queda seleccionado y autorizado
+                    # → el agente arranca la etapa de compra por correo.
+                    if req.decision == "aprobar":
+                        from app.services.gmail_conversation_agent import iniciar_proceso_compra
+                        for definitivo in (data.get("definitivos") or {}).values():
+                            resultado_id = definitivo.get("resultado_id")
+                            if resultado_id:
+                                try:
+                                    iniciar_proceso_compra(proy.data["user_id"], resultado_id)
+                                except Exception as e:
+                                    print(f"[Aprobaciones] iniciar_proceso_compra falló para {resultado_id}: {e}")
         except Exception:
             pass
 
