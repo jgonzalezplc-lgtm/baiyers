@@ -255,6 +255,54 @@ async def detalle_cotizacion(cotizacion_id: str):
     }
 
 
+# ─── Agregar proveedor del directorio propio ──────────────────────────────────
+
+class AgregarProveedorDirectorioRequest(BaseModel):
+    user_id: str
+    proveedor_id: str
+    contacto_id: Optional[str] = None
+
+
+@router.post("/cotizaciones/{cotizacion_id}/proveedor-directorio")
+async def agregar_proveedor_directorio(cotizacion_id: str, req: AgregarProveedorDirectorioRequest):
+    """Suma un proveedor del directorio propio (/proveedores) como resultado de
+    esta cotización, para poder cotizarle igual que a uno encontrado por el
+    buscador. No pasa por scraping — usa el email de contacto ya guardado."""
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+
+    prov = sb.table("proveedores").select("*").eq("id", req.proveedor_id).eq("user_id", req.user_id).maybe_single().execute().data
+    if not prov:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+
+    contacto = None
+    if req.contacto_id:
+        contacto = sb.table("proveedor_contactos").select("*").eq("id", req.contacto_id).eq("proveedor_id", req.proveedor_id).maybe_single().execute().data
+    if not contacto:
+        principal = sb.table("proveedor_contactos").select("*").eq("proveedor_id", req.proveedor_id).eq("es_principal", True).limit(1).execute().data
+        contacto = principal[0] if principal else None
+
+    email = (contacto.get("email") if contacto else None) or prov.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Este proveedor no tiene ningún correo de contacto registrado")
+
+    fila = sb.table("resultados").insert({
+        "cotizacion_id": cotizacion_id,
+        "proveedor_nombre": prov["nombre"][:100],
+        "proveedor_email": email,
+        "precio": None,
+        "moneda": "CLP",
+        "url": "",
+        "pais": prov.get("pais") or "CL",
+        "fuente": "manual",
+        "tipo_proveedor": "desconocido",
+        "relevante": True,
+        "estado": "encontrado",
+    }).execute().data[0]
+
+    return fila
+
+
 # ─── Selección para el comparador ─────────────────────────────────────────────
 
 class SeleccionComparadorRequest(BaseModel):
