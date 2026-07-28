@@ -168,6 +168,7 @@ Instrucciones IMPORTANTES:
 - El saludo DEBE usar el marcador literal {{proveedor_nombre}} (ej: "Estimados {{proveedor_nombre}},"). NO inventes ni uses un nombre de proveedor real: se reemplaza automáticamente por cada destinatario.
 - NO firmes con un nombre de empresa específico ni pongas un correo remitente: el correo se envía desde la cuenta del propio usuario. Cierra con una despedida neutra (ej: "Quedamos atentos. Saludos cordiales.") sin firma inventada.
 - Máximo 150 palabras, tono profesional. Solicita precio unitario, disponibilidad, plazo de entrega y condiciones de pago.
+- Si hay especificaciones, menciónalas de forma concreta en el cuerpo (no las resumas como "se adjuntan" o "se compartirán por separado" — inclúyelas tal cual). Si NO hay especificaciones, simplemente no menciones el tema; no inventes que se adjuntan o se enviarán aparte.
 
 Responde SOLO en JSON válido sin markdown:
 {{"subject": "string", "body": "string"}}"""

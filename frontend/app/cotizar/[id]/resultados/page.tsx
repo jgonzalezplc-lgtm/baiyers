@@ -147,6 +147,7 @@ export default function ResultadosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [nombreItem, setNombreItem] = useState("");
+  const [descripcionItem, setDescripcionItem] = useState("");
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
@@ -301,6 +302,8 @@ export default function ResultadosPage() {
         terminos_en = cot.data.terminos_busqueda_en ?? [];
         nombre_item = cot.data.nombre_identificado ?? cot.data.descripcion ?? "";
         categoria = cot.data.categoria ?? null;
+        // Descripción original de la IA, sirve como especificaciones para el correo
+        setDescripcionItem(cot.data.nombre_identificado && cot.data.descripcion ? cot.data.descripcion : "");
       }
       setNombreItem(nombre_item);
       // Si el prefetch de la lista ya buscó este ítem → carga instantánea
@@ -677,10 +680,22 @@ export default function ResultadosPage() {
     if (!selArray.length) return;
     setGenerandoEmail(true);
     try {
+      // Especificaciones reales para que Gemini no caiga en la frase genérica
+      // "se adjuntan por separado": la descripción de la IA al identificar el
+      // ítem, más marca/modelo/descripción del resultado elegido si los tiene.
+      const r0 = selArray[0];
+      const specsPartes = [
+        descripcionItem,
+        r0.marca ? `Marca: ${r0.marca}` : null,
+        r0.numero_parte ? `Modelo/N° de parte: ${r0.numero_parte}` : null,
+        r0.descripcion,
+      ].filter(Boolean);
+      const specs = specsPartes.length ? specsPartes.join(". ") : undefined;
+
       const res = await fetch(`${API_URL}/api/gmail/generar-correo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nombre_item: nombreItem, proveedor_nombre: selArray[0].proveedor || selArray[0].titulo, cantidad: "1" }),
+        body: JSON.stringify({ nombre_item: nombreItem, specs, proveedor_nombre: r0.proveedor || r0.titulo, cantidad: "1" }),
       });
       if (!res.ok) throw new Error();
       const { subject, body } = await res.json();
