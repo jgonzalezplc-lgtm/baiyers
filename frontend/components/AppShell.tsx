@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, PlusCircle, ListChecks, Building2, BarChart3,
   ScrollText, Receipt, FolderKanban, CalendarDays, Repeat, FileBarChart,
-  MessageSquare, Plug, Code2, Settings, LogOut, Menu, X,
+  MessageSquare, Mail, Plug, Code2, Settings, LogOut, Menu, X,
   type LucideIcon,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ui";
@@ -25,6 +25,7 @@ const NAV: { section: string; links: NavLink[] }[] = [
     section: "Gestión",
     links: [
       { href: "/proveedores", label: "Proveedores", icon: Building2 },
+      { href: "/conversaciones", label: "Conversaciones", icon: Mail },
       { href: "/estadisticas", label: "Estadísticas", icon: BarChart3 },
       { href: "/oc", label: "Órdenes de compra", icon: ScrollText },
       { href: "/facturas", label: "Facturas", icon: Receipt },
@@ -51,6 +52,7 @@ const BREADCRUMB: Record<string, string> = {
   "/cotizaciones": "Cotizaciones",
   "/listas": "Cotizaciones",
   "/proveedores": "Proveedores",
+  "/conversaciones": "Conversaciones",
   "/estadisticas": "Estadísticas",
   "/oc": "Órdenes de compra",
   "/facturas": "Facturas",

@@ -556,8 +556,22 @@ async def listar_conversaciones(user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
     convs = sb.table("gmail_conversations").select("*").eq("user_id", user_id).order("last_message_at", desc=True).execute().data or []
+
+    propuestas = sb.table("item_field_updates").select("source_id").eq("user_id", user_id).eq("estado", "propuesta").execute().data or []
+    ids_mensajes_con_propuesta = [p["source_id"] for p in propuestas if p.get("source_id")]
+    conv_por_mensaje: dict[str, str] = {}
+    if ids_mensajes_con_propuesta:
+        msgs = sb.table("gmail_messages").select("id,conversation_id").in_("id", ids_mensajes_con_propuesta).execute().data or []
+        conv_por_mensaje = {m["id"]: m["conversation_id"] for m in msgs}
+    pendientes_por_conv: dict[str, int] = {}
+    for p in propuestas:
+        conv_id = conv_por_mensaje.get(p.get("source_id"))
+        if conv_id:
+            pendientes_por_conv[conv_id] = pendientes_por_conv.get(conv_id, 0) + 1
+
     for c in convs:
         c["gmail_url"] = f"https://mail.google.com/mail/u/0/#all/{c['gmail_thread_id']}"
+        c["propuestas_pendientes"] = pendientes_por_conv.get(c["id"], 0)
     return convs
 
 
