@@ -3,6 +3,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import secrets
 from datetime import datetime, timezone
 from typing import Optional
@@ -256,12 +257,20 @@ async def enviar_correo(req: EnviarRequest):
         print(f"[Gmail] SI error: {e}")
 
     # Agente de Gmail: registra la conversación y el mensaje saliente para
-    # poder trackear el hilo y leer las respuestas más adelante.
+    # poder trackear el hilo y leer las respuestas más adelante. Se engancha
+    # al directorio real de proveedores (no crea un registro paralelo) — la
+    # ausencia de RUT no bloquea el envío, se completa después si aparece.
     thread_id = msg.get("threadId")
     try:
+        from app.services.proveedores_matching import resolver_o_crear_proveedor, resolver_o_crear_contacto
+        proveedor_id = resolver_o_crear_proveedor(sb, req.user_id, req.proveedor_nombre or req.to_email, req.to_email)
+        contacto_id = resolver_o_crear_contacto(sb, req.user_id, proveedor_id, req.to_email, origen="gmail_agent")
+
         conv = sb.table("gmail_conversations").upsert({
             "user_id": req.user_id,
             "gmail_thread_id": thread_id,
+            "proveedor_id": proveedor_id,
+            "contacto_id": contacto_id,
             "proveedor_nombre": req.proveedor_nombre or None,
             "proveedor_email": req.to_email,
             "cotizacion_id": req.cotizacion_id if req.cotizacion_id != "demo" else None,
@@ -360,6 +369,13 @@ _AUTO_REPLY_HINTS = (
 def _parece_automatico(subject: str, from_email: str, cuerpo: str) -> bool:
     blob = f"{subject} {from_email} {cuerpo[:300]}".lower()
     return any(h in blob for h in _AUTO_REPLY_HINTS)
+
+
+def _extraer_email(header_from: str) -> str:
+    """'Nombre Apellido <correo@dominio.cl>' → 'correo@dominio.cl' (lower)."""
+    m = re.search(r"<([^<>]+)>", header_from)
+    email = (m.group(1) if m else header_from).strip().lower()
+    return email if "@" in email else ""
 
 
 def _items_contexto(sb, conv: dict) -> list[dict]:
@@ -462,6 +478,30 @@ async def sincronizar_respuestas(user_id: str):
 
             if direction != "inbound":
                 continue
+
+            # El proveedor respondió desde un correo distinto al contacto
+            # registrado: NO se crea otro proveedor ni se agrega el contacto
+            # solo — la respuesta ya quedó asociada al hilo (prioridad #1 de
+            # asociación), y se propone el contacto nuevo para confirmación.
+            remitente = _extraer_email(from_email)
+            if conv.get("proveedor_id") and remitente and remitente != (conv.get("proveedor_email") or "").lower():
+                ya_conocido = sb.table("proveedor_contactos").select("id").eq("proveedor_id", conv["proveedor_id"]).eq("email", remitente).execute().data
+                ya_propuesto = sb.table("item_field_updates").select("id").eq("entity_type", "proveedor_contacto").eq("entity_id", conv["proveedor_id"]).eq("new_value", json.dumps(remitente)).eq("estado", "propuesta").execute().data
+                if not ya_conocido and not ya_propuesto:
+                    sb.table("item_field_updates").insert({
+                        "user_id": user_id,
+                        "entity_type": "proveedor_contacto",
+                        "entity_id": conv["proveedor_id"],
+                        "field": "email",
+                        "previous_value": None,
+                        "new_value": json.dumps(remitente),
+                        "source_type": "gmail_message",
+                        "source_id": row["id"],
+                        "supplier_nombre": conv.get("proveedor_nombre"),
+                        "supplier_email": conv.get("proveedor_email"),
+                        "confidence": 0.9,
+                    }).execute()
+                    resumen["propuestas_generadas"] += 1
 
             nuevo_estado = "supplier_replied"
             if _parece_automatico(h.get("Subject", ""), from_email, cuerpo):
@@ -571,6 +611,9 @@ async def aplicar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest):
             previa = (actual.data or {}).get("notas_respuesta") or ""
             cambios["notas_respuesta"] = (previa + f"\n{p['field']}: {nuevo_valor}").strip()
         sb.table("resultados").update(cambios).eq("id", p["entity_id"]).execute()
+    elif p["entity_type"] == "proveedor_contacto" and p["field"] == "email":
+        from app.services.proveedores_matching import resolver_o_crear_contacto
+        resolver_o_crear_contacto(sb, req.user_id, p["entity_id"], nuevo_valor, origen="gmail_agent")
 
     sb.table("item_field_updates").update({
         "estado": "aplicado", "reviewed_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": req.user_id,

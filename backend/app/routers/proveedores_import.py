@@ -78,7 +78,7 @@ async def importar_proveedores(file: UploadFile = File(...), user_id: str = ""):
             model = genai.GenerativeModel("gemini-2.5-flash")
 
             prompt = f"""Analiza estas filas de una base de proveedores y extrae en JSON (SOLO array JSON sin markdown):
-[{{"nombre": "string", "email": "string o null", "telefono": "string o null", "categoria": "string o null", "pais": "CL/US/CN/etc o null", "notas": "string o null"}}]
+[{{"nombre": "string", "email": "string o null", "telefono": "string o null", "categoria": "string o null", "pais": "CL/US/CN/etc o null", "notas": "string o null", "rut": "string o null (RUT/tax_id del proveedor)", "contacto_nombre": "string o null", "contacto_email": "string o null (si hay un correo de contacto de persona distinto del email general)"}}]
 
 Si un campo no existe en las columnas, usa null. Infiere el país del teléfono o nombre si es posible.
 
@@ -101,13 +101,18 @@ Filas:
         for fila in filas:
             fila_lower = {k.lower().strip(): v for k, v in fila.items()}
             proveedores_norm.append({
-                "nombre": fila_lower.get("nombre") or fila_lower.get("name") or fila_lower.get("proveedor"),
+                "nombre": fila_lower.get("nombre") or fila_lower.get("name") or fila_lower.get("proveedor") or fila_lower.get("supplier_name") or fila_lower.get("legal_name"),
                 "email": fila_lower.get("email") or fila_lower.get("correo"),
                 "telefono": fila_lower.get("telefono") or fila_lower.get("teléfono") or fila_lower.get("phone"),
                 "categoria": fila_lower.get("categoria") or fila_lower.get("category") or fila_lower.get("rubro"),
                 "pais": fila_lower.get("pais") or fila_lower.get("país") or fila_lower.get("country") or "CL",
                 "notas": fila_lower.get("notas") or fila_lower.get("notes") or fila_lower.get("observaciones"),
+                "rut": fila_lower.get("rut") or fila_lower.get("tax_id"),
+                "contacto_nombre": fila_lower.get("contact_name") or fila_lower.get("nombre_contacto"),
+                "contacto_email": fila_lower.get("contact_email") or fila_lower.get("secondary_email") or fila_lower.get("correo_alternativo"),
             })
+
+    from app.services.proveedores_matching import resolver_o_crear_proveedor, resolver_o_crear_contacto, normalizar_rut
 
     sb = get_supabase()
     importados = 0
@@ -116,34 +121,35 @@ Filas:
 
     for p in proveedores_norm:
         nombre = (p.get("nombre") or "").strip()
+        email = (p.get("email") or "").strip() or None
         if not nombre:
             continue
         try:
-            existing = None
-            if p.get("email"):
-                res = sb.table("proveedores").select("id").eq("user_id", user_id).eq("email", p["email"]).execute()
-                if res.data:
-                    existing = res.data[0]["id"]
+            # Busca por RUT → email/dominio → nombre normalizado antes de crear
+            # uno nuevo, para no duplicar proveedores ya cargados manualmente
+            # o por una importación anterior.
+            existentes_antes = sb.table("proveedores").select("id").eq("user_id", user_id).eq("nombre", nombre[:200]).execute().data
+            proveedor_id = resolver_o_crear_proveedor(sb, user_id, nombre, email, p.get("rut"))
+            es_nuevo = not existentes_antes or existentes_antes[0]["id"] != proveedor_id
 
-            if not existing:
-                res = sb.table("proveedores").select("id").eq("user_id", user_id).eq("nombre", nombre[:200]).execute()
-                if res.data:
-                    existing = res.data[0]["id"]
+            cambios = {"nombre": nombre[:200]}
+            if email:
+                cambios["email"] = email[:200]
+            rut_norm = normalizar_rut(p.get("rut"))
+            if rut_norm:
+                cambios["rut"] = rut_norm
+            sb.table("proveedores").update(cambios).eq("id", proveedor_id).execute()
 
-            row = {
-                "user_id": user_id,
-                "nombre": nombre[:200],
-                "email": (p.get("email") or "")[:200] or None,
-                "score": 50,
-                "categoria_score": "confiable",
-            }
+            if email:
+                resolver_o_crear_contacto(sb, user_id, proveedor_id, email, origen="excel")
+            contacto_email = (p.get("contacto_email") or "").strip()
+            if contacto_email:
+                resolver_o_crear_contacto(sb, user_id, proveedor_id, contacto_email, nombre=p.get("contacto_nombre"), origen="excel")
 
-            if existing:
-                sb.table("proveedores").update(row).eq("id", existing).execute()
-                actualizados += 1
-            else:
-                sb.table("proveedores").insert(row).execute()
+            if es_nuevo:
                 importados += 1
+            else:
+                actualizados += 1
         except Exception as e:
             errores.append(f"{nombre}: {e}")
 
