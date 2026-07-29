@@ -164,6 +164,21 @@ class GenerarCorreoRequest(BaseModel):
     plazo: Optional[str] = None
 
 
+def _quitar_markdown(texto: str) -> str:
+    """Gemini a veces devuelve viñetas/negritas en markdown pese a que se le
+    pide texto plano — un correo con asteriscos se nota "hecho por IA". Se
+    limpia como red de seguridad además de pedírselo en el prompt."""
+    if not texto:
+        return texto
+    texto = re.sub(r"\*\*(.+?)\*\*", r"\1", texto)
+    texto = re.sub(r"__(.+?)__", r"\1", texto)
+    texto = re.sub(r"(?<!\w)\*(?!\s)(.+?)(?<!\s)\*(?!\w)", r"\1", texto)
+    texto = re.sub(r"(?<!\w)_(?!\s)(.+?)(?<!\s)_(?!\w)", r"\1", texto)
+    texto = re.sub(r"^[ \t]*[\*\-•][ \t]+", "", texto, flags=re.MULTILINE)
+    texto = re.sub(r"^#{1,6}[ \t]+", "", texto, flags=re.MULTILINE)
+    return texto
+
+
 @router.post("/generar-correo")
 async def generar_correo(req: GenerarCorreoRequest):
     from app.config import settings
@@ -187,6 +202,7 @@ Instrucciones IMPORTANTES:
 - NO firmes con un nombre de empresa específico ni pongas un correo remitente: el correo se envía desde la cuenta del propio usuario. Cierra con una despedida neutra (ej: "Quedamos atentos. Saludos cordiales.") sin firma inventada.
 - Máximo 150 palabras, tono profesional. Solicita precio unitario, disponibilidad, plazo de entrega y condiciones de pago.
 - Si hay especificaciones, menciónalas de forma concreta en el cuerpo (no las resumas como "se adjuntan" o "se compartirán por separado" — inclúyelas tal cual). Si NO hay especificaciones, simplemente no menciones el tema; no inventes que se adjuntan o se enviarán aparte.
+- El cuerpo va en texto plano, como lo escribiría una persona a mano: párrafos corridos, sin viñetas ni listas. NO uses markdown de ningún tipo (nada de **negrita**, *cursiva*, guiones ni asteriscos de lista, ni títulos con #). Los datos del ítem (descripción, cantidad) se integran en la redacción, no como lista.
 
 Responde SOLO en JSON válido sin markdown:
 {{"subject": "string", "body": "string"}}"""
@@ -198,7 +214,10 @@ Responde SOLO en JSON válido sin markdown:
             text = text.split("```")[1]
             if text.startswith("json"):
                 text = text[4:].strip()
-        return json.loads(text)
+        datos = json.loads(text)
+        datos["subject"] = _quitar_markdown(datos.get("subject", ""))
+        datos["body"] = _quitar_markdown(datos.get("body", ""))
+        return datos
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error Gemini: {str(e)}")
 

@@ -2,6 +2,11 @@
 import { useState } from "react";
 
 export interface Resultado {
+  /** Identidad estable de esta fila, asignada al cargarla (no la url: varias
+   * fuentes —ej. Vitel sin url_key— pueden devolver url vacía o repetida
+   * para productos distintos, y usarla como llave hacía que seleccionar uno
+   * seleccionara todos los que comparten esa url). */
+  _uid?: string;
   titulo: string;
   precio: number | null;
   moneda: string;
@@ -55,8 +60,8 @@ interface Props {
   nombreItem?: string;
   cantidad?: number;
   /** Permite elegir una oferta específica del grupo (no solo la más barata) */
-  onToggleOferta?: (url: string) => void;
-  seleccionadosUrls?: Set<string>;
+  onToggleOferta?: (uid: string) => void;
+  seleccionadosIds?: Set<string>;
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -95,7 +100,7 @@ function StarRating({ rating }: { rating: number }) {
   );
 }
 
-export default function CardProveedor({ resultado, seleccionado, onSeleccionar, ofertas, nombreItem, cantidad, onToggleOferta, seleccionadosUrls }: Props) {
+export default function CardProveedor({ resultado, seleccionado, onSeleccionar, ofertas, nombreItem, cantidad, onToggleOferta, seleccionadosIds }: Props) {
   const [imgError, setImgError] = useState(false);
   const [showSpecs, setShowSpecs] = useState(false);
 
@@ -309,14 +314,14 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {ofertas.map((o, i) => {
-                const esEsta = o.url === resultado.url;
+                const esEsta = o._uid === resultado._uid;
                 const labelFuente = o.fuente_label || FUENTE_LABEL[o.fuente] || o.fuente;
                 const desc = o.titulo || o.descripcion || "";
                 const elegible = !!onToggleOferta && !!o.url;
-                const elegida = seleccionadosUrls?.has(o.url) ?? false;
+                const elegida = (o._uid && seleccionadosIds?.has(o._uid)) ?? false;
                 return (
                   <div
-                    key={o.url || i}
+                    key={o._uid ?? i}
                     style={{
                       display: "flex",
                       alignItems: "stretch",
@@ -329,7 +334,7 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
                     {/* Checkbox para elegir esta oferta específica */}
                     {elegible && (
                       <button
-                        onClick={() => onToggleOferta!(o.url)}
+                        onClick={() => onToggleOferta!(o._uid!)}
                         title={elegida ? "Quitar de la selección" : "Elegir esta oferta"}
                         style={{
                           flexShrink: 0, width: 18, height: 18, alignSelf: "center", cursor: "pointer",

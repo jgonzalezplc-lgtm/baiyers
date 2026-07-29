@@ -3,6 +3,7 @@ import { useState } from "react";
 import { X, Mail } from "lucide-react";
 
 interface Destinatario {
+  _uid?: string;
   nombre: string;
   url: string;
   email: string;
@@ -15,7 +16,7 @@ interface Props {
   body: string;
   onSubjectChange: (v: string) => void;
   onBodyChange: (v: string) => void;
-  onEmailChange: (url: string, email: string) => void;
+  onEmailChange: (uid: string, email: string) => void;
   onEnviar: () => void;
   onCancelar: () => void;
   enviando: boolean;
@@ -173,9 +174,9 @@ export default function EmailPreviewModal({
                 Ingresa el email de cada proveedor. El nombre se sustituye automáticamente en el correo.
               </div>
               {destinatarios.map((d) => {
-                const enviado = enviados.has(d.url);
+                const enviado = enviados.has(d._uid!);
                 return (
-                  <div key={d.url} style={{
+                  <div key={d._uid ?? d.url} style={{
                     background: enviado ? "var(--st-aprobada-bg)" : "var(--surface)",
                     border: `1px solid ${enviado ? "transparent" : "var(--n-200)"}`,
                     borderRadius: "var(--r-md)",
@@ -194,7 +195,7 @@ export default function EmailPreviewModal({
                     <input
                       type="email"
                       value={d.email}
-                      onChange={e => onEmailChange(d.url, e.target.value)}
+                      onChange={e => onEmailChange(d._uid!, e.target.value)}
                       placeholder="email@proveedor.com"
                       disabled={enviado}
                       style={{ ...inputStyle, opacity: enviado ? 0.5 : 1 }}

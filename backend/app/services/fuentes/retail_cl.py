@@ -204,11 +204,22 @@ async def buscar_construmart(query: str, max_results: int = 8) -> list[dict]:
         for p in items[:max_results]:
             precio_val = (((p.get("price_range") or {}).get("minimum_price") or {}).get("final_price") or {}).get("value")
             precio = float(precio_val) if precio_val else None
+            url_key = p.get("url_key", "")
+            sku = p.get("sku", "")
+            # Ver comentario equivalente en _buscar_magento_graphql: sin url_key
+            # varios productos distintos comparten url="" y el comparador los
+            # trata como uno solo. El sku es único por producto.
+            if url_key:
+                url = f"https://www.construmart.cl/{url_key}"
+            elif sku:
+                url = f"https://www.construmart.cl/catalogsearch/result/?q={urllib.parse.quote(sku)}"
+            else:
+                url = ""
             out.append({
                 "titulo": p.get("name", query),
                 "precio": precio,
                 "moneda": "CLP" if precio else None,
-                "url": f"https://www.construmart.cl/{p.get('url_key', '')}" if p.get("url_key") else "",
+                "url": url,
                 "fuente": "construmart",
                 "fuente_label": "Construmart",
                 "pais": "CL",
@@ -252,11 +263,23 @@ async def _buscar_magento_graphql(
             precio_val = (((p.get("price_range") or {}).get("minimum_price") or {}).get("final_price") or {}).get("value")
             precio = float(precio_val) if precio_val else None
             url_key = p.get("url_key", "")
+            sku = p.get("sku", "")
+            # Sin url_key el producto quedaría con url="" — y como varios productos
+            # distintos pueden llegar sin url_key en la misma búsqueda, comparten esa
+            # cadena vacía y el comparador los trata como si fueran el mismo (bug real:
+            # elegir uno terminaba marcando todos como seleccionados). El sku es único
+            # por producto, así que arma un link de búsqueda real en vez de repetir "".
+            if url_key:
+                url = f"{base_url}/{url_key}.html"
+            elif sku:
+                url = f"{base_url}/catalogsearch/result/?q={urllib.parse.quote(sku)}"
+            else:
+                url = ""
             out.append({
                 "titulo": p.get("name", query),
                 "precio": precio,
                 "moneda": "CLP" if precio else None,
-                "url": f"{base_url}/{url_key}.html" if url_key else "",
+                "url": url,
                 "fuente": fuente,
                 "fuente_label": fuente_label,
                 "pais": "CL",

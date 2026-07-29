@@ -17,6 +17,7 @@ type FiltroPais = "todos" | "chile" | "internacional";
 type Orden = "relevancia" | "precio_asc" | "precio_desc";
 
 interface Destinatario {
+  _uid?: string;
   nombre: string;
   url: string;
   email: string;
@@ -235,6 +236,7 @@ export default function ResultadosPage() {
       fuentes.add(fuente);
       items.push({
         ...meta,
+        _uid: (f.id as string) ?? crypto.randomUUID(),
         titulo: (meta.titulo as string) ?? (f.proveedor_nombre as string) ?? "",
         precio: f.precio as number | null,
         moneda: (f.moneda as string) ?? "CLP",
@@ -346,7 +348,7 @@ export default function ResultadosPage() {
               setLoading(false);
             } else if (msg.result) {
               // Un resultado individual, efecto cascada
-              const r: Resultado = msg.result;
+              const r: Resultado = { ...msg.result, _uid: crypto.randomUUID() };
               if (r.url && seenUrls.has(r.url)) continue;
               if (r.url) seenUrls.add(r.url);
               setResultados(prev => [...prev, r]);
@@ -361,7 +363,7 @@ export default function ResultadosPage() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ precio: r.precio, item_nombre: nombre_item, user_id: uid }),
                   }).then(res => res.json()).then(ev => {
-                    setEvaluaciones(prev => ({ ...prev, [r.url]: ev }));
+                    setEvaluaciones(prev => ({ ...prev, [r._uid!]: ev }));
                   }).catch(() => {});
                 }
               }
@@ -426,10 +428,10 @@ export default function ResultadosPage() {
     }
   };
 
-  const toggleSeleccionado = (url: string) => {
+  const toggleSeleccionado = (uid: string) => {
     setSeleccionados(prev => {
       const next = new Set(prev);
-      if (next.has(url)) next.delete(url); else next.add(url);
+      if (next.has(uid)) next.delete(uid); else next.add(uid);
       return next;
     });
   };
@@ -489,7 +491,7 @@ export default function ResultadosPage() {
       setTimeout(() => setToast(""), 3000);
       return;
     }
-    const urls = resultados.filter(r => seleccionados.has(r.url)).map(r => r.url).filter(Boolean);
+    const urls = resultados.filter(r => seleccionados.has(r._uid!)).map(r => r.url).filter(Boolean);
     if (!urls.length) return;
     setComparando(true);
     try {
@@ -562,23 +564,23 @@ export default function ResultadosPage() {
       setTimeout(() => setToast(""), 3000);
       return;
     }
-    const selArray = resultados.filter(r => seleccionados.has(r.url));
+    const selArray = resultados.filter(r => seleccionados.has(r._uid!));
     if (!selArray.length) return;
     setCreandoLista(true);
 
     // Badges automáticos (el usuario los puede reasignar en la lista)
     const conPrecio = selArray.filter(r => r.precio != null);
     const masEconomico = conPrecio.length
-      ? conPrecio.reduce((a, b) => (a.precio! <= b.precio! ? a : b)).url : null;
+      ? conPrecio.reduce((a, b) => (a.precio! <= b.precio! ? a : b))._uid : null;
     const disponibles = selArray.filter(r =>
       r.stock_disponible === true || (typeof r.stock === "number" && r.stock > 0));
     const conveniente = (disponibles.filter(r => r.precio != null).sort((a, b) => a.precio! - b.precio!)[0]
-      ?? conPrecio.sort((a, b) => a.precio! - b.precio!)[0])?.url ?? null;
+      ?? conPrecio.sort((a, b) => a.precio! - b.precio!)[0])?._uid ?? null;
 
     const proveedores = selArray.map(r => {
       let badge: string | null = null;
-      if (r.url === conveniente) badge = "mas_conveniente";
-      else if (r.url === masEconomico) badge = "mas_economico";
+      if (r._uid === conveniente) badge = "mas_conveniente";
+      else if (r._uid === masEconomico) badge = "mas_economico";
       else if (r.stock_disponible === true || (typeof r.stock === "number" && r.stock > 0)) badge = "disponibilidad_inmediata";
       return {
         proveedor_nombre: r.proveedor || r.titulo,
@@ -647,6 +649,7 @@ export default function ResultadosPage() {
         return;
       }
       const nuevo: Resultado & { contacto?: string; resultado_id?: string } = {
+        _uid: fila.id,
         titulo: fila.proveedor_nombre,
         precio: null,
         moneda: fila.moneda ?? "CLP",
@@ -660,7 +663,7 @@ export default function ResultadosPage() {
         resultado_id: fila.id,
       };
       setResultados(prev => [...prev, nuevo]);
-      setSeleccionados(prev => new Set(prev).add(nuevo.url));
+      setSeleccionados(prev => new Set(prev).add(nuevo._uid!));
       setToast(`${fila.proveedor_nombre} agregado — ya puedes enviarle la cotización`);
       setTimeout(() => setToast(""), 3500);
     } catch {
@@ -677,7 +680,7 @@ export default function ResultadosPage() {
       setTimeout(() => setToast(""), 3000);
       return;
     }
-    const selArray = resultados.filter(r => seleccionados.has(r.url));
+    const selArray = resultados.filter(r => seleccionados.has(r._uid!));
     if (!selArray.length) return;
     setGenerandoEmail(true);
     try {
@@ -704,6 +707,7 @@ export default function ResultadosPage() {
       setEmailBody(body);
       // Email inicial: el que ya venga en el resultado (si lo hay)
       setDestinatarios(selArray.map(r => ({
+        _uid: r._uid,
         nombre: r.proveedor || r.titulo,
         url: r.url,
         email: (r as unknown as { contacto?: string }).contacto || "",
@@ -725,7 +729,7 @@ export default function ResultadosPage() {
           const datos = await cr.json();
           if (datos.email) {
             setDestinatarios(prev => prev.map(d =>
-              d.url === r.url && !d.email ? { ...d, email: datos.email } : d
+              d._uid === r._uid && !d.email ? { ...d, email: datos.email } : d
             ));
           }
         } catch { /* silencioso */ }
@@ -738,8 +742,8 @@ export default function ResultadosPage() {
     }
   };
 
-  const handleEmailChange = (url: string, email: string) => {
-    setDestinatarios(prev => prev.map(d => d.url === url ? { ...d, email } : d));
+  const handleEmailChange = (uid: string, email: string) => {
+    setDestinatarios(prev => prev.map(d => d._uid === uid ? { ...d, email } : d));
   };
 
   const handleGuardarRespuesta = async () => {
@@ -762,7 +766,7 @@ export default function ResultadosPage() {
   };
 
   const handleEnviarEmails = async () => {
-    const pendientes = destinatarios.filter(d => d.email.includes("@") && !enviados.has(d.url));
+    const pendientes = destinatarios.filter(d => d.email.includes("@") && !enviados.has(d._uid!));
     if (!pendientes.length) return;
     setEnviando(true);
     let ok = 0;
@@ -780,7 +784,7 @@ export default function ResultadosPage() {
           continue;
         }
         ok++;
-        setEnviados(prev => new Set([...prev, dest.url]));
+        setEnviados(prev => new Set([...prev, dest._uid!]));
       } catch { errMsg = "Error de red al enviar"; }
     }
     setEnviando(false);
@@ -997,7 +1001,7 @@ export default function ResultadosPage() {
             plan={plan}
             onClose={() => setOcProveedor(null)}
             onEnviada={(numeroOc) => {
-              setOcEmitidas(prev => new Set([...prev, ocProveedor.url]));
+              setOcEmitidas(prev => new Set([...prev, ocProveedor._uid!]));
               setOcProveedor(null);
               setToast(`OC ${numeroOc} enviada`);
               setTimeout(() => setToast(""), 4000);
@@ -1351,10 +1355,10 @@ export default function ResultadosPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {filtrados.map((grupo, i) => {
               const r = grupo.principal;
-              const ev = evaluaciones[r.url];
+              const ev = evaluaciones[r._uid!];
 
               return (
-                <div key={r.url || i} style={{
+                <div key={r._uid ?? i} style={{
                   border: "1px solid var(--n-200)", borderRadius: "var(--r-lg)",
                   overflow: "hidden", background: "var(--surface)", boxShadow: "var(--shadow-card)",
                   animation: "slideIn 0.22s ease both",
@@ -1362,14 +1366,14 @@ export default function ResultadosPage() {
                 }}>
                   <CardProveedor
                     resultado={r}
-                    seleccionado={seleccionados.has(r.url)}
-                    onSeleccionar={() => toggleSeleccionado(r.url)}
+                    seleccionado={seleccionados.has(r._uid!)}
+                    onSeleccionar={() => toggleSeleccionado(r._uid!)}
                     tasas={tasas}
                     ofertas={grupo.ofertas.length > 1 ? grupo.ofertas : undefined}
                     nombreItem={nombreItem}
                     cantidad={cantidad}
                     onToggleOferta={toggleSeleccionado}
-                    seleccionadosUrls={seleccionados}
+                    seleccionadosIds={seleccionados}
                   />
 
                   {/* Badges fila inferior */}
@@ -1408,7 +1412,7 @@ export default function ResultadosPage() {
                     </div>
 
                     {/* Registrar respuesta (si fue contactado y tiene id en DB) */}
-                    {(r as unknown as Record<string, unknown>).id && enviados.has(r.url) && (
+                    {(r as unknown as Record<string, unknown>).id && enviados.has(r._uid!) && (
                       <button
                         onClick={() => {
                           setFormResp({ precio: "", moneda: "CLP", plazo: "", condiciones: "", notas: "" });
@@ -1428,7 +1432,7 @@ export default function ResultadosPage() {
                     {/* OC button */}
                     {r.precio != null && (
                       <div>
-                        {ocEmitidas.has(r.url) ? (
+                        {ocEmitidas.has(r._uid!) ? (
                           <span style={{
                             fontSize: 13, fontWeight: 500,
                             color: "var(--success)",
@@ -1510,19 +1514,23 @@ export default function ResultadosPage() {
                 )}
                 <button
                   onClick={handleComparar}
-                  disabled={comparando}
+                  disabled={comparando || loading}
+                  title={loading ? "Espera a que termine la búsqueda antes de comparar" : undefined}
                   style={{
                     background: "var(--brand)", color: "#fff", border: "none",
                     borderRadius: "var(--r-md)", padding: "9px 16px",
                     fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-sans)",
-                    cursor: "pointer", opacity: comparando ? 0.5 : 1,
+                    cursor: comparando || loading ? "not-allowed" : "pointer",
+                    opacity: comparando || loading ? 0.5 : 1,
                   }}
                 >
                   {comparando
                     ? "Guardando…"
-                    : lista && idxItemActual >= 0 && idxItemActual < nItemsLista - 1
-                      ? `Comparar y seguir (${nSeleccionados}) →`
-                      : `Comparar (${nSeleccionados}) →`}
+                    : loading
+                      ? "Buscando…"
+                      : lista && idxItemActual >= 0 && idxItemActual < nItemsLista - 1
+                        ? `Comparar y seguir (${nSeleccionados}) →`
+                        : `Comparar (${nSeleccionados}) →`}
                 </button>
               </div>
             </div>
