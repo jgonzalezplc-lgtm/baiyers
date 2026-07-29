@@ -199,7 +199,7 @@ export default async function DashboardPage({
           {/* Cabecera */}
           <div style={{
             display: "grid",
-            gridTemplateColumns: "1fr 90px 110px 110px 170px 120px 76px",
+            gridTemplateColumns: "1fr 90px 100px 100px 190px 120px 76px",
             gap: 10,
             padding: "10px 16px",
             borderBottom: "1px solid var(--n-200)",
@@ -220,14 +220,14 @@ export default async function DashboardPage({
           ) : (
             listasRecientes.map((lista, i) => {
               const estado = lista.aprobacion_estado;
-              const estadoUI = estado === "aprobado" ? "aprobada" : estado === "aprobado_con_observaciones" ? "en_curso" : estado === "rechazado" ? "rechazada" : "cotizando";
-              const estadoLabel = estado === "aprobado" ? "Aprobada" : estado === "aprobado_con_observaciones" ? "Aprobada con modificaciones" : estado === "rechazado" ? "Rechazada" : estado === "pendiente" ? "Esperando aprobación" : "Sin enviar";
+              const estadoUI = estado === "aprobado" ? "aprobada" : estado === "rechazado" ? "rechazada" : "cotizando";
+              const estadoLabel = estado === "aprobado" ? "Aprobada" : estado === "aprobado_con_observaciones" ? "Con observaciones" : estado === "rechazado" ? "Rechazada" : estado === "pendiente" ? "Esperando aprobación" : "Sin enviar";
 
               return (
                 <Link key={lista.id} href={`/listas/${lista.id}`}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 90px 110px 110px 170px 120px 76px",
+                    gridTemplateColumns: "1fr 90px 100px 100px 190px 120px 76px",
                     gap: 10,
                     padding: "12px 16px",
                     borderBottom: i < listasRecientes.length - 1 ? "1px solid var(--n-100)" : "none",
@@ -242,7 +242,7 @@ export default async function DashboardPage({
                   <div style={{ fontSize: 14, color: "var(--n-700)", fontFamily: "var(--font-mono)" }}>{lista.n_items}</div>
                   <div style={{ fontSize: 14, color: "var(--n-700)", fontFamily: "var(--font-mono)" }}>{lista.n_comparados}/{lista.n_items}</div>
                   <div style={{ fontSize: 14, color: "var(--n-700)", fontFamily: "var(--font-mono)" }}>{lista.n_definitivos}/{lista.n_items}</div>
-                  <div><Badge status={estadoUI}>{estadoLabel}</Badge></div>
+                  <div style={{ minWidth: 0, overflow: "hidden" }}><Badge status={estadoUI}>{estadoLabel}</Badge></div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: "var(--n-900)", fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
                     {lista.monto_total ? fmtCLP(lista.monto_total) : "—"}
                   </div>
