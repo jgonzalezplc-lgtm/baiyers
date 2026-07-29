@@ -149,8 +149,8 @@ async def gmail_status(user_id: str):
     sb = get_supabase()
     result = sb.table("user_integrations").select("refresh_token").eq(
         "user_id", user_id
-    ).eq("provider", "gmail").maybe_single().execute()
-    integration = result.data or {}
+    ).eq("provider", "gmail").limit(1).execute()
+    integration = (result.data or [{}])[0]
     return {"connected": bool(integration.get("refresh_token"))}
 
 
