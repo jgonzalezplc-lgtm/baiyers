@@ -171,11 +171,26 @@ async def decidir(token: str, req: DecisionRequest):
         update_data["resumen"] = resumen
     sb.table("approval_requests").update(update_data).eq("id", row["id"]).execute()
 
+    from app.services.notificaciones import crear_notificacion
+
     # Si la referencia es un quote_supplier y fue aprobado, marcarlo seleccionado
     if nuevo == "aprobado" and row["referencia"].startswith("quote_supplier:"):
         qs_id = row["referencia"].split(":", 1)[1]
         try:
             sb.table("quote_suppliers").update({"estado": "seleccionado", "updated_at": _now()}).eq("id", qs_id).execute()
+            qs = sb.table("quote_suppliers").select("proveedor_nombre, quote_item_id").eq("id", qs_id).maybe_single().execute()
+            if qs.data and row.get("user_id"):
+                item_nombre = qs.data.get("proveedor_nombre") or "ítem"
+                if qs.data.get("quote_item_id"):
+                    it = sb.table("quote_items").select("nombre").eq("id", qs.data["quote_item_id"]).maybe_single().execute()
+                    item_nombre = (it.data or {}).get("nombre") or item_nombre
+                proveedor_nombre = qs.data.get("proveedor_nombre") or "proveedor"
+                crear_notificacion(
+                    sb, row["user_id"], "cotizacion_aprobada",
+                    "Cotización aprobada",
+                    f"Se aprobó {proveedor_nombre} para '{item_nombre}'.",
+                    {"quote_supplier_id": qs_id, "proveedor_nombre": proveedor_nombre, "item_nombre": item_nombre},
+                )
         except Exception:
             pass
 
@@ -184,7 +199,7 @@ async def decidir(token: str, req: DecisionRequest):
         import json
         lista_id = row["referencia"].split(":", 1)[1]
         try:
-            proy = sb.table("proyectos").select("descripcion, user_id").eq("id", lista_id).single().execute()
+            proy = sb.table("proyectos").select("nombre, descripcion, user_id").eq("id", lista_id).single().execute()
             if proy.data:
                 data = json.loads(proy.data.get("descripcion") or "{}")
                 if data.get("tipo") == "lista_cotizacion":
@@ -206,6 +221,15 @@ async def decidir(token: str, req: DecisionRequest):
                     sb.table("proyectos").update({
                         "descripcion": json.dumps(data, ensure_ascii=False),
                     }).eq("id", lista_id).execute()
+
+                    lista_nombre = proy.data.get("nombre") or "cotización"
+                    titulo = "Cotización aprobada" if req.decision == "aprobar" else "Cotización aprobada con observaciones"
+                    crear_notificacion(
+                        sb, proy.data["user_id"], "cotizacion_aprobada",
+                        titulo,
+                        f"Se aprobó la lista '{lista_nombre}'.",
+                        {"lista_id": lista_id, "lista_nombre": lista_nombre},
+                    )
 
                     # Aprobación limpia (sin observaciones): el proveedor
                     # elegido para cada ítem queda seleccionado y autorizado

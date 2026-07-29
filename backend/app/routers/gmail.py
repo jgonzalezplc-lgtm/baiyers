@@ -407,6 +407,16 @@ def _nombre_cotizacion(sb, cotizacion_id: str) -> str:
     return "ítem cotizado"
 
 
+def _nombre_lista(sb, lista_proyecto_id: str | None) -> str | None:
+    if not lista_proyecto_id:
+        return None
+    try:
+        proy = sb.table("proyectos").select("nombre").eq("id", lista_proyecto_id).maybe_single().execute()
+        return (proy.data or {}).get("nombre")
+    except Exception:
+        return None
+
+
 def _items_contexto(sb, conv: dict) -> list[dict]:
     """Ítem(s) sobre los que trata esta conversación, para dárselos como
     contexto al Email Understanding Agent."""
@@ -467,6 +477,7 @@ async def _sincronizar_usuario(user_id: str) -> dict:
     from app.services.supabase import get_supabase
     from app.services import gmail_conversation_agent
     from app.services.gmail_conversation_agent import CAMPOS_SEGUIMIENTO
+    from app.services.notificaciones import crear_notificacion
 
     UMBRAL_AUTO_APLICAR = 0.85
 
@@ -632,6 +643,26 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                         if auto_aplicar:
                             _aplicar_campo_resultado(sb, entity_id, p["field"], p["new_value"], recibido_iso)
                             campos_recibidos.add(campo_seguimiento)
+
+                    if campos_recibidos:
+                        item_nombre = items_ctx[0]["nombre"] if items_ctx else _nombre_cotizacion(sb, conv.get("cotizacion_id") or "")
+                        lista_nombre = _nombre_lista(sb, conv.get("lista_proyecto_id"))
+                        proveedor_nombre = conv.get("proveedor_nombre") or "un proveedor"
+                        detalle = f"{proveedor_nombre} respondió sobre '{item_nombre}'"
+                        if lista_nombre:
+                            detalle += f" (lista '{lista_nombre}')"
+                        crear_notificacion(
+                            sb, user_id, "email_cotizacion",
+                            "Nueva respuesta de proveedor",
+                            detalle + ".",
+                            {
+                                "conversation_id": conv["id"],
+                                "lista_id": conv.get("lista_proyecto_id"),
+                                "lista_nombre": lista_nombre,
+                                "proveedor_nombre": proveedor_nombre,
+                                "item_nombre": item_nombre,
+                            },
+                        )
 
                     pendientes = CAMPOS_SEGUIMIENTO - campos_recibidos
                     if extraccion["requiere_aclaracion"] and not campos_recibidos:

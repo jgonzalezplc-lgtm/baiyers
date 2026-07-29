@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ui";
 import OnboardingFloating from "./OnboardingFloating";
+import NotificationBell from "./NotificationBell";
 
 interface NavLink { href: string; label: string; icon: LucideIcon }
 
@@ -78,7 +79,7 @@ interface AppShellProps {
   perfilIncompleto?: boolean;
 }
 
-export default function AppShell({ children, empresa, planLabel, planLimitLabel, perfilIncompleto }: AppShellProps) {
+export default function AppShell({ children, empresa, planLabel, planLimitLabel, userId, perfilIncompleto }: AppShellProps) {
   const pathname = usePathname();
   const [expandido, setExpandido] = useState(false);
   const [drawerAbierto, setDrawerAbierto] = useState(false);
@@ -268,16 +269,7 @@ export default function AppShell({ children, empresa, planLabel, planLimitLabel,
               borderRadius: "var(--r-pill)",
               background: "var(--brand-50)", color: "var(--brand-700)",
             }}>{planLabel}</span>
-            <a href="/cotizar" style={{
-              display: "inline-flex", alignItems: "center", gap: 7,
-              fontSize: 14, fontWeight: 600,
-              background: "var(--brand)", color: "#fff",
-              padding: "8px 14px", borderRadius: "var(--r-md)",
-              textDecoration: "none",
-            }}>
-              <PlusCircle size={16} strokeWidth={1.75} />
-              Nueva cotización
-            </a>
+            <NotificationBell userId={userId} />
           </div>
         </header>
 
