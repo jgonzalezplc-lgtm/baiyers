@@ -218,7 +218,16 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 90px", gap: 12 }}>
                 <div>
                   <label style={labelStyle}>Cantidad</label>
-                  <input type="number" min={1} value={cantidad} onChange={e => setCantidad(Number(e.target.value))} style={inputStyle} />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={cantidad === 0 ? "" : String(cantidad)}
+                    onChange={e => {
+                      const digits = e.target.value.replace(/\D/g, "");
+                      setCantidad(digits === "" ? 0 : Number(digits));
+                    }}
+                    style={inputStyle}
+                  />
                 </div>
                 <div>
                   <label style={labelStyle}>Precio unitario</label>
