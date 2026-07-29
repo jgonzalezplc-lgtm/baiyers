@@ -87,8 +87,9 @@ async def solicitar_aprobacion(req: SolicitudRequest):
     return {
         "id": ins.data[0]["id"],
         "token": token,
-        "magic_link_aprobar": f"{base}/authorize/{token}?decision=aprobar",
-        "magic_link_rechazar": f"{base}/authorize/{token}?decision=rechazar",
+        # Un solo link: la página /authorize/{token} ya deja elegir aprobar,
+        # aprobar con observaciones o rechazar (con comentario) desde ahí.
+        "magic_link": f"{base}/authorize/{token}",
         "expira_at": expira,
     }
 

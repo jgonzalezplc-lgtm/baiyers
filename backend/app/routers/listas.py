@@ -488,8 +488,7 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest):
             cuerpo = (
                 f"Hola,\n\n{req.nombre_solicitante or 'Un usuario'} de {req.empresa or 'la empresa'} solicita tu aprobación "
                 f"para la siguiente lista de compra:\n\nLista: {proy.data['nombre']}\nTotal: {_fmt_clp(monto_total)}\n\n{item_lines}\n\n"
-                f"Para aprobar:\n{sol['magic_link_aprobar']}\n\n"
-                f"Para rechazar (puedes agregar comentarios):\n{sol['magic_link_rechazar']}\n\n"
+                f"Revisa el detalle y aprueba o rechaza (puedes agregar comentarios) desde este enlace:\n{sol['magic_link']}\n\n"
                 f"Este enlace expira el {sol['expira_at'][:10]}.\n\nBaiyer, Procurement Inteligente"
             )
             send_email(service, req.aprobador_email, asunto, cuerpo, integration["email"])
@@ -508,8 +507,7 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest):
 
     return {
         "success": True,
-        "magic_link_aprobar": sol["magic_link_aprobar"],
-        "magic_link_rechazar": sol["magic_link_rechazar"],
+        "magic_link": sol["magic_link"],
         "token": sol["token"],
         "expira_at": sol["expira_at"],
     }
