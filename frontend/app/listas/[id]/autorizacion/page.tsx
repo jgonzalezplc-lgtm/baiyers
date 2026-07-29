@@ -38,9 +38,9 @@ export default function AutorizarListaPage() {
     try {
       const r = await fetch(`${API_URL}/api/listas/${id}/solicitar-aprobacion`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId, aprobador_email: email.trim(), justificaciones, nombre_solicitante: meta.nombre_usuario || "", empresa: meta.empresa || "" }) });
       const d = await r.json(); if (!r.ok) throw new Error(d.detail || "No se pudo crear la solicitud");
-      const asunto = encodeURIComponent(`Autorización requerida: ${lista.nombre}`);
-      const cuerpo = encodeURIComponent(`Hola,\n\nSe solicita tu autorización para la lista “${lista.nombre}” por un total de ${fmtCLP(total)}.\n\nRevisa el detalle, las alternativas y aprueba o rechaza cada ítem desde este enlace:\n${d.magic_link_aprobar}\n\nEl enlace expira el ${new Date(d.expira_at).toLocaleDateString("es-CL")}.`);
-      window.open(`mailto:${email.trim()}?subject=${asunto}&body=${cuerpo}`, "_self");
+      // El backend ya envió el correo por la cuenta Gmail conectada del
+      // usuario (misma integración que se usa para cotizar a proveedores);
+      // no hay que abrir el cliente de correo local.
       router.replace(`/listas/${id}`);
     } catch (e) { setError(e instanceof Error ? e.message : "Error al enviar"); }
     finally { setEnviando(false); }

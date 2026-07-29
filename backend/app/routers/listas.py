@@ -63,6 +63,10 @@ def _monto_total(data: dict) -> float:
     )
 
 
+def _fmt_clp(n: float) -> str:
+    return f"${int(round(n)):,}".replace(",", ".")
+
+
 class ItemListaIn(BaseModel):
     cotizacion_id: str
     nombre: str
@@ -454,6 +458,45 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest):
             resumen=resumen,
             aprobador_email=req.aprobador_email,
         ))
+
+        # El correo de autorización sale por la cuenta Gmail ya conectada del
+        # usuario (misma integración que se usa para cotizar a proveedores),
+        # nunca abriendo el cliente de correo local — el autorizador es
+        # interno, no un proveedor, así que no se engancha al agente de
+        # seguimiento de respuestas (eso es solo para precios de proveedor).
+        from app.services.gmail_service import get_gmail_service, send_email
+        integ = sb.table("user_integrations").select("*").eq("user_id", req.user_id).eq("provider", "gmail").limit(1).execute()
+        integration = (integ.data or [None])[0]
+        if not integration:
+            raise HTTPException(status_code=400, detail="Gmail no conectado. Conéctalo en Configuración para poder enviar la solicitud de autorización.")
+
+        try:
+            service, creds = get_gmail_service(integration["access_token"], integration["refresh_token"])
+            if creds.token != integration["access_token"]:
+                sb.table("user_integrations").update({
+                    "access_token": creds.token,
+                    "token_expiry": creds.expiry.isoformat() if creds.expiry else None,
+                }).eq("user_id", req.user_id).eq("provider", "gmail").execute()
+
+            item_lines = "\n".join(
+                f"- {it['nombre']} ×{it.get('cantidad', 1)}: {it.get('proveedor') or '—'}"
+                f" ({_fmt_clp(it['precio_clp'] * it.get('cantidad', 1)) if it.get('precio_clp') is not None else '—'})"
+                + (f", {it['justificacion']}" if it.get("justificacion") else "")
+                for it in resumen_items
+            )
+            asunto = f"Solicitud de aprobación: {proy.data['nombre']}"
+            cuerpo = (
+                f"Hola,\n\n{req.nombre_solicitante or 'Un usuario'} de {req.empresa or 'la empresa'} solicita tu aprobación "
+                f"para la siguiente lista de compra:\n\nLista: {proy.data['nombre']}\nTotal: {_fmt_clp(monto_total)}\n\n{item_lines}\n\n"
+                f"Para aprobar:\n{sol['magic_link_aprobar']}\n\n"
+                f"Para rechazar (puedes agregar comentarios):\n{sol['magic_link_rechazar']}\n\n"
+                f"Este enlace expira el {sol['expira_at'][:10]}.\n\nBaiyer, Procurement Inteligente"
+            )
+            send_email(service, req.aprobador_email, asunto, cuerpo, integration["email"])
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"No se pudo enviar el correo de autorización: {e}")
 
         data["aprobacion"] = {
             "estado": "pendiente",

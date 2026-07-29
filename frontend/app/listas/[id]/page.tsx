@@ -259,25 +259,11 @@ export default function ListaDetallePage() {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.detail ?? "Error al solicitar");
       }
-      const data = await res.json();
 
-      const defItems = lista.items.filter(it => it.definitivo);
-      const totalStr = fmtCLP(defItems.reduce((s, it) => s + (it.definitivo!.precio_clp ?? 0) * (it.cantidad || 1), 0));
-      const itemLines = defItems.map(it =>
-        `- ${it.nombre} ×${it.cantidad || 1}: ${it.definitivo!.proveedor} (${it.definitivo!.precio_clp != null ? fmtCLP(it.definitivo!.precio_clp * (it.cantidad || 1)) : "—"})${justificaciones[it.cotizacion_id] ? `, ${justificaciones[it.cotizacion_id]}` : ""}`
-      ).join("\n");
-
-      const subject = encodeURIComponent(`Solicitud de aprobación: ${lista.nombre}`);
-      const body = encodeURIComponent(
-        `Hola,\n\n${userMeta.nombre_usuario ?? "Un usuario"} de ${userMeta.empresa ?? "la empresa"} solicita tu aprobación para la siguiente lista de compra:\n\n` +
-        `Lista: ${lista.nombre}\nTotal: ${totalStr}\n\n${itemLines}\n\n` +
-        `Para aprobar:\n${data.magic_link_aprobar}\n\n` +
-        `Para rechazar (puedes agregar comentarios):\n${data.magic_link_rechazar}\n\n` +
-        `Este enlace expira el ${new Date(data.expira_at).toLocaleDateString("es-CL")}.\n\nBaiyer, Procurement Inteligente`
-      );
-
-      window.open(`mailto:${aprobadorEmail.trim()}?subject=${subject}&body=${body}`, "_self");
-      setToast("Solicitud creada, se abrió tu correo para enviar");
+      // El backend ya envió el correo por la cuenta Gmail conectada del
+      // usuario (misma integración que se usa para cotizar a proveedores);
+      // no hay que abrir el cliente de correo local.
+      setToast("Solicitud de autorización enviada por correo");
       setTimeout(() => setToast(""), 4000);
       setMostrarAprobacion(false);
       await cargar(userId);
