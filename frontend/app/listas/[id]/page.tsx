@@ -807,6 +807,7 @@ export default function ListaDetallePage() {
           fuente: d.fuente || "",
           pais: "CL",
           proveedor_email: emailProv,
+          plazo_entrega: c?.plazo_entrega ?? undefined,
         };
         return (
           <OCModal

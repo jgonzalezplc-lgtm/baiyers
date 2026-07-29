@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { pdf } from "@react-pdf/renderer";
+import { FileText, X } from "lucide-react";
 import OCPDFTemplate, { type OCData } from "./OCPDFTemplate";
 import type { Resultado } from "@/app/cotizar/components/CardProveedor";
 
@@ -24,23 +25,20 @@ function fmt(n: number, moneda: string) {
 }
 
 const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: 10,
-  color: "var(--text-muted)",
-  letterSpacing: "0.1em",
-  marginBottom: 6,
-  fontFamily: "var(--font-mono)",
+  fontSize: 13, fontWeight: 500, color: "var(--n-700)",
+  display: "block", marginBottom: 6,
 };
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
-  padding: "9px 12px",
-  background: "var(--bg-base)",
-  border: "1px solid var(--border-default)",
-  color: "var(--text-primary)",
-  fontSize: 12,
+  padding: "10px 12px",
+  background: "var(--surface)",
+  border: "1px solid var(--n-300)",
+  borderRadius: "var(--r-md)",
+  color: "var(--n-900)",
+  fontSize: 14,
   outline: "none",
-  fontFamily: "var(--font-mono)",
+  fontFamily: "var(--font-sans)",
   boxSizing: "border-box",
 };
 
@@ -50,9 +48,16 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
   const [precioUnitario, setPrecioUnitario] = useState(resultado.precio ?? 0);
   const [moneda, setMoneda] = useState(resultado.moneda || "CLP");
   const [condicionesPago, setCondicionesPago] = useState("30 dias");
-  const [plazoEntrega, setPlazoEntrega] = useState("");
+  // Precargados desde la cotización/respuesta del proveedor: si ya sabemos el
+  // plazo y el email (contacto scrapeado o registrado al cotizar), no hacer
+  // que el usuario los vuelva a escribir a mano.
+  const [plazoEntrega, setPlazoEntrega] = useState(
+    resultado.plazo_entrega || resultado.plazo_entrega_estimado || ""
+  );
   const [notas, setNotas] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(
+    resultado.proveedor_email || (resultado as unknown as { contacto?: string }).contacto || ""
+  );
 
   const [paso, setPaso] = useState<"form" | "preview" | "enviado">("form");
   const [ocData, setOcData] = useState<OCData | null>(null);
@@ -66,14 +71,19 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
   // Bloqueo por plan
   if (plan === "free" || plan === "starter") {
     return (
-      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
-        <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: 32, maxWidth: 400, width: "100%", textAlign: "center" }}>
-          <div className="section-rule" style={{ margin: "0 auto 16px" }} />
-          <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8, letterSpacing: "-0.01em" }}>OC Automatica</h2>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 24 }}>
-            La emision de Ordenes de Compra esta disponible desde el plan <strong style={{ color: "var(--accent)" }}>Pro</strong>.
+      <div style={{
+        position: "fixed", inset: 0, background: "rgba(33,29,24,.4)", backdropFilter: "blur(2px)",
+        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16,
+      }}>
+        <div style={{
+          background: "var(--surface)", borderRadius: "var(--r-xl)", boxShadow: "var(--shadow-modal)",
+          padding: 28, maxWidth: 400, width: "100%", textAlign: "center",
+        }}>
+          <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--n-900)", marginBottom: 8 }}>OC automática</h2>
+          <p style={{ fontSize: 14, color: "var(--n-600)", marginBottom: 24, lineHeight: 1.5 }}>
+            La emisión de Órdenes de Compra está disponible desde el plan <strong style={{ color: "var(--brand)" }}>Pro</strong>.
           </p>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 10 }}>
             <button onClick={onClose} className="btn-swiss-secondary" style={{ flex: 1 }}>Cancelar</button>
             <a href="/pricing" className="btn-swiss-primary" style={{ flex: 1, textDecoration: "none", textAlign: "center" }}>Ver planes</a>
           </div>
@@ -159,31 +169,53 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
-      <div style={{ width: "100%", maxWidth: 560, background: "var(--bg-surface)", border: "1px solid var(--border-default)", overflow: "hidden", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(33,29,24,.4)", backdropFilter: "blur(2px)",
+      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16,
+    }}>
+      <div style={{
+        width: "100%", maxWidth: 560, background: "var(--surface)",
+        borderRadius: "var(--r-xl)", boxShadow: "var(--shadow-modal)",
+        overflow: "hidden", maxHeight: "90vh", display: "flex", flexDirection: "column",
+      }}>
 
         {/* Header */}
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border-default)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <span className="label" style={{ color: "var(--accent)", display: "block", marginBottom: 2 }}>Orden de Compra</span>
-            <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", margin: 0, letterSpacing: "-0.01em" }}>
-              {paso === "form" ? "Emitir OC" : paso === "preview" ? `Preview, ${ocData?.numero_oc}` : "OC Enviada"}
-            </h2>
+        <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--n-200)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{
+              width: 40, height: 40, borderRadius: "var(--r-md)", flexShrink: 0,
+              background: "var(--brand-50)", color: "var(--brand)",
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <FileText size={20} strokeWidth={1.75} />
+            </span>
+            <div>
+              <span style={{ fontSize: 12.5, fontWeight: 500, color: "var(--brand)", display: "block" }}>Orden de compra</span>
+              <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--n-900)", margin: 0 }}>
+                {paso === "form" ? "Emitir OC" : paso === "preview" ? `Preview · ${ocData?.numero_oc}` : "OC enviada"}
+              </h2>
+            </div>
           </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 18 }}>✕</button>
+          <button onClick={onClose} aria-label="Cerrar" style={{ background: "none", border: "none", color: "var(--n-500)", cursor: "pointer", display: "inline-flex", padding: 4 }}>
+            <X size={18} strokeWidth={1.75} />
+          </button>
         </div>
 
-        <div style={{ flex: 1, overflow: "auto", padding: "16px 20px" }}>
+        <div style={{ flex: 1, overflow: "auto", padding: "18px 22px" }}>
 
           {/* PASO: FORM */}
           {paso === "form" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ background: "var(--bg-base)", border: "1px solid var(--border-default)", padding: "10px 14px", fontSize: 11, color: "var(--text-secondary)" }}>
-                Proveedor: <strong style={{ color: "var(--text-primary)" }}>{proveedorNombre}</strong>
-                {resultado.precio && <span style={{ marginLeft: 12, color: "var(--text-success)" }}>{fmt(resultado.precio, moneda)}</span>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{
+                background: "var(--surface-2)", border: "1px solid var(--n-200)", borderRadius: "var(--r-md)",
+                padding: "10px 14px", fontSize: 14,
+              }}>
+                <span style={{ color: "var(--n-600)" }}>Proveedor: </span>
+                <strong style={{ color: "var(--n-900)" }}>{proveedorNombre}</strong>
+                {resultado.precio && <span style={{ marginLeft: 12, color: "var(--success)", fontWeight: 600 }}>{fmt(resultado.precio, moneda)}</span>}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 80px", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 90px", gap: 12 }}>
                 <div>
                   <label style={labelStyle}>Cantidad</label>
                   <input type="number" min={1} value={cantidad} onChange={e => setCantidad(Number(e.target.value))} style={inputStyle} />
@@ -194,7 +226,7 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
                 </div>
                 <div>
                   <label style={labelStyle}>Moneda</label>
-                  <select value={moneda} onChange={e => setMoneda(e.target.value)} style={inputStyle}>
+                  <select value={moneda} onChange={e => setMoneda(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
                     <option value="CLP">CLP</option>
                     <option value="USD">USD</option>
                     <option value="EUR">EUR</option>
@@ -205,7 +237,7 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
 
               <div>
                 <label style={labelStyle}>Condiciones de pago</label>
-                <select value={condicionesPago} onChange={e => setCondicionesPago(e.target.value)} style={inputStyle}>
+                <select value={condicionesPago} onChange={e => setCondicionesPago(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
                   <option>Contado</option>
                   <option>30 dias</option>
                   <option>60 dias</option>
@@ -219,7 +251,7 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
               </div>
 
               <div>
-                <label style={labelStyle}>Email del proveedor (para envio)</label>
+                <label style={labelStyle}>Email del proveedor (para envío)</label>
                 <input type="email" placeholder="proveedor@empresa.com" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} />
               </div>
 
@@ -229,20 +261,20 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
               </div>
 
               {/* Totales */}
-              <div style={{ background: "var(--bg-base)", border: "1px solid var(--border-default)", padding: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
+              <div style={{ background: "var(--surface-2)", border: "1px solid var(--n-200)", borderRadius: "var(--r-md)", padding: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--n-600)", marginBottom: 6 }}>
                   <span>Subtotal</span><span>{fmt(subtotal, moneda)}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--n-600)", marginBottom: 10 }}>
                   <span>IVA 19%</span><span>{fmt(iva, moneda)}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700, color: "var(--text-primary)", borderTop: "1px solid var(--border-default)", paddingTop: 8 }}>
-                  <span>Total</span><span style={{ color: "var(--accent)" }}>{fmt(total, moneda)}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 600, color: "var(--n-900)", borderTop: "1px solid var(--n-200)", paddingTop: 10 }}>
+                  <span>Total</span><span style={{ color: "var(--brand)" }}>{fmt(total, moneda)}</span>
                 </div>
               </div>
 
               {error && (
-                <div style={{ fontSize: 11, color: "var(--text-error)", background: "var(--fill-error)", border: "1px solid var(--border-accent)", padding: "8px 12px" }}>
+                <div style={{ fontSize: 13, color: "var(--danger)", background: "var(--st-rechazada-bg)", borderRadius: "var(--r-md)", padding: "10px 12px" }}>
                   {error}
                 </div>
               )}
@@ -251,19 +283,19 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
 
           {/* PASO: PREVIEW */}
           {paso === "preview" && ocData && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ background: "var(--bg-base)", border: "1px solid var(--border-default)", padding: 14, fontSize: 11 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span className="label" style={{ color: "var(--text-muted)" }}>Numero OC</span>
-                  <span style={{ color: "var(--text-primary)", fontWeight: 700 }}>{ocData.numero_oc}</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ background: "var(--surface-2)", border: "1px solid var(--n-200)", borderRadius: "var(--r-md)", padding: 14, fontSize: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <span style={{ color: "var(--n-500)" }}>Número OC</span>
+                  <span style={{ color: "var(--n-900)", fontWeight: 600 }}>{ocData.numero_oc}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                  <span className="label" style={{ color: "var(--text-muted)" }}>Total</span>
-                  <span style={{ color: "var(--text-success)", fontWeight: 700, fontSize: 14 }}>{fmt(ocData.total, ocData.moneda)}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <span style={{ color: "var(--n-500)" }}>Total</span>
+                  <span style={{ color: "var(--success)", fontWeight: 600, fontSize: 16 }}>{fmt(ocData.total, ocData.moneda)}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span className="label" style={{ color: "var(--text-muted)" }}>Proveedor</span>
-                  <span style={{ color: "var(--text-primary)" }}>{ocData.proveedor_nombre}</span>
+                  <span style={{ color: "var(--n-500)" }}>Proveedor</span>
+                  <span style={{ color: "var(--n-900)" }}>{ocData.proveedor_nombre}</span>
                 </div>
               </div>
 
@@ -272,13 +304,13 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
               </a>
 
               {!email && (
-                <div style={{ fontSize: 10, color: "var(--text-warning)", background: "var(--fill-warning)", border: "1px solid var(--palette-yellow-500, #ca8a04)", padding: "8px 12px" }}>
-                  No ingresaste email del proveedor, la OC se enviara solo a tu copia (hola@claria.cc).
+                <div style={{ fontSize: 13, color: "var(--brand-700)", background: "var(--st-cotizando-bg)", borderRadius: "var(--r-md)", padding: "10px 12px" }}>
+                  No ingresaste email del proveedor, la OC se enviará solo a tu copia (hola@claria.cc).
                 </div>
               )}
 
               {error && (
-                <div style={{ fontSize: 11, color: "var(--text-error)", background: "var(--fill-error)", border: "1px solid var(--border-accent)", padding: "8px 12px" }}>
+                <div style={{ fontSize: 13, color: "var(--danger)", background: "var(--st-rechazada-bg)", borderRadius: "var(--r-md)", padding: "10px 12px" }}>
                   {error}
                 </div>
               )}
@@ -288,12 +320,12 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
           {/* PASO: ENVIADO */}
           {paso === "enviado" && ocData && (
             <div style={{ textAlign: "center", padding: "24px 0" }}>
-              <div className="section-rule" style={{ margin: "0 auto 16px", background: "var(--text-success)" }} />
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8, letterSpacing: "-0.01em" }}>
+              <div style={{ width: 48, height: 48, borderRadius: "50%", background: "var(--st-aprobada-bg)", color: "var(--success)", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 16, fontSize: 22 }}>✓</div>
+              <h3 style={{ fontSize: 18, fontWeight: 600, color: "var(--n-900)", marginBottom: 8 }}>
                 OC enviada exitosamente
               </h3>
-              <p className="label" style={{ color: "var(--text-muted)", marginBottom: 4 }}>{ocData.numero_oc}</p>
-              <p style={{ fontSize: 11, color: "var(--text-success)" }}>
+              <p style={{ fontSize: 13, color: "var(--n-500)", marginBottom: 4 }}>{ocData.numero_oc}</p>
+              <p style={{ fontSize: 14, color: "var(--success)" }}>
                 {email ? `Email enviado a ${email}` : "Copia enviada a hola@claria.cc"}
               </p>
             </div>
@@ -301,18 +333,18 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "14px 20px", borderTop: "1px solid var(--border-default)", display: "flex", justifyContent: "flex-end", gap: 8, background: "var(--bg-surface)" }}>
+        <div style={{ padding: "16px 22px", borderTop: "1px solid var(--n-200)", display: "flex", justifyContent: "flex-end", gap: 10 }}>
           {paso !== "enviado" && (
             <button onClick={onClose} className="btn-swiss-secondary">Cancelar</button>
           )}
           {paso === "form" && (
-            <button onClick={handleGenerar} disabled={generando || precioUnitario <= 0} className={generando ? "btn-swiss-secondary" : "btn-swiss-primary"}>
-              {generando ? "Generando PDF..." : "Generar OC →"}
+            <button onClick={handleGenerar} disabled={generando || precioUnitario <= 0} className="btn-swiss-primary">
+              {generando ? "Generando PDF…" : "Generar OC →"}
             </button>
           )}
           {paso === "preview" && (
-            <button onClick={handleEnviar} disabled={enviando} className={enviando ? "btn-swiss-secondary" : "btn-swiss-primary"}>
-              {enviando ? "Enviando..." : "Confirmar y enviar OC →"}
+            <button onClick={handleEnviar} disabled={enviando} className="btn-swiss-primary">
+              {enviando ? "Enviando…" : "Confirmar y enviar OC →"}
             </button>
           )}
           {paso === "enviado" && (

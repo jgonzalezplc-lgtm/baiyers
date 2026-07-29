@@ -17,6 +17,7 @@ export interface Resultado {
   tipo_proveedor?: string;
   relevante?: boolean;
   proveedor?: string;
+  proveedor_email?: string | null;
   thumbnail?: string | null;
   // Producto
   marca?: string | null;
@@ -36,6 +37,8 @@ export interface Resultado {
   // Logística
   envio_gratis?: boolean | null;
   plazo_entrega_estimado?: string | null;
+  /** Plazo real informado por el proveedor (respuesta de cotización), si ya se registró. */
+  plazo_entrega?: string | null;
   ubicacion_vendedor?: string | null;
   // Calidad
   rating?: number | null;
