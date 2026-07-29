@@ -70,6 +70,7 @@ Descarta derivados/accesorios (ej: "barniz de madera" al buscar tablones) con ne
 ## Gotchas importantes
 - **Migraciones = manuales.** El service key de Supabase NO hace DDL. Correr los `.sql` de `backend/migrations/` en el SQL Editor de Supabase. Aplicadas al menos hasta **021** (incluye 018 aprobaciones y 019–021 agente Gmail). Los SQL legacy sin número no representan necesariamente producción: antes de tocar `resultados`, `cotizaciones` o `proveedores`, consultar el esquema real.
 - **Orden de auto-aplicación Gmail:** hoy `item_field_updates` se inserta como `aplicado` antes de actualizar `resultados`. Si el segundo paso falla, la auditoría puede decir “Aplicada” sin que el dato exista. Esto ocurrió en datos antiguos y sigue siendo un riesgo del código actual; conviene hacer la escritura atómica o marcar `aplicado` sólo después del update exitoso.
+- **Estado de conexión Gmail:** el dashboard debe consultar `/api/gmail/status`; no inferir la conexión desde `?gmail=conectado`, porque ese query param sólo existe inmediatamente después del callback OAuth. Al reconectar, conservar el `refresh_token` persistente si Google no devuelve uno nuevo.
 - **credentials.json** (OAuth Gmail) está **gitignored** — en prod se usan env vars `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`.
 - **SMTP:** Resend configurado en Supabase (dominio baiyer.cl verificado). Correos de auth (confirmación/recuperación) salen desde `no-reply@baiyer.cl`.
 - **Serper.dev** integrado (2.500 búsquedas gratis; `SERPER_API_KEY`). Prioriza sobre SerpAPI.

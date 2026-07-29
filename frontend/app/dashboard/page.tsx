@@ -62,6 +62,7 @@ export default async function DashboardPage({
   // lento nunca cuelgue el SSR (usuario quedaba viendo la página en blanco).
   let stats = { cotizaciones: 0, proveedores: 0, ocs: 0, totalOC: 0 };
   let listasRecientes: ListaReciente[] = [];
+  let gmailConectado = gmailRecienConectado;
 
   const fetchConTimeout = async (url: string, ms = 5000): Promise<Response | null> => {
     const ctrl = new AbortController();
@@ -77,12 +78,17 @@ export default async function DashboardPage({
   };
 
   try {
-    const [statsRes, cotRes] = await Promise.all([
+    const [statsRes, cotRes, gmailRes] = await Promise.all([
       fetchConTimeout(`${API_URL}/api/dashboard/stats?user_id=${user.id}`),
       fetchConTimeout(`${API_URL}/api/listas?user_id=${user.id}`),
+      fetchConTimeout(`${API_URL}/api/gmail/status?user_id=${user.id}`),
     ]);
     if (statsRes?.ok) stats = await statsRes.json();
     if (cotRes?.ok) listasRecientes = (await cotRes.json()).slice(0, 5);
+    if (gmailRes?.ok) {
+      const gmailStatus = await gmailRes.json();
+      gmailConectado = Boolean(gmailStatus.connected);
+    }
   } catch (_) { /* silent */ }
 
   return (
@@ -266,11 +272,13 @@ export default async function DashboardPage({
               Agente de correo
             </div>
             <div style={{ fontSize: 13.5, color: "var(--n-600)" }}>
-              Conecta Gmail para enviar cotizaciones automáticamente.
+              {gmailConectado
+                ? "Gmail conectado y listo para enviar cotizaciones."
+                : "Conecta Gmail para enviar cotizaciones automáticamente."}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {!gmailRecienConectado && <a href={`${API_URL}/api/gmail/auth?user_id=${user.id}`} className="btn-swiss-secondary" style={{ textDecoration: "none" }}>
+            {!gmailConectado && <a href={`${API_URL}/api/gmail/auth?user_id=${user.id}`} className="btn-swiss-secondary" style={{ textDecoration: "none" }}>
               Conectar Gmail
             </a>}
             <Link href="/settings?section=autorizaciones" className="btn-swiss-secondary" style={{ textDecoration: "none" }}>

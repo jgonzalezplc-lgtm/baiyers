@@ -122,18 +122,36 @@ async def gmail_callback(code: str, state: str):
         gmail_email = userinfo_resp.json().get("email", "hola@claria.cc")
 
     sb = get_supabase()
+    integration = {
+        "user_id": user_id,
+        "provider": "gmail",
+        "access_token": access_token,
+        "email": gmail_email,
+    }
+    # Google puede omitir refresh_token en autorizaciones posteriores. No
+    # pisar con null el token persistente que mantiene Gmail funcionando tras
+    # reinicios y deploys.
+    if refresh_token:
+        integration["refresh_token"] = refresh_token
     sb.table("user_integrations").upsert(
-        {
-            "user_id": user_id,
-            "provider": "gmail",
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "email": gmail_email,
-        },
+        integration,
         on_conflict="user_id,provider",
     ).execute()
 
     return RedirectResponse(url=f"{settings.frontend_url}/dashboard?gmail=conectado")
+
+
+@router.get("/status")
+async def gmail_status(user_id: str):
+    """Estado persistente de la integración para la UI del dashboard."""
+    from app.services.supabase import get_supabase
+
+    sb = get_supabase()
+    result = sb.table("user_integrations").select("refresh_token").eq(
+        "user_id", user_id
+    ).eq("provider", "gmail").maybe_single().execute()
+    integration = result.data or {}
+    return {"connected": bool(integration.get("refresh_token"))}
 
 
 # ─── Generar correo ────────────────────────────────────────────────────────────
