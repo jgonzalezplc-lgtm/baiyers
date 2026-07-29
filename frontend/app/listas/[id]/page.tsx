@@ -418,7 +418,7 @@ export default function ListaDetallePage() {
       {/* Banner de estado de aprobación */}
       {lista.aprobacion && (() => {
         const est = lista.aprobacion.estado;
-        const badge = est === "aprobado" ? "aprobada" : est === "rechazado" ? "rechazada" : est === "aprobado_con_observaciones" ? "en_curso" : "cotizando";
+        const badge = est === "aprobado" ? "aprobada" : est === "rechazado" ? "rechazada" : "cotizando";
         const texto = est === "aprobado_con_observaciones" ? "Aprobada con observaciones" : est === "aprobado" ? "Autorizada" : est === "rechazado" ? "Rechazada" : "Esperando autorización";
         return (
           <Card padding={16} style={{ marginBottom: 20 }}>
@@ -466,19 +466,28 @@ export default function ListaDetallePage() {
         const emailProveedor = it.comparados.find(c => c.resultado_id === it.definitivo?.resultado_id)?.contacto || null;
         const puedeEnviarOC = autorizadaYConDef && !!emailProveedor && compra?.estado !== "comprado";
         const compraOnline = autorizadaYConDef && !emailProveedor && compra?.estado !== "comprado";
+        // El autorizador rechazó este ítem puntual al aprobar con observaciones.
+        const rechazado = lista.aprobacion?.estado === "aprobado_con_observaciones" && !!lista.aprobacion.observaciones_items?.[it.cotizacion_id];
 
         return (
         <div key={it.cotizacion_id} style={{
-          border: "1px solid var(--n-200)", background: "var(--surface)",
+          border: rechazado ? "1px solid var(--st-rechazada-fg)" : "1px solid var(--n-200)",
+          background: "var(--surface)",
           borderRadius: "var(--r-lg)", marginBottom: 16, overflow: "hidden",
           boxShadow: "var(--shadow-card)",
         }}>
           <div style={{
             display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10,
-            padding: "12px 16px", borderBottom: "1px solid var(--n-200)", background: "var(--canvas)",
+            padding: "12px 16px", borderBottom: "1px solid var(--n-200)",
+            background: rechazado ? "var(--st-rechazada-bg)" : "var(--canvas)",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)" }}>{idx + 1}. {it.nombre}</span>
+              <span style={{
+                fontSize: 15, fontWeight: 600,
+                color: rechazado ? "var(--st-rechazada-fg)" : "var(--n-900)",
+                textDecoration: rechazado ? "line-through" : undefined,
+              }}>{idx + 1}. {it.nombre}</span>
+              {rechazado && <Badge status="rechazada">Rechazado</Badge>}
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 12.5, color: "var(--n-500)" }}>Cant.</span>
                 <input
@@ -669,15 +678,21 @@ export default function ListaDetallePage() {
           {definitivos.map((it, i) => {
             const d = it.definitivo!;
             const cant = it.cantidad || 1;
+            const rechazado = lista.aprobacion?.estado === "aprobado_con_observaciones" && !!lista.aprobacion.observaciones_items?.[it.cotizacion_id];
             return (
               <div key={it.cotizacion_id} style={{
                 display: "grid", gridTemplateColumns: "1fr 1fr 160px", gap: 12,
-                padding: "12px 16px", alignItems: "center", background: "var(--surface)",
+                padding: "12px 16px", alignItems: "center",
+                background: rechazado ? "var(--st-rechazada-bg)" : "var(--surface)",
                 borderBottom: i < definitivos.length - 1 ? "1px solid var(--n-100)" : "none",
               }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--n-900)" }}>
+                <div style={{
+                  fontSize: 14, fontWeight: 600,
+                  color: rechazado ? "var(--st-rechazada-fg)" : "var(--n-900)",
+                  textDecoration: rechazado ? "line-through" : undefined,
+                }}>
                   {it.nombre}
-                  <span style={{ color: "var(--n-500)", fontWeight: 400, marginLeft: 6 }}>× {cant}</span>
+                  <span style={{ color: "var(--n-500)", fontWeight: 400, marginLeft: 6, textDecoration: "none", display: "inline-block" }}>× {cant}</span>
                 </div>
                 <div style={{ minWidth: 0 }}>
                   {d.url ? (
