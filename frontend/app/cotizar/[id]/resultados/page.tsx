@@ -165,13 +165,6 @@ export default function ResultadosPage() {
   // Resultados cargados desde la BD (prefetch de lista) en vez de búsqueda en vivo
   const [precargado, setPrecargado] = useState(false);
 
-  // Agregar proveedor del directorio propio (/proveedores) sin pasar por el buscador
-  const [modalDirectorioAbierto, setModalDirectorioAbierto] = useState(false);
-  const [proveedoresDirectorio, setProveedoresDirectorio] = useState<{ id: string; nombre: string; email: string | null; bloqueado?: boolean }[]>([]);
-  const [cargandoDirectorio, setCargandoDirectorio] = useState(false);
-  const [agregandoDirectorioId, setAgregandoDirectorioId] = useState<string | null>(null);
-  const [busquedaDirectorio, setBusquedaDirectorio] = useState("");
-
   // Rebuscador con contexto ("¿No encontraste lo que buscabas?")
   const [refinarAbierto, setRefinarAbierto] = useState(false);
   const [contextoRefinar, setContextoRefinar] = useState("");
@@ -677,59 +670,6 @@ export default function ResultadosPage() {
     }
   };
 
-  const abrirDirectorio = async () => {
-    setModalDirectorioAbierto(true);
-    if (proveedoresDirectorio.length > 0 || !userId) return;
-    setCargandoDirectorio(true);
-    try {
-      const res = await fetch(`${API_URL}/api/suppliers?user_id=${userId}`);
-      if (res.ok) setProveedoresDirectorio(await res.json());
-    } catch { /* silent */ } finally {
-      setCargandoDirectorio(false);
-    }
-  };
-
-  const agregarDeDirectorio = async (proveedorId: string) => {
-    if (!userId) return;
-    setAgregandoDirectorioId(proveedorId);
-    try {
-      const res = await fetch(`${API_URL}/api/cotizaciones/${id}/proveedor-directorio`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, proveedor_id: proveedorId }),
-      });
-      const fila = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setToast(fila.detail || "No se pudo agregar el proveedor");
-        setTimeout(() => setToast(""), 3000);
-        return;
-      }
-      const nuevo: Resultado & { contacto?: string; resultado_id?: string } = {
-        _uid: fila.id,
-        titulo: fila.proveedor_nombre,
-        precio: null,
-        moneda: fila.moneda ?? "CLP",
-        url: `manual://${fila.id}`,
-        fuente: "manual",
-        pais: fila.pais ?? "CL",
-        proveedor: fila.proveedor_nombre,
-        tipo_proveedor: "desconocido",
-        relevante: true,
-        contacto: fila.proveedor_email,
-        resultado_id: fila.id,
-      };
-      setResultados(prev => [...prev, nuevo]);
-      setSeleccionados(prev => new Set(prev).add(nuevo._uid!));
-      setToast(`${fila.proveedor_nombre} agregado — ya puedes enviarle la cotización`);
-      setTimeout(() => setToast(""), 3500);
-    } catch {
-      setToast("Error de red agregando el proveedor");
-      setTimeout(() => setToast(""), 3000);
-    } finally {
-      setAgregandoDirectorioId(null);
-    }
-  };
-
   const handleSolicitar = async () => {
     if (!userId) {
       setToast("Debes iniciar sesion para enviar cotizaciones por email");
@@ -1196,85 +1136,6 @@ export default function ResultadosPage() {
                   </button>
                 );
               })}
-            </div>
-          </div>
-        )}
-
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: resultados.length > 0 ? 0 : 16 }}>
-          <button onClick={abrirDirectorio} className="btn-swiss-secondary" style={{ fontSize: 13 }}>
-            + Proveedor de mi directorio
-          </button>
-        </div>
-
-        {modalDirectorioAbierto && (
-          <div style={{
-            position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 500,
-            display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
-          }} onClick={() => setModalDirectorioAbierto(false)}>
-            <div
-              onClick={e => e.stopPropagation()}
-              style={{
-                background: "var(--surface)", borderRadius: "var(--r-lg)", border: "1px solid var(--n-200)",
-                width: "100%", maxWidth: 460, maxHeight: "70vh", display: "flex", flexDirection: "column",
-              }}
-            >
-              <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--n-200)" }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)", marginBottom: 2 }}>Agregar de mi directorio</div>
-                <div style={{ fontSize: 12.5, color: "var(--n-600)" }}>Cotízale a un proveedor propio, sin depender del buscador.</div>
-                <input
-                  value={busquedaDirectorio}
-                  onChange={e => setBusquedaDirectorio(e.target.value)}
-                  placeholder="Buscar por nombre o correo…"
-                  autoFocus
-                  style={{
-                    marginTop: 10, width: "100%", height: 38, padding: "0 12px",
-                    background: "var(--canvas)", border: "1px solid var(--n-300)", borderRadius: "var(--r-md)",
-                    fontSize: 13.5, color: "var(--n-900)", fontFamily: "var(--font-sans)", outline: "none",
-                  }}
-                />
-              </div>
-              <div style={{ overflowY: "auto", padding: 8 }}>
-                {cargandoDirectorio ? (
-                  <div style={{ padding: 20, textAlign: "center", fontSize: 13, color: "var(--n-500)" }}>Cargando…</div>
-                ) : (
-                  proveedoresDirectorio
-                    .filter(p => !p.bloqueado)
-                    .filter(p => {
-                      const q = busquedaDirectorio.trim().toLowerCase();
-                      if (!q) return true;
-                      return p.nombre.toLowerCase().includes(q) || (p.email ?? "").toLowerCase().includes(q);
-                    })
-                    .map(p => (
-                      <button
-                        key={p.id}
-                        onClick={() => agregarDeDirectorio(p.id)}
-                        disabled={agregandoDirectorioId === p.id}
-                        style={{
-                          width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
-                          padding: "10px 12px", background: "none", border: "none", borderRadius: "var(--r-md)",
-                          cursor: "pointer", textAlign: "left", fontFamily: "var(--font-sans)",
-                          opacity: agregandoDirectorioId === p.id ? 0.5 : 1,
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.background = "var(--canvas)")}
-                        onMouseLeave={e => (e.currentTarget.style.background = "none")}
-                      >
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--n-900)" }}>{p.nombre}</div>
-                          <div style={{ fontSize: 12, color: "var(--n-500)" }}>{p.email || "sin correo registrado"}</div>
-                        </div>
-                        <span style={{ fontSize: 12.5, color: "var(--brand)", flexShrink: 0 }}>
-                          {agregandoDirectorioId === p.id ? "Agregando…" : "+ Agregar"}
-                        </span>
-                      </button>
-                    ))
-                )}
-                {!cargandoDirectorio && proveedoresDirectorio.length === 0 && (
-                  <div style={{ padding: 20, textAlign: "center", fontSize: 13, color: "var(--n-500)" }}>
-                    Aún no tienes proveedores en tu directorio. Impórtalos por Excel desde{" "}
-                    <a href="/proveedores/importar" style={{ color: "var(--brand)" }}>Proveedores</a>.
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         )}
