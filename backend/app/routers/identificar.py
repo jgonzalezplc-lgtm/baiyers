@@ -1,6 +1,9 @@
 import asyncio
 import base64
+import hashlib
 import json
+import re
+import unicodedata
 from typing import Any, Optional
 
 import httpx
@@ -118,6 +121,29 @@ def _limpiar_json(text: str) -> str:
     return text
 
 
+def _id_pregunta(texto: str) -> str:
+    """ID semántico estable: evita que `dato_1` mezcle rondas diferentes."""
+    normalizado = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode().lower()
+    slug = re.sub(r"[^a-z0-9]+", "_", normalizado).strip("_")[:42] or "dato"
+    digest = hashlib.sha1(texto.strip().lower().encode("utf-8")).hexdigest()[:8]
+    return f"{slug}_{digest}"
+
+
+def _normalizar_preguntas(preguntas: list) -> list[dict]:
+    normalizadas = []
+    for p in preguntas[:3]:
+        if isinstance(p, dict):
+            item = dict(p)
+            item.setdefault("texto", "Dato requerido")
+            item.setdefault("id", _id_pregunta(str(item["texto"])))
+            item.setdefault("tipo", "texto")
+        else:
+            texto = str(p)
+            item = {"id": _id_pregunta(texto), "texto": texto, "tipo": "texto", "permite_no_se": True}
+        normalizadas.append(item)
+    return normalizadas
+
+
 @router.post("/identificar")
 async def identificar_item(req: IdentificarRequest):
     # Las recetas conocidas no dependen del LLM: cálculo, unidades y redondeos son
@@ -199,12 +225,7 @@ async def identificar_item(req: IdentificarRequest):
         # Gemini antiguo devuelve strings; el cliente conversacional recibe siempre
         # objetos con ID estable y nunca más de tres preguntas.
         preguntas = result.get("preguntas") or []
-        result["preguntas"] = [
-            p if isinstance(p, dict) else {
-                "id": f"dato_{i + 1}", "texto": str(p), "tipo": "texto", "permite_no_se": True,
-            }
-            for i, p in enumerate(preguntas[:3])
-        ]
+        result["preguntas"] = _normalizar_preguntas(preguntas)
         return result
 
     result["estado_flujo"] = "listo"
