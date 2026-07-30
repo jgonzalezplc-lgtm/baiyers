@@ -2,13 +2,13 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Sparkles } from "lucide-react";
+import { ArrowUp, Sparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import FormularioCotizar from "./components/FormularioCotizar";
 import ResultadoIdentificacion from "./components/ResultadoIdentificacion";
 import ResultadoIdentificacionMulti, { type ItemIdentificado } from "./components/ResultadoIdentificacionMulti";
 
-type Etapa = "formulario" | "procesando" | "resultado" | "guardado";
+type Etapa = "formulario" | "procesando" | "aclaracion" | "revision_bloqueada" | "resultado" | "guardado";
 
 interface ResultadoIA {
   nombre_tecnico: string;
@@ -18,6 +18,12 @@ interface ResultadoIA {
   terminos_busqueda_es: string[];
   terminos_busqueda_en: string[];
   confianza: "alto" | "medio" | "bajo";
+  estado_flujo?: "requiere_datos" | "listo" | "requiere_revision";
+  mensaje?: string | null;
+  preguntas?: PreguntaCubicacion[];
+  datos_confirmados?: Record<string, string | number | boolean>;
+  revision_cubicacion?: RevisionCubicacion;
+  bloquea_publicacion?: boolean;
   // true si el usuario describió un proyecto y la IA generó la lista de materiales
   es_proyecto?: boolean;
   nombre_lista_sugerido?: string | null;
@@ -33,6 +39,9 @@ interface ResultadoIA {
     terminos_busqueda_en: string[];
   }[];
 }
+
+interface PreguntaCubicacion { id: string; texto: string; tipo: "numero" | "texto" | "booleano"; unidad?: string; permite_no_se?: boolean; es_supuesto?: boolean }
+interface RevisionCubicacion { receta: string; items: Array<{ nombre_tecnico: string; cantidad_neta: number; unidad: string; cantidad_compra: number; unidad_compra: string; cantidad_comercial: number; calculo: string }>; supuestos: string[]; advertencias: string[]; resumen?: Record<string, unknown> }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -57,6 +66,10 @@ export default function CotizarPage() {
   const [industriaEmpresa, setIndustriaEmpresa] = useState<string | null>(null);
   const [nombreUsuario, setNombreUsuario] = useState<string | null>(null);
   const [lastDescripcion, setLastDescripcion] = useState("");
+  const [respuestasCubicacion, setRespuestasCubicacion] = useState<Record<string, string | number | boolean>>({});
+  const [preguntasCubicacion, setPreguntasCubicacion] = useState<PreguntaCubicacion[]>([]);
+  const [mensajeCubicacion, setMensajeCubicacion] = useState("");
+  const [revisionCubicacion, setRevisionCubicacion] = useState<RevisionCubicacion | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -69,8 +82,8 @@ export default function CotizarPage() {
     });
   }, []);
 
-  const identificarUno = async (descripcion: string, imagenBase64: string | null = null, imagenMime = "image/jpeg"): Promise<ResultadoIA> => {
-    const body: Record<string, string> = {};
+  const identificarUno = async (descripcion: string, imagenBase64: string | null = null, imagenMime = "image/jpeg", respuestas: Record<string, string | number | boolean> = {}): Promise<ResultadoIA> => {
+    const body: Record<string, unknown> = { modo_cubicacion_conversacional: true, respuestas_cubicacion: respuestas };
     if (descripcion) body.descripcion = descripcion;
     if (industriaEmpresa) body.industria_empresa = industriaEmpresa;
     if (imagenBase64) { body.imagen_base64 = imagenBase64; body.imagen_mime = imagenMime; }
@@ -87,11 +100,34 @@ export default function CotizarPage() {
     setError("");
     setEtapa("procesando");
     setLastDescripcion(descripcion);
+    setRespuestasCubicacion({});
+    setRevisionCubicacion(null);
     setResultadosMulti(null);
     try {
       // Una sola llamada al LLM: entiende la intención de compra completa y
       // separa los ítems solo ("3 martillos y un taladro" → 2 ítems, cantidades 3 y 1)
       const data = await identificarUno(descripcion, imagenBase64, imagenMime);
+      if (data.estado_flujo === "requiere_datos") {
+        setMensajeCubicacion(data.mensaje ?? "Necesito algunos datos para calcular las cantidades.");
+        setPreguntasCubicacion(data.preguntas ?? []);
+        setRespuestasCubicacion(data.datos_confirmados ?? {});
+        setEtapa("aclaracion");
+        return;
+      }
+      aplicarResultado(data);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error desconocido");
+      setEtapa("formulario");
+    }
+  };
+
+  const aplicarResultado = (data: ResultadoIA) => {
+      setRevisionCubicacion(data.revision_cubicacion ?? null);
+      if (data.estado_flujo === "requiere_revision" || data.bloquea_publicacion) {
+        setMensajeCubicacion(data.mensaje ?? "Este cálculo necesita revisión especializada.");
+        setEtapa("revision_bloqueada");
+        return;
+      }
       const items = data.lista_items ?? [];
       if (items.length > 1) {
         setNombreListaSugerido(data.nombre_lista_sugerido ?? "");
@@ -111,9 +147,31 @@ export default function CotizarPage() {
       }
       setResultado(data);
       setEtapa("resultado");
+  };
+
+  const handleResponderCubicacion = async () => {
+    if (preguntasCubicacion.some(p => respuestasCubicacion[p.id] === undefined || respuestasCubicacion[p.id] === "")) return;
+    setError("");
+    setEtapa("procesando");
+    try {
+      const data = await identificarUno(
+        lastDescripcion,
+        null,
+        "image/jpeg",
+        respuestasCubicacion,
+      );
+      if (data.estado_flujo === "requiere_datos") {
+        const preguntas = data.preguntas ?? [];
+        setMensajeCubicacion(data.mensaje ?? "Me falta confirmar algunos datos.");
+        setPreguntasCubicacion(preguntas);
+        setRespuestasCubicacion(data.datos_confirmados ?? respuestasCubicacion);
+        setEtapa("aclaracion");
+        return;
+      }
+      aplicarResultado(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error desconocido");
-      setEtapa("formulario");
+      setEtapa("aclaracion");
     }
   };
 
@@ -255,6 +313,80 @@ export default function CotizarPage() {
     return <PantallaProcesando />;
   }
 
+  if (etapa === "aclaracion") {
+    return (
+      <div style={{ maxWidth: 720, margin: "48px auto", padding: "0 20px" }}>
+        <div style={{ marginBottom: 24 }}>
+          <span className="label">CUBICACIÓN DEL PROYECTO</span>
+          <h1 style={{ fontSize: 28, color: "var(--n-900)", margin: "12px 0 8px" }}>Completemos las medidas</h1>
+          <p style={{ color: "var(--n-600)", fontSize: 14, lineHeight: 1.6, margin: 0 }}>{mensajeCubicacion}</p>
+        </div>
+
+        <div style={{ background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: "var(--r-lg)", padding: 20, marginBottom: 16 }}>
+          <div style={{ display: "grid", gap: 16 }}>
+            {preguntasCubicacion.map((pregunta) => (
+              <label key={pregunta.id} style={{ display: "grid", gap: 7, fontSize: 14, color: "var(--n-900)" }}>
+                <span>{pregunta.texto}</span>
+                {pregunta.tipo === "booleano" ? (
+                  <select value={String(respuestasCubicacion[pregunta.id] ?? "")} onChange={e => setRespuestasCubicacion(r => ({ ...r, [pregunta.id]: e.target.value === "true" }))} style={{ padding: 10, border: "1px solid var(--n-300)", background: "var(--surface)" }}>
+                    <option value="">Selecciona…</option><option value="true">Sí</option><option value="false">No</option>
+                  </select>
+                ) : (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input type={pregunta.tipo === "numero" ? "number" : "text"} min={pregunta.tipo === "numero" ? 0 : undefined} value={respuestasCubicacion[pregunta.id] === "no_se" ? "" : String(respuestasCubicacion[pregunta.id] ?? "")} placeholder={respuestasCubicacion[pregunta.id] === "no_se" ? "Marcado: No lo sé" : undefined} onChange={e => setRespuestasCubicacion(r => ({ ...r, [pregunta.id]: pregunta.tipo === "numero" ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value }))} style={{ flex: 1, padding: 10, border: "1px solid var(--n-300)", background: "var(--surface)" }} />
+                    {pregunta.unidad && <span style={{ alignSelf: "center", color: "var(--n-600)" }}>{pregunta.unidad}</span>}
+                    {pregunta.permite_no_se && <button type="button" className="btn-swiss-secondary" onClick={() => setRespuestasCubicacion(r => ({ ...r, [pregunta.id]: "no_se" }))}>No lo sé</button>}
+                  </div>
+                )}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {error && <div style={{ color: "var(--danger)", fontSize: 13, marginBottom: 12 }}>{error}</div>}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button
+            onClick={handleResponderCubicacion}
+            disabled={preguntasCubicacion.some(p => respuestasCubicacion[p.id] === undefined || respuestasCubicacion[p.id] === "")}
+            className="btn-swiss-primary"
+            style={{ height: 44, display: "inline-flex", alignItems: "center", gap: 7 }}
+          >
+            Continuar <ArrowUp size={16} />
+          </button>
+        </div>
+
+        {Object.keys(respuestasCubicacion).length > 0 && (
+          <div style={{ marginTop: 20, borderTop: "1px solid var(--n-200)", paddingTop: 14 }}>
+            <div className="label" style={{ marginBottom: 8 }}>DATOS CONFIRMADOS · PUEDES EDITARLOS</div>
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              {Object.entries(respuestasCubicacion).map(([id, valor]) => (
+                <button key={id} type="button" onClick={() => setRespuestasCubicacion(r => { const n = { ...r }; delete n[id]; return n; })} className="btn-swiss-secondary" title="Quitar para volver a responder">
+                  {id.replaceAll("_", " ")}: {String(valor)} ×
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <button onClick={handleCorregir} style={{ border: 0, background: "transparent", color: "var(--n-500)", marginTop: 16, cursor: "pointer" }}>
+          ← Cambiar descripción inicial
+        </button>
+      </div>
+    );
+  }
+
+  if (etapa === "revision_bloqueada") {
+    return (
+      <div style={{ maxWidth: 720, margin: "48px auto", padding: "0 20px" }}>
+        <span className="label">REQUIERE REVISIÓN TÉCNICA</span>
+        <h1 style={{ fontSize: 27, margin: "12px 0 8px" }}>No publicaremos esta lista todavía</h1>
+        <p style={{ color: "var(--n-600)", lineHeight: 1.6 }}>{mensajeCubicacion}</p>
+        {revisionCubicacion?.resumen && <pre style={{ whiteSpace: "pre-wrap", background: "var(--surface)", border: "1px solid var(--n-200)", padding: 16, fontSize: 12 }}>{JSON.stringify(revisionCubicacion.resumen, null, 2)}</pre>}
+        {revisionCubicacion?.advertencias.map(a => <div key={a} style={{ borderLeft: "3px solid var(--danger)", padding: "8px 12px", marginTop: 10, fontSize: 13 }}>{a}</div>)}
+        <button className="btn-swiss-secondary" onClick={handleCorregir} style={{ marginTop: 20 }}>Editar datos iniciales</button>
+      </div>
+    );
+  }
+
   // ── Guardado ────────────────────────────────────────────────────────────────
   if (etapa === "guardado") {
     return (
@@ -361,6 +493,25 @@ export default function CotizarPage() {
         }}>
           {error}
         </div>
+      )}
+
+      {revisionCubicacion && (
+        <section style={{ border: "1px solid var(--n-300)", background: "var(--surface)", padding: 20, marginBottom: 22 }}>
+          <span className="label">REVISIÓN DE CUBICACIÓN · {revisionCubicacion.receta}</span>
+          <h2 style={{ fontSize: 20, margin: "12px 0 6px" }}>Así calculamos tu compra</h2>
+          <p style={{ color: "var(--n-600)", fontSize: 13 }}>Revisa cantidades netas, formatos comerciales y redondeos antes de publicar la lista.</p>
+          <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+            {revisionCubicacion.items.map(item => (
+              <div key={item.nombre_tecnico} style={{ borderTop: "1px solid var(--n-200)", paddingTop: 10 }}>
+                <strong>{item.nombre_tecnico}</strong>
+                <div style={{ fontSize: 13, color: "var(--n-700)", marginTop: 3 }}>Neto: {item.cantidad_neta} {item.unidad} · Compra: {item.cantidad_compra} {item.unidad_compra} ({item.cantidad_comercial} {item.unidad})</div>
+                <div style={{ fontSize: 12, color: "var(--n-500)", marginTop: 2 }}>{item.calculo}</div>
+              </div>
+            ))}
+          </div>
+          {!!revisionCubicacion.supuestos.length && <p style={{ fontSize: 12, marginTop: 14 }}><strong>Supuestos confirmados:</strong> {revisionCubicacion.supuestos.join(" · ")}</p>}
+          {!!revisionCubicacion.advertencias.length && <p style={{ fontSize: 12, color: "var(--danger)" }}>{revisionCubicacion.advertencias.join(" · ")}</p>}
+        </section>
       )}
 
       {etapa === "resultado" && resultadosMulti && (

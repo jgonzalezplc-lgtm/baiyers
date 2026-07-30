@@ -109,3 +109,12 @@ Railway ~$5-10/mes · Supabase free · Serper 2.500 gratis→$50/50k · Gemini f
 2. Probar Supplier Capability Intelligence (024) con datos reales: completar un onboarding y confirmar que aparece la fila en `procurement_profiles`; hacer una búsqueda y confirmar que se crea `search_sessions`; usar "Rebuscar con contexto" y confirmar que cae en `search_feedback`.
 3. Verificar visualmente Fases 4–6 con proveedores categorizados, enviar una RFQ agrupada de prueba desde Gmail y recorrer una búsqueda complementaria hasta el comparador.
 4. Considerar si vale la pena arreglar o eliminar `procurement.py` (endpoint roto usado por el botón "+ Lista") y el sistema de Gantt sin uso (`proyectos.py`) — no tocado en esta sesión, solo detectado.
+
+## Cubicación conversacional (primer corte)
+- Motor puro en `backend/app/services/cubicacion.py`: unidades/dimensiones, conversiones, merma,
+  formatos comerciales y recetas versionadas `completos@1`/`pintura@1`, más evaluación solar
+  bloqueada para revisión; sin `eval` ni aritmética LLM.
+- `/api/identificar` activa el contrato sólo con `modo_cubicacion_conversacional`; usa
+  `respuestas_cubicacion` estructuradas y conserva intactos a los clientes antiguos.
+- `/cotizar` pregunta máximo tres datos por turno, no reenvía la imagen y muestra trazabilidad
+  neto/compra antes de publicar mediante el flujo real de cotizaciones y listas.
