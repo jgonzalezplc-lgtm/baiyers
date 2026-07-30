@@ -226,7 +226,17 @@ async def identificar_item(req: IdentificarRequest):
         raise HTTPException(status_code=400, detail="Se requiere descripcion o imagen")
 
     genai.configure(api_key=settings.gemini_api_key)
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    # El flujo conversacional genera JSON estructurado largo. Flash-Lite reduce
+    # notablemente la latencia; response_mime_type evita markdown y reparsing.
+    nombre_modelo = "gemini-2.5-flash-lite" if req.modo_cubicacion_conversacional else "gemini-2.5-flash"
+    model = genai.GenerativeModel(
+        nombre_modelo,
+        generation_config={
+            "response_mime_type": "application/json",
+            "temperature": 0.15,
+            "max_output_tokens": 8192,
+        },
+    )
 
     parts = []
 
@@ -266,11 +276,11 @@ async def identificar_item(req: IdentificarRequest):
     try:
         response = await asyncio.wait_for(
             model.generate_content_async(parts),
-            timeout=30.0,
+            timeout=45.0,
         )
         text = _limpiar_json(response.text)
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Gemini tardó demasiado. Intenta de nuevo.")
+        raise HTTPException(status_code=504, detail="La cubicación está tomando más de lo esperado. Tus respuestas se conservaron; intenta nuevamente.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error con Gemini: {str(e)}")
 
