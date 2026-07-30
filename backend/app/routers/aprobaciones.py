@@ -22,6 +22,14 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _texto_notificacion_lista(decision: str, nombre: str) -> tuple[str, str, str]:
+    if decision == "rechazar":
+        return "cotizacion_rechazada", "Cotización rechazada", f"Se rechazó la lista '{nombre}'."
+    if decision == "aprobar_con_observaciones":
+        return "cotizacion_observada", "Cotización aprobada con observaciones", f"La lista '{nombre}' fue aprobada con observaciones."
+    return "cotizacion_aprobada", "Cotización aprobada", f"Se aprobó la lista '{nombre}'."
+
+
 # ─── Workflows ─────────────────────────────────────────────────────────────
 
 class WorkflowRequest(BaseModel):
@@ -224,11 +232,11 @@ async def decidir(token: str, req: DecisionRequest):
                     }).eq("id", lista_id).execute()
 
                     lista_nombre = proy.data.get("nombre") or "cotización"
-                    titulo = "Cotización aprobada" if req.decision == "aprobar" else "Cotización aprobada con observaciones"
+                    tipo_notificacion, titulo, cuerpo = _texto_notificacion_lista(req.decision, lista_nombre)
                     crear_notificacion(
-                        sb, proy.data["user_id"], "cotizacion_aprobada",
+                        sb, proy.data["user_id"], tipo_notificacion,
                         titulo,
-                        f"Se aprobó la lista '{lista_nombre}'.",
+                        cuerpo,
                         {"lista_id": lista_id, "lista_nombre": lista_nombre},
                     )
 
@@ -256,4 +264,5 @@ async def decidir(token: str, req: DecisionRequest):
         except Exception:
             pass
 
-    return {"ok": True, "estado": nuevo}
+    estado_publico = "aprobado_con_observaciones" if req.decision == "aprobar_con_observaciones" else nuevo
+    return {"ok": True, "estado": estado_publico}

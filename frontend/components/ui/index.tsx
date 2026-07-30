@@ -5,7 +5,7 @@
  * SectionRule, Divider) se mantienen para no romper pantallas existentes, pero
  * su implementación es la nueva.
  */
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { createElement, isValidElement, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { X, Moon, Sun, Eye, EyeOff, type LucideIcon } from "lucide-react";
 import {
   ESTADO_TOKENS, normalizarEstado, categoriaToken, CATEGORIA_TOKENS_DARK,
@@ -451,9 +451,11 @@ export function Highlight({ children, style }: { children: ReactNode; style?: CS
 export function EmptyState({
   icon: Icon, title, description, action,
 }: { icon?: LucideIcon | ReactNode; title: string; description?: string; action?: ReactNode }) {
-  const iconEl = typeof Icon === "function"
-    ? <Icon size={26} strokeWidth={1.5} />
-    : Icon;
+  // lucide-react exporta componentes con forwardRef; en producción son objetos
+  // ($$typeof/render), no funciones. Renderizarlos como ReactNode causaba error #31.
+  const iconEl = isValidElement(Icon)
+    ? Icon
+    : Icon ? createElement(Icon as LucideIcon, { size: 26, strokeWidth: 1.5 }) : null;
   return (
     <div style={{ padding: "56px 20px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
       {iconEl && (

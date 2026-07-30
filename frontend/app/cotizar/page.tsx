@@ -220,21 +220,9 @@ export default function CotizarPage() {
       if (!res.ok) throw new Error("No se pudo crear la lista");
       const lista = await res.json();
 
-      // Lanza las búsquedas de los ítems 2..N en background AHORA: cuando el
-      // usuario llegue a cada uno, sus resultados ya estarán precargados en la BD.
-      if (ids.length > 1) {
-        fetch(`${API_URL}/api/buscar/prefetch`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cotizacion_ids: ids.slice(1), user_id: userId }),
-          keepalive: true,
-        }).catch(() => {});
-      }
-
-      const p = new URLSearchParams();
-      if (categoriasPorItem[0]?.length) p.set("cats", categoriasPorItem[0].join(","));
-      p.set("lista", lista.id);
-      router.push(`/cotizar/${ids[0]}/resultados?${p.toString()}`);
+      // Primero se revisa la cobertura del directorio privado. La búsqueda y
+      // selección de ofertas ocurre sólo después de esta matriz.
+      router.push(`/listas/${lista.id}/proveedores-confianza`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error creando la lista");
       setGuardando(false);
@@ -297,7 +285,8 @@ export default function CotizarPage() {
       });
       if (resLista.ok) {
         const lista = await resLista.json();
-        extra.set("lista", lista.id);
+        router.push(`/listas/${lista.id}/proveedores-confianza`);
+        return;
       }
     } catch { /* si falla, sigue como cotización suelta (se envuelve al abrirla) */ }
 
