@@ -75,6 +75,21 @@ class CubicacionTest(unittest.TestCase):
         avisos = " ".join(r["revision_cubicacion"]["advertencias"])
         self.assertIn("kW", avisos); self.assertIn("kWh", avisos); self.assertIn("sur", avisos)
 
+    def test_parque_solar_no_pregunta_por_techo(self):
+        r = flujo_determinista("parque solar de 3MWh")
+        self.assertEqual(r["receta"], "parque-solar@1")
+        textos = " ".join(p["texto"].lower() for p in r["preguntas"])
+        self.assertNotIn("techo", textos)
+        self.assertIn("generación", textos)
+
+    def test_parque_solar_genera_lista_utility_scale(self):
+        r = flujo_determinista("parque solar de 3MWh", {"alcance_mwh": "generación diaria", "ubicacion": "Copiapó", "area_terreno_ha": 2,
+            "potencia_interconexion_mw": "no_se", "tipo_montaje": "seguidores"})
+        self.assertEqual(r["estado_flujo"], "listo")
+        self.assertGreater(r["lista_items"][0]["cantidad"], 1000)
+        self.assertTrue(any("SCADA" in i["nombre_tecnico"] for i in r["lista_items"]))
+        self.assertFalse(any("techo" in i["nombre_tecnico"].lower() for i in r["lista_items"]))
+
 
 class CubicacionHttpTest(unittest.TestCase):
     @classmethod

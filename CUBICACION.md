@@ -354,4 +354,7 @@ inspección. Entrega una lista preliminar de paneles, inversor, estructura, prot
 con supuestos visibles; el servicio profesional queda como ítem opcional. Baterías y cableado se
 excluyen mientras no existan datos de autonomía y trazado.
 
+Los proyectos utility-scale (`parque`, `planta`, `central`, MWh o MWp) usan `parque-solar@1`:
+preguntan período de generación/almacenamiento, ubicación, hectáreas e interconexión, nunca techo.
+
 Pruebas deterministas: `backend/tests/test_cubicacion.py`.

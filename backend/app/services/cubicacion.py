@@ -81,6 +81,15 @@ PREGUNTAS_SOLAR = [
     {"id": "area_techo_m2", "texto": "¿Cuántos m2 útiles de techo hay aproximadamente?", "tipo": "numero", "unidad": "m2", "permite_no_se": True},
 ]
 
+PREGUNTAS_PARQUE_SOLAR = [
+    {"id": "energia_mwh", "texto": "¿Cuál es la energía objetivo en MWh?", "tipo": "numero", "unidad": "MWh"},
+    {"id": "alcance_mwh", "texto": "¿Los MWh corresponden a generación diaria, mensual, anual o capacidad de almacenamiento?", "tipo": "texto"},
+    {"id": "ubicacion", "texto": "¿En qué comuna o coordenadas estará el parque?", "tipo": "texto"},
+    {"id": "area_terreno_ha", "texto": "¿Cuántas hectáreas útiles de terreno hay?", "tipo": "numero", "unidad": "ha", "permite_no_se": True},
+    {"id": "potencia_interconexion_mw", "texto": "¿Qué potencia admite el punto de conexión?", "tipo": "numero", "unidad": "MW", "permite_no_se": True},
+    {"id": "tipo_montaje", "texto": "¿Estructura fija o seguidores solares?", "tipo": "texto", "permite_no_se": True},
+]
+
 
 def detectar_receta(texto: str) -> str | None:
     t = texto.lower()
@@ -88,6 +97,8 @@ def detectar_receta(texto: str) -> str | None:
         return "completos@1"
     if "pintar" in t or "pintura" in t:
         return "pintura@1"
+    if ("solar" in t or "fotovolta" in t) and (re.search(r"\b(parque|planta|central)\b", t) or re.search(r"mwh|mwp", t)):
+        return "parque-solar@1"
     if "solar" in t or "paneles fotovolta" in t:
         return "solar-evaluacion@1"
     return None
@@ -158,12 +169,14 @@ def _item(nombre: str, neto: float, unidad: str, envase: float, unidad_envase: s
 
 def flujo_determinista(descripcion: str, respuestas: dict[str, Any] | None = None) -> dict[str, Any] | None:
     receta = detectar_receta(descripcion)
-    if receta not in {"completos@1", "pintura@1", "solar-evaluacion@1"}:
+    if receta not in {"completos@1", "pintura@1", "solar-evaluacion@1", "parque-solar@1"}:
         return None
     if receta == "pintura@1":
         return _flujo_pintura(respuestas or {})
     if receta == "solar-evaluacion@1":
         return _flujo_solar(respuestas or {})
+    if receta == "parque-solar@1":
+        return _flujo_parque_solar(descripcion, respuestas or {})
     datos = {**extraer_completos(descripcion), **(respuestas or {})}
     faltantes = [p for p in PREGUNTAS_COMPLETOS if p["id"] not in datos]
     if faltantes:
@@ -252,6 +265,52 @@ def _flujo_solar(datos: dict[str, Any]) -> dict[str, Any]:
     respuesta = _respuesta_lista("Sistema solar fotovoltaico preliminar", items, revision)
     respuesta["mensaje"] = "Lista preliminar de materiales; puedes quitar el servicio opcional. El proveedor deberá validar el diseño final."
     return respuesta
+
+
+def _flujo_parque_solar(descripcion: str, datos: dict[str, Any]) -> dict[str, Any]:
+    m = re.search(r"(\d+(?:[.,]\d+)?)\s*mwh", descripcion.lower())
+    energia_mwh = float(m.group(1).replace(",", ".")) if m else None
+    datos = {**({"energia_mwh": energia_mwh} if energia_mwh else {}), **datos}
+    faltantes = [p for p in PREGUNTAS_PARQUE_SOLAR if p["id"] not in datos]
+    if faltantes:
+        return _preguntar("parque-solar@1", PREGUNTAS_PARQUE_SOLAR, datos, "Un parque solar se dimensiona por generación, terreno e interconexión; no por superficie u orientación de techo.")
+
+    energia_mwh = float(datos["energia_mwh"])
+    alcance = str(datos["alcance_mwh"]).lower()
+    if "almacen" in alcance or "bater" in alcance:
+        item = _item(f"Sistema BESS de {energia_mwh:g} MWh", 1, "unidad", 1, "sistema", "electrico", "Capacidad energética declarada; potencia MW, duración, química y conexión requieren ingeniería")
+        servicio = _item("Ingeniería y estudio de interconexión para BESS (opcional)", 1, "unidad", 1, "servicio", "servicio", "Definición de potencia, duración, protecciones y conexión")
+        revision = {"receta": "parque-solar@1", "items": [item, servicio], "supuestos": [], "advertencias": ["MWh expresa energía almacenada; falta definir potencia MW y horas de descarga."]}
+        return _respuesta_lista(f"Sistema de almacenamiento {energia_mwh:g} MWh", [item, servicio], revision)
+
+    if "dia" in alcance or "día" in alcance:
+        energia_dia_mwh = energia_mwh
+    elif "mes" in alcance:
+        energia_dia_mwh = energia_mwh / 30
+    elif "ano" in alcance or "año" in alcance or "anual" in alcance:
+        energia_dia_mwh = energia_mwh / 365
+    else:
+        return _preguntar("parque-solar@1", [{"id": "alcance_mwh", "texto": "Aclara si la generación objetivo es por día, mes o año.", "tipo": "texto"}], {k: v for k, v in datos.items() if k != "alcance_mwh"}, "MWh es energía y necesita un período para dimensionar la potencia del parque.")
+
+    potencia_mwp = energia_dia_mwh / (4.5 * .80)
+    panel_w = 550
+    paneles = math.ceil(potencia_mwp * 1_000_000 / panel_w)
+    inversores_100kw = math.ceil(potencia_mwp * 1000 / 100)
+    area_estimada_ha = round(potencia_mwp * 1.8, 2)
+    items = [
+        _item(f"Módulo fotovoltaico bifacial {panel_w} W", paneles, "unidad", 1, "unidad", "electrico", f"{energia_dia_mwh:.3f} MWh/día ÷ (4,5 h × 80%) = {potencia_mwp:.3f} MWp; {paneles} módulos"),
+        _item("Inversor string fotovoltaico 100 kW", inversores_100kw, "unidad", 1, "unidad", "electrico", f"{potencia_mwp:.3f} MWp ÷ 0,1 MW por inversor"),
+        _item("Estructura de montaje para parque fotovoltaico", paneles, "panel", 1, "panel", "construccion", f"Estructura para {paneles} módulos; tipo final: {datos.get('tipo_montaje')}"),
+        _item("Centro de transformación y celdas de media tensión", 1, "unidad", 1, "sistema", "electrico", "Cantidad y tensión sujetas al estudio de interconexión"),
+        _item("Sistema SCADA y monitoreo de planta fotovoltaica", 1, "unidad", 1, "sistema", "electronica", "Supervisión, meteorología y comunicaciones de planta"),
+        _item("Ingeniería, permisos y estudio de interconexión (opcional)", 1, "unidad", 1, "servicio", "servicio", "Validación eléctrica, civil, ambiental y de conexión"),
+    ]
+    avisos = ["Dimensionamiento preliminar con 4,5 horas solares pico y 80% de rendimiento global.", "Cableado, obras civiles y subestación se definen con layout y punto de conexión."]
+    area = datos.get("area_terreno_ha")
+    if area != "no_se" and float(area) < area_estimada_ha:
+        avisos.append(f"Se estiman {area_estimada_ha:g} ha y declaraste {float(area):g} ha; revisa potencia o tecnología.")
+    revision = {"receta": "parque-solar@1", "items": items, "supuestos": ["4,5 horas solares pico", "80% rendimiento global", "1,8 ha/MWp"], "advertencias": avisos}
+    return _respuesta_lista(f"Parque solar {energia_mwh:g} MWh", items, revision)
 
 
 def _respuesta_lista(nombre: str, items_base: list[dict[str, Any]], revision: dict[str, Any]) -> dict[str, Any]:
