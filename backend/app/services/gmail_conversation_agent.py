@@ -48,12 +48,15 @@ def redactar_pedir_faltantes(proveedor_nombre: str | None, pendientes: set[str])
     )
 
 
-def redactar_inicio_compra(proveedor_nombre: str | None) -> str:
+def redactar_inicio_compra(proveedor_nombre: str | None, items: list[str] | None = None) -> str:
     nombre = proveedor_nombre or "estimados"
+    detalle = ""
+    if items:
+        detalle = "\n\nÍtems seleccionados:\n" + "\n".join(f"- {item}" for item in items)
     return (
         f"Estimados {nombre},\n\n"
         "Les contamos que su cotización fue seleccionada y ya está autorizada internamente "
-        "para continuar con la compra. Para avanzar, ¿podrían confirmarnos:\n\n"
+        f"para continuar con la compra.{detalle}\n\nPara avanzar, ¿podrían confirmarnos:\n\n"
         "- ¿Cuál es su proceso habitual de venta? ¿Necesitan que emitamos una Orden de Compra formal?\n"
         "- Sus datos para homologarlos como proveedor (razón social, RUT, dirección y, si aplica, datos bancarios).\n"
         "- Sus condiciones de pago vigentes.\n\n"
@@ -111,28 +114,67 @@ def iniciar_proceso_compra(user_id: str, resultado_id: str) -> bool:
     """Se llama cuando un resultado queda definitivo Y su lista queda
     autorizada (aprobaciones.py). Idempotente: si la conversación ya está en
     'compra_iniciada' (o más adelante), no reenvía nada."""
+    return iniciar_proceso_compra_resultados(user_id, [resultado_id]) > 0
+
+
+def iniciar_proceso_compra_resultados(user_id: str, resultado_ids: list[str]) -> int:
+    """Inicia compra una sola vez por conversación. Para RFQs multiítem
+    incluye únicamente los resultados definitivos de ese proveedor, evitando
+    confirmar accidentalmente otros ítems del mismo correo agrupado."""
     from app.services.supabase import get_supabase
     from app.services.gmail_service import get_gmail_service
 
     sb = get_supabase()
-    convs = (
-        sb.table("gmail_conversations").select("*")
-        .eq("resultado_id", resultado_id).eq("user_id", user_id)
-        .order("last_message_at", desc=True).limit(1).execute().data
-    )
-    conv = convs[0] if convs else None
-    if not conv or conv.get("estado") == "compra_iniciada":
-        return False
+    por_conversacion: dict[str, dict] = {}
+    for resultado_id in dict.fromkeys(resultado_ids):
+        convs = sb.table("gmail_conversations").select("*").eq("resultado_id", resultado_id).eq("user_id", user_id).order("last_message_at", desc=True).limit(1).execute().data or []
+        conv = convs[0] if convs else None
+        batch_item = None
+        if not conv:
+            try:
+                batch_item = sb.table("rfq_batch_items").select("id,rfq_batch_id,cotizacion_id,resultado_id,cantidad,unidad").eq("resultado_id", resultado_id).maybe_single().execute().data
+                if batch_item:
+                    batch = sb.table("rfq_batches").select("conversation_id,user_id").eq("id", batch_item["rfq_batch_id"]).eq("user_id", user_id).maybe_single().execute().data
+                    if batch and batch.get("conversation_id"):
+                        conv = sb.table("gmail_conversations").select("*").eq("id", batch["conversation_id"]).eq("user_id", user_id).maybe_single().execute().data
+            except Exception:
+                conv = None
+        if not conv:
+            continue
+        entrada = por_conversacion.setdefault(conv["id"], {"conv": conv, "items": [], "batch_items": []})
+        if batch_item:
+            nombre = "Ítem"
+            try:
+                cot = sb.table("cotizaciones").select("nombre_identificado").eq("id", batch_item["cotizacion_id"]).maybe_single().execute().data or {}
+                nombre = cot.get("nombre_identificado") or nombre
+            except Exception:
+                pass
+            entrada["items"].append(f"{batch_item.get('cantidad') or 1:g} {batch_item.get('unidad') or 'un'} · {nombre}")
+            entrada["batch_items"].append(batch_item["id"])
 
     integ = sb.table("user_integrations").select("*").eq("user_id", user_id).eq("provider", "gmail").maybe_single().execute().data
     if not integ:
-        return False
+        return 0
 
     try:
         service, _ = get_gmail_service(integ["access_token"], integ["refresh_token"])
     except Exception as e:
         print(f"[Gmail agent] no se pudo autenticar para iniciar compra: {e}")
-        return False
+        return 0
 
-    cuerpo = redactar_inicio_compra(conv.get("proveedor_nombre"))
-    return _enviar_y_registrar(sb, service, conv, integ["email"], cuerpo, "compra_iniciada", nuevo_tipo="compra")
+    enviados = 0
+    for entrada in por_conversacion.values():
+        conv = entrada["conv"]
+        if conv.get("estado") == "compra_iniciada":
+            continue
+        cuerpo = redactar_inicio_compra(conv.get("proveedor_nombre"), entrada["items"])
+        if _enviar_y_registrar(sb, service, conv, integ["email"], cuerpo, "compra_iniciada", nuevo_tipo="compra"):
+            enviados += 1
+            if entrada["batch_items"]:
+                try:
+                    sb.table("rfq_batch_items").update({
+                        "estado": "closed", "updated_at": datetime.now(timezone.utc).isoformat(),
+                    }).in_("id", entrada["batch_items"]).execute()
+                except Exception:
+                    pass
+    return enviados

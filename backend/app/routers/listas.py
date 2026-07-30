@@ -559,6 +559,13 @@ async def elegir_definitivo(lista_id: str, req: DefinitivoRequest):
         _guardar_lista(sb, lista_id, data)
         sb.table("proyectos").update({"monto_total": monto_total}).eq("id", lista_id).execute()
 
+    if not req.quitar and req.resultado_id:
+        try:
+            from app.services.supplier_capability_intelligence import registrar_evento_para_resultado
+            registrar_evento_para_resultado(req.user_id, req.resultado_id, "supplier_selected", {"lista_id": lista_id})
+        except Exception as e:
+            print(f"[Listas] evidencia definitivo: {e}")
+
     return {"success": True, "definitivos": len(definitivos), "monto_total": monto_total}
 
 
@@ -800,7 +807,19 @@ async def actualizar_compra(lista_id: str, req: CompraRequest):
             compras[req.cotizacion_id] = entry
 
         _guardar_lista(sb, lista_id, data)
-        return {"success": True, "compras": compras}
+
+    if req.estado == "comprado":
+        definitivo = (data.get("definitivos") or {}).get(req.cotizacion_id) or {}
+        if definitivo.get("resultado_id"):
+            try:
+                from app.services.supplier_capability_intelligence import registrar_evento_para_resultado
+                registrar_evento_para_resultado(
+                    req.user_id, definitivo["resultado_id"], "purchase_completed",
+                    {"lista_id": lista_id, "precio_real": req.precio_real, "origen": "lista_compra"},
+                )
+            except Exception as e:
+                print(f"[Listas] evidencia compra: {e}")
+    return {"success": True, "compras": compras}
 
 
 def _normalizar(s: str) -> str:
@@ -935,6 +954,20 @@ async def escanear_boleta(lista_id: str, req: BoletaScanRequest):
 
         if req.auto_marcar:
             _guardar_lista(sb, lista_id, data)
+
+    if req.auto_marcar:
+        for match in matches:
+            cid = match.get("cotizacion_id")
+            definitivo = (data.get("definitivos") or {}).get(cid) if cid else None
+            if definitivo and definitivo.get("resultado_id"):
+                try:
+                    from app.services.supplier_capability_intelligence import registrar_evento_para_resultado
+                    registrar_evento_para_resultado(
+                        req.user_id, definitivo["resultado_id"], "purchase_completed",
+                        {"lista_id": lista_id, "precio_real": match.get("precio"), "origen": "boleta"},
+                    )
+                except Exception as e:
+                    print(f"[Boleta] evidencia compra: {e}")
 
     return {
         "success": True,

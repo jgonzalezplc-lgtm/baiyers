@@ -252,3 +252,38 @@ def rechazar_capacidad(user_id: str, proveedor_id: str, categoria: str, concepto
     sb.table("supplier_capabilities").update({
         "estado": "rejected", "confianza": 0.0, "updated_at": _now(),
     }).eq("user_id", user_id).eq("proveedor_id", proveedor_id).eq("categoria", categoria).eq("concepto", concepto or "").execute()
+
+
+def registrar_evento_para_resultado(
+    user_id: str, resultado_id: str, tipo_evento: str, metadata: Optional[dict] = None,
+) -> Optional[dict]:
+    """Resuelve un resultado hacia el proveedor privado que lo originó y
+    registra evidencia. Soporta tanto conversación legacy 1:1 como RFQ batch
+    multiítem. Si el resultado externo aún no está asociado al directorio, no
+    inventa identidad y retorna None."""
+    sb = _sb()
+    resultado = sb.table("resultados").select("id,cotizacion_id").eq("id", resultado_id).maybe_single().execute().data
+    if not resultado:
+        return None
+    cot = sb.table("cotizaciones").select("categoria").eq("id", resultado["cotizacion_id"]).maybe_single().execute().data or {}
+    proveedor_id = None
+    try:
+        item = sb.table("rfq_batch_items").select("rfq_batch_id").eq("resultado_id", resultado_id).maybe_single().execute().data
+        if item:
+            batch = sb.table("rfq_batches").select("proveedor_id,user_id").eq("id", item["rfq_batch_id"]).eq("user_id", user_id).maybe_single().execute().data
+            proveedor_id = (batch or {}).get("proveedor_id")
+    except Exception:
+        pass
+    if not proveedor_id:
+        try:
+            conv = sb.table("gmail_conversations").select("proveedor_id").eq("resultado_id", resultado_id).eq("user_id", user_id).order("last_message_at", desc=True).limit(1).execute().data or []
+            proveedor_id = (conv[0] if conv else {}).get("proveedor_id")
+        except Exception:
+            pass
+    if not proveedor_id or not cot.get("categoria"):
+        return None
+    return registrar_evento(
+        user_id, proveedor_id, tipo_evento,
+        resultado_id=resultado_id, cotizacion_id=resultado["cotizacion_id"],
+        categoria_confirmada=cot["categoria"], metadata=metadata,
+    )

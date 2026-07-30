@@ -236,14 +236,23 @@ async def decidir(token: str, req: DecisionRequest):
                     # elegido para cada ítem queda seleccionado y autorizado
                     # → el agente arranca la etapa de compra por correo.
                     if req.decision == "aprobar":
-                        from app.services.gmail_conversation_agent import iniciar_proceso_compra
-                        for definitivo in (data.get("definitivos") or {}).values():
-                            resultado_id = definitivo.get("resultado_id")
-                            if resultado_id:
-                                try:
-                                    iniciar_proceso_compra(proy.data["user_id"], resultado_id)
-                                except Exception as e:
-                                    print(f"[Aprobaciones] iniciar_proceso_compra falló para {resultado_id}: {e}")
+                        resultado_ids = [
+                            d["resultado_id"] for d in (data.get("definitivos") or {}).values()
+                            if d.get("resultado_id")
+                        ]
+                        try:
+                            from app.services.gmail_conversation_agent import iniciar_proceso_compra_resultados
+                            iniciar_proceso_compra_resultados(proy.data["user_id"], resultado_ids)
+                        except Exception as e:
+                            print(f"[Aprobaciones] inicio de compra agrupado falló: {e}")
+                        try:
+                            from app.services.supplier_capability_intelligence import registrar_evento_para_resultado
+                            for resultado_id in resultado_ids:
+                                registrar_evento_para_resultado(
+                                    proy.data["user_id"], resultado_id, "purchase_approved", {"lista_id": lista_id},
+                                )
+                        except Exception as e:
+                            print(f"[Aprobaciones] evidencia de aprobación falló: {e}")
         except Exception:
             pass
 

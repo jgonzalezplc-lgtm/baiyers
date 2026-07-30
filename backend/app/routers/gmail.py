@@ -755,6 +755,19 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                                 }).eq("resultado_id", entity_id).execute()
                             except Exception:
                                 pass
+                            try:
+                                from app.services.supplier_capability_intelligence import registrar_evento_para_resultado
+                                registrar_evento_para_resultado(
+                                    user_id, entity_id, "supplier_replied_can_supply",
+                                    {"conversation_id": conv["id"], "gmail_message_id": msg["id"]},
+                                )
+                                if p["field"] == "precio_unitario":
+                                    registrar_evento_para_resultado(
+                                        user_id, entity_id, "valid_quote_received",
+                                        {"conversation_id": conv["id"], "gmail_message_id": msg["id"]},
+                                    )
+                            except Exception as e:
+                                print(f"[Gmail sync] evidencia de capacidad: {e}")
                             campos_recibidos.add(campo_seguimiento)
 
                     if campos_recibidos:
@@ -898,7 +911,16 @@ async def aplicar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest):
     nuevo_valor = json.loads(p["new_value"]) if isinstance(p["new_value"], str) else p["new_value"]
 
     if p["entity_type"] == "resultado":
-        _aplicar_campo_resultado(sb, p["entity_id"], p["field"], nuevo_valor, datetime.now(timezone.utc).isoformat())
+        aplicado_at = datetime.now(timezone.utc).isoformat()
+        _aplicar_campo_resultado(sb, p["entity_id"], p["field"], nuevo_valor, aplicado_at)
+        try:
+            sb.table("rfq_batch_items").update({"estado": "responded", "updated_at": aplicado_at}).eq("resultado_id", p["entity_id"]).execute()
+            from app.services.supplier_capability_intelligence import registrar_evento_para_resultado
+            registrar_evento_para_resultado(req.user_id, p["entity_id"], "supplier_replied_can_supply", {"propuesta_id": propuesta_id, "revision": "manual"})
+            if p["field"] == "precio_unitario":
+                registrar_evento_para_resultado(req.user_id, p["entity_id"], "valid_quote_received", {"propuesta_id": propuesta_id, "revision": "manual"})
+        except Exception as e:
+            print(f"[Gmail propuesta] evidencia de capacidad: {e}")
     elif p["entity_type"] == "proveedor_contacto" and p["field"] == "email":
         from app.services.proveedores_matching import resolver_o_crear_contacto
         resolver_o_crear_contacto(sb, req.user_id, p["entity_id"], nuevo_valor, origen="gmail_agent")
