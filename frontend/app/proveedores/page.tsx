@@ -1,68 +1,59 @@
 "use client";
-import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Building2, Plus, Search, Upload } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { BtnPrimary, BtnSecondary, Card, CategoryChip, EmptyState, FieldLabel, Input, Modal, PageHeader, Spinner, Textarea } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+const CATEGORIAS = [
+  ["electronica", "Electrónica"], ["construccion", "Construcción"], ["carpinteria", "Carpintería"],
+  ["insumos_medicos", "Insumos médicos"], ["industrial", "Industrial"], ["tuberias_valvulas", "Tuberías y válvulas"],
+  ["mecanico", "Mecánico"], ["electrico", "Eléctrico"], ["hidraulico", "Hidráulico"],
+  ["neumatico", "Neumático"], ["servicio", "Servicios"], ["consumible", "Consumibles"], ["otro", "Otro"],
+] as const;
+
 interface Proveedor {
-  id: string;
-  nombre: string;
-  email?: string;
-  score: number;
-  categoria_score: string;
-  total_solicitudes: number;
-  total_oc_enviadas: number;
-  total_oc_confirmadas: number;
-  total_respuestas: number;
-  tasa_respuesta: number;
-  bloqueado: boolean;
-  created_at: string;
+  id: string; nombre: string; email?: string; score: number; categoria_score: string;
+  total_solicitudes: number; total_respuestas: number; tasa_respuesta: number;
+  bloqueado: boolean; preferido?: boolean; sitio_web?: string;
 }
 
-const CATEGORIAS: Record<string, { label: string; color: string }> = {
-  preferido:      { label: "Preferido",    color: "#b45309" },
-  confiable:      { label: "Confiable",    color: "var(--text-success)" },
-  con_reparos:    { label: "Con reparos",  color: "var(--text-secondary)" },
-  problematico:   { label: "Problematico", color: "var(--text-error)" },
-  bloqueado_auto: { label: "Bloqueado",    color: "var(--text-muted)" },
+interface Formulario {
+  nombre: string; rut: string; sitio_web: string; pais: string; email: string;
+  contacto_nombre: string; telefono: string; notas_privadas: string;
+  preferido: boolean; bloqueado: boolean; categorias: string[];
+}
+
+const FORM_INICIAL: Formulario = {
+  nombre: "", rut: "", sitio_web: "", pais: "CL", email: "", contacto_nombre: "",
+  telefono: "", notas_privadas: "", preferido: false, bloqueado: false, categorias: [],
 };
-
-function ScoreBadge({ score, categoria }: { score: number; categoria: string }) {
-  const cat = CATEGORIAS[categoria] ?? CATEGORIAS.con_reparos;
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <div style={{
-        width: 36,
-        height: 36,
-        background: "var(--bg-base)",
-        border: "2px solid var(--border-default)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: cat.color }}>{score}</span>
-      </div>
-      <span className="label" style={{ color: cat.color }}>{cat.label}</span>
-    </div>
-  );
-}
 
 export default function ProveedoresPage() {
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [toast, setToast] = useState("");
-  const [filtroBloqueados, setFiltroBloqueados] = useState(false);
+  const [filtro, setFiltro] = useState<"activos" | "bloqueados">("activos");
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState<Formulario>(FORM_INICIAL);
+  const [investigando, setInvestigando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [sugerencia, setSugerencia] = useState("");
 
   useEffect(() => {
     createClient().auth.getUser().then(({ data }) => {
-      if (data.user) {
-        setUserId(data.user.id);
-        cargar(data.user.id);
-      }
+      if (data.user) { setUserId(data.user.id); void cargar(data.user.id); }
     });
   }, []);
+
+  const mostrarToast = (mensaje: string) => {
+    setToast(mensaje);
+    window.setTimeout(() => setToast(""), 3000);
+  };
 
   const cargar = async (uid: string) => {
     setLoading(true);
@@ -70,210 +61,115 @@ export default function ProveedoresPage() {
       const res = await fetch(`${API_URL}/api/suppliers?user_id=${uid}`);
       if (!res.ok) throw new Error();
       setProveedores(await res.json());
-    } catch {
-      showToast("Error cargando proveedores");
-    } finally {
-      setLoading(false);
-    }
+    } catch { mostrarToast("No pudimos cargar los proveedores"); }
+    finally { setLoading(false); }
   };
 
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
+  const alternarCategoria = (categoria: string) => setForm(prev => ({
+    ...prev,
+    categorias: prev.categorias.includes(categoria)
+      ? prev.categorias.filter(c => c !== categoria)
+      : [...prev.categorias, categoria],
+  }));
 
-  const toggleBloquear = async (p: Proveedor) => {
-    if (!userId) return;
-    const endpoint = p.bloqueado
-      ? `/api/suppliers/${p.id}/desbloquear?user_id=${userId}`
-      : `/api/suppliers/${p.id}/bloquear?user_id=${userId}`;
+  const investigar = async () => {
+    if (!form.nombre.trim() && !form.sitio_web.trim()) return mostrarToast("Ingresa un nombre o sitio web");
+    setInvestigando(true);
     try {
-      await fetch(`${API_URL}${endpoint}`, { method: "POST" });
-      setProveedores(prev =>
-        prev.map(x => x.id === p.id ? { ...x, bloqueado: !x.bloqueado, categoria_score: !x.bloqueado ? "bloqueado_auto" : x.categoria_score } : x)
-      );
-      showToast(p.bloqueado ? "Proveedor desbloqueado" : "Proveedor bloqueado");
-    } catch {
-      showToast("Error actualizando proveedor");
-    }
+      const res = await fetch(`${API_URL}/api/proveedores/investigar`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: form.nombre, sitio_web: form.sitio_web }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail);
+      setForm(prev => ({
+        ...prev,
+        nombre: data.razon_social || prev.nombre,
+        rut: data.rut || prev.rut,
+        sitio_web: data.sitio_web || prev.sitio_web,
+        pais: data.pais || prev.pais,
+        categorias: Array.isArray(data.categorias) ? data.categorias : prev.categorias,
+      }));
+      setSugerencia([data.descripcion, data.territorio && `Cobertura: ${data.territorio}`, data.confianza && `Confianza: ${data.confianza}`].filter(Boolean).join(" · "));
+    } catch (e) { mostrarToast(e instanceof Error ? e.message : "No pudimos investigar el proveedor"); }
+    finally { setInvestigando(false); }
   };
 
-  const filtrados = filtroBloqueados
-    ? proveedores.filter(p => p.bloqueado)
-    : proveedores.filter(p => !p.bloqueado);
+  const guardar = async () => {
+    if (!userId || !form.nombre.trim()) return mostrarToast("El nombre es obligatorio");
+    setGuardando(true);
+    try {
+      const res = await fetch(`${API_URL}/api/proveedores`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, user_id: userId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail);
+      setModal(false); setForm(FORM_INICIAL); setSugerencia("");
+      await cargar(userId); mostrarToast("Proveedor guardado");
+    } catch (e) { mostrarToast(e instanceof Error ? e.message : "No pudimos guardar el proveedor"); }
+    finally { setGuardando(false); }
+  };
+
+  const alternarBloqueo = async (p: Proveedor) => {
+    if (!userId) return;
+    const accion = p.bloqueado ? "desbloquear" : "bloquear";
+    try {
+      const res = await fetch(`${API_URL}/api/suppliers/${p.id}/${accion}?user_id=${userId}`, { method: "POST" });
+      if (!res.ok) throw new Error();
+      setProveedores(prev => prev.map(x => x.id === p.id ? { ...x, bloqueado: !x.bloqueado } : x));
+      mostrarToast(p.bloqueado ? "Proveedor desbloqueado" : "Proveedor bloqueado");
+    } catch { mostrarToast("No pudimos actualizar el proveedor"); }
+  };
+
+  const visibles = proveedores.filter(p => filtro === "bloqueados" ? p.bloqueado : !p.bloqueado);
 
   return (
     <>
-      {toast && (
-        <div style={{
-          position: "fixed", top: 20, right: 20,
-          background: "var(--bg-inverse)",
-          padding: "12px 18px",
-          fontSize: 11,
-          color: "var(--text-inverse)",
-          fontWeight: 700,
-          zIndex: 100,
-          fontFamily: "var(--font-mono)",
-        }}>{toast}</div>
-      )}
+      {toast && <div style={{ position: "fixed", top: 20, right: 20, zIndex: 300, background: "var(--n-900)", color: "var(--surface)", padding: "10px 14px", borderRadius: "var(--r-md)", fontSize: 13 }}>{toast}</div>}
+      <PageHeader eyebrow="Red de abastecimiento" title="Proveedores" subtitle="Administra tus proveedores y el conocimiento sobre lo que pueden suministrar."
+        actions={<><Link href="/proveedores/importar" style={{ textDecoration: "none" }}><BtnSecondary icon={Upload}>Importar Excel</BtnSecondary></Link><BtnPrimary icon={Plus} onClick={() => setModal(true)}>Agregar proveedor</BtnPrimary></>} />
 
-      {/* Page header */}
-      <div style={{ marginBottom: 28 }}>
-        <div className="section-rule" style={{ marginBottom: 16 }} />
-        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-          RED
-        </span>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-          <div>
-            <h1 style={{ fontSize: 26, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.02em" }}>
-              Proveedores
-            </h1>
-            <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>Red de proveedores calificados.</p>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <Link href="/proveedores/importar" className="btn-swiss-secondary" style={{ textDecoration: "none" }}>
-              Importar Excel
-            </Link>
-            <button
-              onClick={() => setFiltroBloqueados(false)}
-              style={{
-                fontSize: 10,
-                padding: "6px 14px",
-                border: "none",
-                cursor: "pointer",
-                fontFamily: "var(--font-mono)",
-                letterSpacing: "0.05em",
-                fontWeight: 700,
-                background: filtroBloqueados ? "var(--bg-surface)" : "var(--accent)",
-                color: filtroBloqueados ? "var(--text-muted)" : "#fff",
-              }}
-            >
-              ACTIVOS
-            </button>
-            <button
-              onClick={() => setFiltroBloqueados(true)}
-              style={{
-                fontSize: 10,
-                padding: "6px 14px",
-                border: "1px solid var(--border-default)",
-                cursor: "pointer",
-                fontFamily: "var(--font-mono)",
-                letterSpacing: "0.05em",
-                fontWeight: filtroBloqueados ? 700 : 400,
-                background: filtroBloqueados ? "var(--fill-error)" : "var(--bg-surface)",
-                color: filtroBloqueados ? "var(--text-error)" : "var(--text-muted)",
-              }}
-            >
-              BLOQUEADOS
-            </button>
-          </div>
-        </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <BtnSecondary size="sm" onClick={() => setFiltro("activos")} style={filtro === "activos" ? { borderColor: "var(--brand)", color: "var(--brand)" } : undefined}>Activos</BtnSecondary>
+        <BtnSecondary size="sm" onClick={() => setFiltro("bloqueados")} style={filtro === "bloqueados" ? { borderColor: "var(--brand)", color: "var(--brand)" } : undefined}>Bloqueados</BtnSecondary>
       </div>
 
-      {/* Leyenda scores */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
-        {Object.entries(CATEGORIAS).map(([key, val]) => (
-          <span key={key} className="label" style={{
-            color: val.color,
-            border: "1px solid var(--border-default)",
-            padding: "3px 10px",
-          }}>
-            {val.label}
-          </span>
-        ))}
-        <span className="label" style={{ color: "var(--text-muted)", alignSelf: "center", marginLeft: 4 }}>Score 0–100</span>
-      </div>
-
-      {loading ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          {[1, 2, 3].map(i => (
-            <div key={i} style={{
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border-default)",
-              height: 80,
-              opacity: 0.5,
-            }} />
-          ))}
-        </div>
-      ) : filtrados.length === 0 ? (
-        <div style={{
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border-default)",
-          padding: "40px 20px",
-          textAlign: "center",
-        }}>
-          <div className="section-rule" style={{ margin: "0 auto 16px" }} />
-          <div style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 700, marginBottom: 8 }}>
-            {filtroBloqueados ? "Sin proveedores bloqueados" : "Sin proveedores aun"}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 20 }}>
-            {filtroBloqueados
-              ? "No tienes proveedores bloqueados."
-              : "Los proveedores aparecen aqui cuando envias solicitudes o emites OCs."}
-          </div>
-          {!filtroBloqueados && (
-            <Link href="/cotizar" className="btn-swiss-primary" style={{ textDecoration: "none", display: "inline-block" }}>
-              Nueva cotizacion
-            </Link>
-          )}
-        </div>
+      {loading ? <Spinner /> : visibles.length === 0 ? (
+        <Card padding={0}><EmptyState icon={Building2} title={filtro === "bloqueados" ? "No hay proveedores bloqueados" : "Aún no tienes proveedores"} description="Agrégalos manualmente o importa tu directorio desde Excel." action={filtro === "activos" ? <BtnPrimary icon={Plus} onClick={() => setModal(true)}>Agregar proveedor</BtnPrimary> : undefined} /></Card>
       ) : (
-        <div style={{ border: "1px solid var(--border-default)" }}>
-          {filtrados.map((p, idx) => (
-            <div key={p.id} style={{
-              background: "var(--bg-surface)",
-              borderBottom: idx < filtrados.length - 1 ? "1px solid var(--border-default)" : "none",
-              padding: "16px 20px",
-              opacity: p.bloqueado ? 0.7 : 1,
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                    <ScoreBadge score={p.score} categoria={p.bloqueado ? "bloqueado_auto" : p.categoria_score} />
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{p.nombre}</div>
-                      {p.email && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{p.email}</div>}
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                    {[
-                      { label: "Solicitudes", val: p.total_solicitudes || 0 },
-                      { label: "Tasa resp.", val: `${p.tasa_respuesta || 0}%` },
-                      { label: "OCs enviadas", val: p.total_oc_enviadas || 0 },
-                      { label: "OCs confirmadas", val: p.total_oc_confirmadas || 0 },
-                    ].map(m => (
-                      <div key={m.label}>
-                        <div className="label" style={{ color: "var(--text-muted)" }}>{m.label}</div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-secondary)" }}>{m.val}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginLeft: 16 }}>
-                  <Link href={`/proveedores/${p.id}`} className="btn-swiss-secondary" style={{ textDecoration: "none", fontSize: 10, padding: "4px 10px" }}>
-                    Ver historial
-                  </Link>
-                  <button
-                    onClick={() => toggleBloquear(p)}
-                    style={{
-                      fontSize: 10,
-                      cursor: "pointer",
-                      fontFamily: "var(--font-mono)",
-                      letterSpacing: "0.05em",
-                      background: "none",
-                      border: `1px solid ${p.bloqueado ? "var(--palette-green-500)" : "var(--border-accent)"}`,
-                      padding: "4px 10px",
-                      color: p.bloqueado ? "var(--text-success)" : "var(--text-error)",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {p.bloqueado ? "Desbloquear" : "Bloquear"}
-                  </button>
-                </div>
-              </div>
+        <div style={{ display: "grid", gap: 10 }}>
+          {visibles.map(p => <Card key={p.id} style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <CategoryChip categoria={p.categoria_score} />
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <Link href={`/proveedores/${p.id}`} style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)", textDecoration: "none" }}>{p.nombre}</Link>
+              <div style={{ fontSize: 12.5, color: "var(--n-500)", marginTop: 3 }}>{p.email || p.sitio_web || "Sin datos de contacto"}</div>
             </div>
-          ))}
+            {p.preferido && <span style={{ fontSize: 12, color: "var(--warning)", fontWeight: 600 }}>Preferido</span>}
+            <div style={{ textAlign: "right", minWidth: 90 }}><div style={{ fontSize: 18, fontWeight: 600, color: "var(--n-900)" }}>{p.score ?? 0}</div><div style={{ fontSize: 11.5, color: "var(--n-500)" }}>score · {p.tasa_respuesta ?? 0}% respuesta</div></div>
+            <BtnSecondary size="sm" onClick={() => void alternarBloqueo(p)}>{p.bloqueado ? "Desbloquear" : "Bloquear"}</BtnSecondary>
+          </Card>)}
         </div>
       )}
+
+      <Modal open={modal} onClose={() => setModal(false)} title="Agregar proveedor" icon={Building2} width={720}
+        footer={<><BtnSecondary onClick={() => setModal(false)}>Cancelar</BtnSecondary><BtnPrimary disabled={guardando || !form.nombre.trim()} onClick={() => void guardar()}>{guardando ? "Guardando…" : "Guardar proveedor"}</BtnPrimary></>}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+          <Input label="Nombre *" value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} />
+          <Input label="RUT" value={form.rut} onChange={e => setForm({ ...form, rut: e.target.value })} placeholder="76.123.456-7" />
+          <Input label="Sitio web" value={form.sitio_web} onChange={e => setForm({ ...form, sitio_web: e.target.value })} placeholder="https://proveedor.cl" />
+          <Input label="País" value={form.pais} onChange={e => setForm({ ...form, pais: e.target.value })} />
+          <Input label="Email" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+          <Input label="Nombre del contacto" value={form.contacto_nombre} onChange={e => setForm({ ...form, contacto_nombre: e.target.value })} />
+          <Input label="Teléfono" value={form.telefono} onChange={e => setForm({ ...form, telefono: e.target.value })} />
+        </div>
+        <div style={{ marginTop: 16 }}><Textarea label="Notas privadas" value={form.notas_privadas} onChange={e => setForm({ ...form, notas_privadas: e.target.value })} /></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "16px 0" }}><BtnSecondary icon={Search} disabled={investigando} onClick={() => void investigar()}>{investigando ? "Investigando…" : "Investigar y recomendar categorías"}</BtnSecondary><span style={{ fontSize: 12.5, color: "var(--n-500)" }}>Nada se guarda hasta que confirmes.</span></div>
+        {sugerencia && <div style={{ padding: 12, background: "var(--surface-2)", borderRadius: "var(--r-md)", color: "var(--n-600)", fontSize: 13, marginBottom: 14 }}>{sugerencia}</div>}
+        <FieldLabel>Categorías que abastece</FieldLabel>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>{CATEGORIAS.map(([key, label]) => <button key={key} type="button" onClick={() => alternarCategoria(key)} style={{ padding: "7px 10px", borderRadius: "var(--r-pill)", border: `1px solid ${form.categorias.includes(key) ? "var(--brand)" : "var(--n-300)"}`, background: form.categorias.includes(key) ? "var(--brand-50)" : "var(--surface)", color: form.categorias.includes(key) ? "var(--brand)" : "var(--n-700)", cursor: "pointer", fontSize: 12.5 }}>{label}</button>)}</div>
+        <div style={{ display: "flex", gap: 20, marginTop: 16 }}>{[["preferido", "Proveedor preferido"], ["bloqueado", "Bloqueado"]].map(([key, label]) => <label key={key} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, color: "var(--n-700)" }}><input type="checkbox" checked={form[key as "preferido" | "bloqueado"]} onChange={e => setForm({ ...form, [key]: e.target.checked })} />{label}</label>)}</div>
+      </Modal>
     </>
   );
 }

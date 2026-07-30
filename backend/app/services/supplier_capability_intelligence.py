@@ -31,6 +31,10 @@ PESOS: dict[str, float] = {
     "supplier_replied_cannot_supply": -0.80,
     "user_corrected_category": -0.80,
     "no_satisfactory_results": 0.0,  # no afecta una capacidad puntual; es señal de la sesión de búsqueda
+    # Alta manual (Fase 3) o confirmación explícita de una categoría sugerida
+    # por la investigación automática — declaración directa del usuario,
+    # máxima confianza posible, igual que una compra completada.
+    "manual_category_assigned": 1.00,
 }
 
 UMBRAL_CONFIRMADO = 0.80
@@ -228,3 +232,23 @@ def rankear_proveedores(user_id: str, categoria: str, limit: int = 10) -> list[d
             "explicacion": _explicar(c),
         })
     return resultado
+
+
+def listar_capacidades(user_id: str, proveedor_id: str) -> list[dict]:
+    """Categorías/capacidades conocidas de un proveedor puntual, para su ficha."""
+    sb = _sb()
+    return (
+        sb.table("supplier_capabilities").select("*")
+        .eq("user_id", user_id).eq("proveedor_id", proveedor_id)
+        .order("confianza", desc=True).execute().data or []
+    )
+
+
+def rechazar_capacidad(user_id: str, proveedor_id: str, categoria: str, concepto: str = "") -> None:
+    """El usuario quita explícitamente una categoría de un proveedor — anula
+    la capacidad directamente (no espera a que se acumulen eventos negativos:
+    es una corrección manual, señal fuerte por definición)."""
+    sb = _sb()
+    sb.table("supplier_capabilities").update({
+        "estado": "rejected", "confianza": 0.0, "updated_at": _now(),
+    }).eq("user_id", user_id).eq("proveedor_id", proveedor_id).eq("categoria", categoria).eq("concepto", concepto or "").execute()

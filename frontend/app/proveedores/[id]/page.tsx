@@ -1,218 +1,92 @@
 "use client";
-import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
+import { Plus, Trash2 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { Badge, BtnPrimary, BtnSecondary, Card, CategoryChip, FieldLabel, Input, PageHeader, Spinner, Textarea } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const CATEGORIAS = ["electronica", "construccion", "carpinteria", "insumos_medicos", "industrial", "tuberias_valvulas", "mecanico", "electrico", "hidraulico", "neumatico", "servicio", "consumible", "otro"];
 
-interface Rating {
-  id: string;
-  estrellas: number;
-  precio_cumplido: boolean | null;
-  plazo_cumplido: boolean | null;
-  comentario: string | null;
-  created_at: string;
-}
+interface Capacidad { categoria: string; confianza: number; estado: string; concepto?: string; updated_at?: string; }
+interface Orden { numero_oc: string; estado: string; precio_total: number; moneda: string; created_at: string; confirmada_at?: string; }
+interface Proveedor { id: string; nombre: string; email?: string; rut?: string; sitio_web?: string; telefono?: string; pais?: string; notas_privadas?: string; preferido?: boolean; bloqueado?: boolean; score?: number; total_solicitudes?: number; total_respuestas?: number; total_oc_enviadas?: number; }
 
-interface Orden {
-  numero_oc: string;
-  estado: string;
-  precio_total: number;
-  moneda: string;
-  created_at: string;
-  confirmada_at: string | null;
-}
-
-interface Proveedor {
-  id: string;
-  nombre: string;
-  email?: string;
-  score: number;
-  categoria_score: string;
-  total_solicitudes: number;
-  total_oc_enviadas: number;
-  total_oc_confirmadas: number;
-  total_respuestas: number;
-  bloqueado: boolean;
-}
-
-const CATEGORIAS: Record<string, { label: string; color: string }> = {
-  preferido:      { label: "Preferido",    color: "var(--warning)" },
-  confiable:      { label: "Confiable",    color: "var(--success)" },
-  con_reparos:    { label: "Con reparos",  color: "var(--n-500)" },
-  problematico:   { label: "Problematico", color: "var(--danger)" },
-  bloqueado_auto: { label: "Bloqueado",    color: "var(--n-600)" },
-};
-
-function Estrellas({ n }: { n: number }) {
-  return (
-    <span>
-      {[1, 2, 3, 4, 5].map(i => (
-        <span key={i} style={{ color: i <= n ? "var(--warning)" : "var(--n-700)", fontSize: 14 }}>★</span>
-      ))}
-    </span>
-  );
-}
-
-export default function ProveedorHistorialPage() {
-  const params = useParams();
-  const proveedorId = params.id as string;
-
+export default function ProveedorPage() {
+  const proveedorId = useParams().id as string;
+  const [userId, setUserId] = useState<string | null>(null);
   const [proveedor, setProveedor] = useState<Proveedor | null>(null);
-  const [ratings, setRatings] = useState<Rating[]>([]);
+  const [capacidades, setCapacidades] = useState<Capacidad[]>([]);
   const [ordenes, setOrdenes] = useState<Orden[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [userId, setUserId] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [nuevaCategoria, setNuevaCategoria] = useState("");
+  const [mensaje, setMensaje] = useState("");
 
-  useEffect(() => {
-    createClient().auth.getUser().then(({ data }) => {
-      const uid = data.user?.id ?? null;
-      setUserId(uid);
-      if (uid) cargar(uid);
-    });
-  }, [proveedorId]);
+  useEffect(() => { createClient().auth.getUser().then(({ data }) => { const uid = data.user?.id; if (uid) { setUserId(uid); void cargar(uid); } }); }, [proveedorId]);
 
   const cargar = async (uid: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/suppliers/${proveedorId}/historial?user_id=${uid}`);
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setProveedor(data.proveedor);
-      setRatings(data.ratings);
-      setOrdenes(data.ordenes);
-    } catch {
-      setError("Error cargando el historial.");
-    } finally {
-      setLoading(false);
-    }
+      const res = await fetch(`${API_URL}/api/proveedores/${proveedorId}?user_id=${uid}`);
+      const data = await res.json(); if (!res.ok) throw new Error(data.detail);
+      setProveedor(data.proveedor); setCapacidades(data.capacidades || []); setOrdenes(data.ordenes || []);
+    } catch (e) { setMensaje(e instanceof Error ? e.message : "No pudimos cargar el proveedor"); }
+    finally { setLoading(false); }
   };
 
-  if (loading) {
-    return (
-      <div style={{ minHeight: "100vh", background: "var(--canvas)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ fontSize: 11, color: "var(--n-600)" }}>Cargando...</div>
-      </div>
-    );
-  }
+  const guardar = async () => {
+    if (!userId || !proveedor) return;
+    setGuardando(true);
+    try {
+      const res = await fetch(`${API_URL}/api/proveedores/${proveedorId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId, nombre: proveedor.nombre, rut: proveedor.rut || null, sitio_web: proveedor.sitio_web ?? "", pais: proveedor.pais ?? "", email: proveedor.email ?? "", telefono: proveedor.telefono ?? "", notas_privadas: proveedor.notas_privadas ?? "", preferido: !!proveedor.preferido, bloqueado: !!proveedor.bloqueado }) });
+      const data = await res.json(); if (!res.ok) throw new Error(data.detail); setProveedor(data); setMensaje("Cambios guardados");
+    } catch (e) { setMensaje(e instanceof Error ? e.message : "No pudimos guardar los cambios"); }
+    finally { setGuardando(false); }
+  };
 
-  if (error || !proveedor) {
-    return (
-      <div style={{ minHeight: "100vh", background: "var(--canvas)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-        <div style={{ fontSize: 13, color: "var(--danger)" }}>{error || "Proveedor no encontrado"}</div>
-      </div>
-    );
-  }
+  const agregarCategoria = async () => {
+    if (!userId || !nuevaCategoria) return;
+    const res = await fetch(`${API_URL}/api/proveedores/${proveedorId}/categorias`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId, categorias: [nuevaCategoria] }) });
+    if (res.ok) { setNuevaCategoria(""); await cargar(userId); setMensaje("Categoría agregada"); } else setMensaje("No pudimos agregar la categoría");
+  };
 
-  const cat = CATEGORIAS[proveedor.bloqueado ? "bloqueado_auto" : proveedor.categoria_score] ?? CATEGORIAS.con_reparos;
+  const quitarCategoria = async (categoria: string) => {
+    if (!userId) return;
+    const res = await fetch(`${API_URL}/api/proveedores/${proveedorId}/categorias/${encodeURIComponent(categoria)}?user_id=${userId}`, { method: "DELETE" });
+    if (res.ok) { setCapacidades(prev => prev.filter(c => c.categoria !== categoria)); setMensaje("Categoría quitada"); } else setMensaje("No pudimos quitar la categoría");
+  };
 
-  return (
-    <div style={{ minHeight: "100vh", background: "var(--canvas)", padding: "24px 20px" }}>
-      <div style={{ maxWidth: 800, margin: "0 auto" }}>
+  if (loading) return <Spinner />;
+  if (!proveedor) return <Card><div style={{ color: "var(--danger)" }}>{mensaje || "Proveedor no encontrado"}</div></Card>;
+  const disponibles = CATEGORIAS.filter(c => !capacidades.some(x => x.categoria === c && x.estado !== "rejected"));
 
-        <div style={{ marginBottom: 24 }}>
-          <Link href="/proveedores" style={{ fontSize: 10, color: "var(--n-600)", textDecoration: "none" }}>← Proveedores</Link>
-        </div>
+  return <>
+    <div style={{ marginBottom: 14 }}><Link href="/proveedores" style={{ color: "var(--n-600)", textDecoration: "none", fontSize: 13 }}>← Volver a proveedores</Link></div>
+    <PageHeader eyebrow="Supplier Capability Intelligence" title={proveedor.nombre} subtitle={proveedor.email || proveedor.sitio_web || "Ficha del proveedor"} actions={<BtnPrimary disabled={guardando} onClick={() => void guardar()}>{guardando ? "Guardando…" : "Guardar cambios"}</BtnPrimary>} />
+    {mensaje && <div style={{ marginBottom: 14, padding: 10, borderRadius: "var(--r-md)", background: "var(--surface-2)", color: "var(--n-700)", fontSize: 13 }}>{mensaje}</div>}
 
-        {/* Header proveedor */}
-        <div style={{ background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: 12, padding: "20px 24px", marginBottom: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <div style={{ fontSize: 10, color: "var(--brand)", letterSpacing: "0.15em", marginBottom: 4 }}>Supplier Intelligence</div>
-              <h1 style={{ fontSize: 18, fontWeight: 800, color: "var(--n-900)", margin: "0 0 4px" }}>{proveedor.nombre}</h1>
-              {proveedor.email && <div style={{ fontSize: 10, color: "var(--n-600)" }}>{proveedor.email}</div>}
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 32, fontWeight: 800, color: cat.color }}>{proveedor.score}</div>
-              <div style={{ fontSize: 10, color: cat.color, fontWeight: 700 }}>{cat.label}</div>
-            </div>
-          </div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 16 }}>
+      <Card><h2 style={{ margin: "0 0 16px", fontSize: 17, color: "var(--n-900)" }}>Datos del proveedor</h2><div style={{ display: "grid", gap: 12 }}>
+        <Input label="Nombre" value={proveedor.nombre} onChange={e => setProveedor({ ...proveedor, nombre: e.target.value })} />
+        <Input label="RUT" value={proveedor.rut || ""} onChange={e => setProveedor({ ...proveedor, rut: e.target.value })} />
+        <Input label="Sitio web" value={proveedor.sitio_web || ""} onChange={e => setProveedor({ ...proveedor, sitio_web: e.target.value })} />
+        <Input label="Email" value={proveedor.email || ""} onChange={e => setProveedor({ ...proveedor, email: e.target.value })} />
+        <Input label="Teléfono" value={proveedor.telefono || ""} onChange={e => setProveedor({ ...proveedor, telefono: e.target.value })} />
+        <Input label="País" value={proveedor.pais || ""} onChange={e => setProveedor({ ...proveedor, pais: e.target.value })} />
+        <Textarea label="Notas privadas" value={proveedor.notas_privadas || ""} onChange={e => setProveedor({ ...proveedor, notas_privadas: e.target.value })} />
+        <div style={{ display: "flex", gap: 18 }}>{[["preferido", "Preferido"], ["bloqueado", "Bloqueado"]].map(([key, label]) => <label key={key} style={{ display: "flex", gap: 8, fontSize: 13, color: "var(--n-700)" }}><input type="checkbox" checked={!!proveedor[key as "preferido" | "bloqueado"]} onChange={e => setProveedor({ ...proveedor, [key]: e.target.checked })} />{label}</label>)}</div>
+      </div></Card>
 
-          <div style={{ display: "flex", gap: 20, marginTop: 16, flexWrap: "wrap" }}>
-            {[
-              { label: "Solicitudes enviadas", val: proveedor.total_solicitudes || 0 },
-              { label: "Respuestas recibidas", val: proveedor.total_respuestas || 0 },
-              { label: "OCs emitidas", val: proveedor.total_oc_enviadas || 0 },
-              { label: "OCs confirmadas", val: proveedor.total_oc_confirmadas || 0 },
-            ].map(m => (
-              <div key={m.label}>
-                <div style={{ fontSize: 9, color: "var(--n-700)", letterSpacing: "0.08em" }}>{m.label}</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: "var(--n-500)" }}>{m.val}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Ordenes de Compra */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 11, color: "var(--n-600)", letterSpacing: "0.1em", marginBottom: 10, fontWeight: 700 }}>
-            Ordenes de Compra ({ordenes.length})
-          </div>
-          {ordenes.length === 0 ? (
-            <div style={{ fontSize: 11, color: "var(--n-700)", padding: "16px 0" }}>Sin ordenes de compra.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {ordenes.map(oc => (
-                <div key={oc.numero_oc} style={{ background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: 8, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--n-900)" }}>{oc.numero_oc}</div>
-                    <div style={{ fontSize: 10, color: "var(--n-600)", marginTop: 2 }}>
-                      {new Date(oc.created_at).toLocaleDateString("es-CL")}
-                      {oc.confirmada_at && ` · Confirmada ${new Date(oc.confirmada_at).toLocaleDateString("es-CL")}`}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--n-500)" }}>
-                      {oc.moneda} {Number(oc.precio_total).toLocaleString("es-CL")}
-                    </div>
-                    <div style={{ fontSize: 10, marginTop: 2, color: oc.estado === "confirmada" ? "var(--success)" : oc.estado === "enviada" ? "var(--brand)" : "var(--n-600)", fontWeight: 600 }}>
-                      {oc.estado}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Ratings */}
-        <div>
-          <div style={{ fontSize: 11, color: "var(--n-600)", letterSpacing: "0.1em", marginBottom: 10, fontWeight: 700 }}>
-            Calificaciones ({ratings.length})
-          </div>
-          {ratings.length === 0 ? (
-            <div style={{ fontSize: 11, color: "var(--n-700)", padding: "16px 0" }}>Sin calificaciones aun.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {ratings.map(r => (
-                <div key={r.id} style={{ background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: 8, padding: "14px 16px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                    <Estrellas n={r.estrellas} />
-                    <span style={{ fontSize: 10, color: "var(--n-700)" }}>{new Date(r.created_at).toLocaleDateString("es-CL")}</span>
-                  </div>
-                  <div style={{ display: "flex", gap: 12, marginBottom: r.comentario ? 8 : 0 }}>
-                    {r.precio_cumplido !== null && (
-                      <span style={{ fontSize: 10, color: r.precio_cumplido ? "var(--success)" : "var(--danger)" }}>
-                        Precio: {r.precio_cumplido ? "Si" : "No"}
-                      </span>
-                    )}
-                    {r.plazo_cumplido !== null && (
-                      <span style={{ fontSize: 10, color: r.plazo_cumplido ? "var(--success)" : "var(--danger)" }}>
-                        Plazo: {r.plazo_cumplido ? "Si" : "No"}
-                      </span>
-                    )}
-                  </div>
-                  {r.comentario && (
-                    <div style={{ fontSize: 11, color: "var(--n-500)", fontStyle: "italic" }}>"{r.comentario}"</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      <Card><h2 style={{ margin: "0 0 6px", fontSize: 17, color: "var(--n-900)" }}>Categorías</h2><p style={{ margin: "0 0 16px", color: "var(--n-500)", fontSize: 13 }}>Capacidades respaldadas por evidencia para este proveedor.</p>
+        <div style={{ display: "grid", gap: 8 }}>{capacidades.filter(c => c.estado !== "rejected").map(c => <div key={`${c.categoria}-${c.concepto || ""}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, border: "1px solid var(--n-200)", borderRadius: "var(--r-md)" }}><CategoryChip categoria={c.categoria} size={34} /><div style={{ flex: 1 }}><div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--n-900)" }}>{c.categoria.replaceAll("_", " ")}</div><div style={{ fontSize: 11.5, color: "var(--n-500)" }}>{Math.round(c.confianza * 100)}% confianza · {c.estado}</div></div><BtnSecondary size="sm" icon={Trash2} title="Quitar categoría" onClick={() => void quitarCategoria(c.categoria)}>Quitar</BtnSecondary></div>)}</div>
+        {capacidades.filter(c => c.estado !== "rejected").length === 0 && <div style={{ color: "var(--n-500)", fontSize: 13, padding: "10px 0" }}>Sin categorías confirmadas.</div>}
+        <div style={{ marginTop: 16 }}><FieldLabel>Agregar categoría</FieldLabel><div style={{ display: "flex", gap: 8, marginTop: 7 }}><select value={nuevaCategoria} onChange={e => setNuevaCategoria(e.target.value)} style={{ flex: 1, height: 40, border: "1px solid var(--n-300)", borderRadius: "var(--r-md)", background: "var(--surface)", color: "var(--n-900)", padding: "0 10px" }}><option value="">Selecciona…</option>{disponibles.map(c => <option key={c} value={c}>{c.replaceAll("_", " ")}</option>)}</select><BtnPrimary size="sm" icon={Plus} disabled={!nuevaCategoria} onClick={() => void agregarCategoria()}>Agregar</BtnPrimary></div></div>
+      </Card>
     </div>
-  );
+
+    <Card><h2 style={{ margin: "0 0 16px", fontSize: 17, color: "var(--n-900)" }}>Órdenes de compra ({ordenes.length})</h2>{ordenes.length === 0 ? <div style={{ color: "var(--n-500)", fontSize: 13 }}>Sin órdenes de compra.</div> : <div style={{ display: "grid", gap: 8 }}>{ordenes.map(oc => <div key={oc.numero_oc} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--n-100)" }}><div><div style={{ fontWeight: 600, color: "var(--n-900)" }}>{oc.numero_oc}</div><div style={{ color: "var(--n-500)", fontSize: 12 }}>{new Date(oc.created_at).toLocaleDateString("es-CL")}</div></div><div style={{ textAlign: "right" }}><div style={{ color: "var(--n-900)" }}>{oc.moneda} {Number(oc.precio_total).toLocaleString("es-CL")}</div><Badge status={oc.estado}>{oc.estado.replaceAll("_", " ")}</Badge></div></div>)}</div>}</Card>
+  </>;
 }

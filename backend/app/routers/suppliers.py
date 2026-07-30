@@ -85,12 +85,22 @@ async def historial_supplier(proveedor_id: str, user_id: str):
     if not proveedor.data:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
-    ratings = sb.table("supplier_ratings").select("*").eq("proveedor_id", proveedor_id).order("created_at", desc=True).execute()
+    # supplier_ratings no existe hoy en producción (tabla nunca aplicada pese
+    # a estar referenciada en código) — no dejar que eso tumbe el resto de la
+    # ficha, que sí tiene datos reales.
+    try:
+        ratings = sb.table("supplier_ratings").select("*").eq("proveedor_id", proveedor_id).order("created_at", desc=True).execute().data or []
+    except Exception:
+        ratings = []
 
     ocs = sb.table("ordenes_compra").select("numero_oc, estado, precio_total, moneda, created_at, confirmada_at").eq("user_id", user_id).eq("proveedor_nombre", proveedor.data["nombre"]).order("created_at", desc=True).execute()
 
+    from app.services.supplier_capability_intelligence import listar_capacidades
+    capacidades = listar_capacidades(user_id, proveedor_id)
+
     return {
         "proveedor": proveedor.data,
-        "ratings": ratings.data,
+        "ratings": ratings,
         "ordenes": ocs.data,
+        "capacidades": capacidades,
     }
