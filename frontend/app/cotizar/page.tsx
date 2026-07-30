@@ -224,9 +224,9 @@ export default function CotizarPage() {
       if (!res.ok) throw new Error("No se pudo crear la lista");
       const lista = await res.json();
 
-      // Primero se revisa la cobertura del directorio privado. La búsqueda y
-      // selección de ofertas ocurre sólo después de esta matriz.
-      router.push(`/listas/${lista.id}/proveedores-confianza`);
+      // La lista creada es el punto de control antes de elegir la estrategia
+      // de proveedores. Desde ahí el usuario abre la matriz explícitamente.
+      router.push(`/listas/${lista.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error creando la lista");
       setGuardando(false);
@@ -289,7 +289,7 @@ export default function CotizarPage() {
       });
       if (resLista.ok) {
         const lista = await resLista.json();
-        router.push(`/listas/${lista.id}/proveedores-confianza`);
+        router.push(`/listas/${lista.id}`);
         return;
       }
     } catch { /* si falla, sigue como cotización suelta (se envuelve al abrirla) */ }
