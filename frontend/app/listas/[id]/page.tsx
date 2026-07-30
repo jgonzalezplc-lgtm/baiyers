@@ -571,7 +571,7 @@ export default function ListaDetallePage() {
               )}
               <Link href={`/cotizar/${it.cotizacion_id}/resultados?lista=${lista.id}`}
                 style={{ fontSize: 13.5, fontWeight: 500, color: "var(--brand)", textDecoration: "none" }}>
-                {it.comparado ? "Cambiar selección →" : "Buscar proveedores →"}
+                {it.comparado ? "Cambiar selección →" : "Buscar opciones →"}
               </Link>
             </div>
           </div>

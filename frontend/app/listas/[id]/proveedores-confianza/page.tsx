@@ -92,7 +92,7 @@ export default function ProveedoresConfianzaPage() {
     {mensaje && <div style={{ padding: 11, marginBottom: 14, borderRadius: "var(--r-md)", background: "var(--surface-2)", color: "var(--n-700)", fontSize: 13 }}>{mensaje}</div>}
 
     <div style={{ display: "flex", justifyContent: "flex-end", gap: 9, marginBottom: 16, flexWrap: "wrap" }}>
-      {matriz.items[0] && <BtnSecondary icon={Search} onClick={() => router.push(`/cotizar/${matriz.items[0].cotizacion_id}/resultados?lista=${id}`)}>Comparar ofertas</BtnSecondary>}
+      {matriz.items[0] && <BtnSecondary icon={Search} onClick={() => router.push(`/cotizar/${matriz.items[0].cotizacion_id}/resultados?lista=${id}`)}>Buscar opciones</BtnSecondary>}
       <BtnSecondary icon={Save} disabled={guardando} onClick={() => void guardar()}>{guardando ? "Guardando…" : "Guardar matriz"}</BtnSecondary>
       <BtnPrimary icon={Send} disabled={preparando || seleccion.size === 0} onClick={() => void prepararCorreos()}>{preparando ? "Preparando…" : "Preparar correos"}</BtnPrimary>
     </div>
