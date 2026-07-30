@@ -349,8 +349,8 @@ muestra esta revisión antes de que el usuario confirme y recién entonces reuti
 de `cotizaciones` + `listas.py`.
 
 Pintura propone rendimiento, merma y envase únicamente cuando el usuario marca “No lo sé”, y
-exige confirmar cada supuesto. Solar mantiene separados kW y kWh, advierte orientación sur e
-inspección y devuelve `requiere_revision` con `bloquea_publicacion=true`; nunca genera una lista
-contractual automáticamente.
+exige confirmar cada supuesto. Solar mantiene separados kW y kWh y advierte orientación sur e
+inspección. Permite continuar cotizando un servicio profesional de evaluación/diseño/instalación,
+pero nunca inventa ni publica automáticamente cantidades de paneles, baterías o potencia.
 
 Pruebas deterministas: `backend/tests/test_cubicacion.py`.

@@ -58,10 +58,12 @@ class CubicacionTest(unittest.TestCase):
         self.assertEqual(r["estado_flujo"], "listo")
         self.assertEqual(r["revision_cubicacion"]["items"][0]["cantidad_compra"], 3)
 
-    def test_solar_bloquea_publicacion_y_separa_kw_kwh(self):
+    def test_solar_advierte_pero_permite_cotizar_servicio(self):
         r = flujo_determinista("instalación solar", {"consumo_kwh_mes": 300, "potencia_simultanea_kw": 5, "ubicacion": "Santiago", "orientacion": "sur", "area_techo_m2": 30})
-        self.assertEqual(r["estado_flujo"], "requiere_revision")
-        self.assertTrue(r["bloquea_publicacion"])
+        self.assertEqual(r["estado_flujo"], "listo")
+        self.assertNotIn("bloquea_publicacion", r)
+        self.assertEqual(len(r["lista_items"]), 1)
+        self.assertEqual(r["lista_items"][0]["categoria"], "servicio")
         avisos = " ".join(r["revision_cubicacion"]["advertencias"])
         self.assertIn("kW", avisos); self.assertIn("kWh", avisos); self.assertIn("sur", avisos)
 

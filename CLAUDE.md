@@ -113,7 +113,7 @@ Railway ~$5-10/mes · Supabase free · Serper 2.500 gratis→$50/50k · Gemini f
 ## Cubicación conversacional (primer corte)
 - Motor puro en `backend/app/services/cubicacion.py`: unidades/dimensiones, conversiones, merma,
   formatos comerciales y recetas versionadas `completos@1`/`pintura@1`, más evaluación solar
-  bloqueada para revisión; sin `eval` ni aritmética LLM.
+  cotizable como servicio profesional con advertencias; sin `eval` ni aritmética LLM.
 - `/api/identificar` activa el contrato sólo con `modo_cubicacion_conversacional`; usa
   `respuestas_cubicacion` estructuradas y conserva intactos a los clientes antiguos.
 - `/cotizar` pregunta máximo tres datos por turno, no reenvía la imagen y muestra trazabilidad

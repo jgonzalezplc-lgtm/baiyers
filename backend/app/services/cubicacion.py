@@ -212,10 +212,18 @@ def _flujo_solar(datos: dict[str, Any]) -> dict[str, Any]:
               "Requiere inspección eléctrica y estructural en terreno antes de cotizar una solución contractual."]
     if "sur" in orientacion:
         avisos.append("La orientación sur reduce el aprovechamiento solar y requiere revisión especializada.")
-    revision = {"receta": "solar-evaluacion@1", "items": [], "supuestos": [], "advertencias": avisos,
+    item = _item(
+        "Servicio de evaluación, diseño e instalación fotovoltaica",
+        1, "unidad", 1, "servicio", "servicio",
+        f"Evaluación para {consumo:g} kWh/mes en {datos.get('ubicacion')}; dimensionamiento final sujeto a visita técnica",
+    )
+    item["terminos_busqueda_es"] = ["instalación paneles solares hogar", "empresa energía solar fotovoltaica", "diseño sistema solar residencial"]
+    item["terminos_busqueda_en"] = ["residential solar installation service", "photovoltaic system design"]
+    revision = {"receta": "solar-evaluacion@1", "items": [item], "supuestos": [], "advertencias": avisos,
                 "resumen": {"consumo_kwh_mes": consumo, "potencia_simultanea_kw": datos.get("potencia_simultanea_kw"), "ubicacion": datos.get("ubicacion"), "orientacion": datos.get("orientacion"), "area_techo_m2": datos.get("area_techo_m2")}}
-    return {"estado_flujo": "requiere_revision", "mensaje": "Evaluación preliminar: un especialista debe validar potencia, techo y conexión.", "preguntas": [],
-            "es_proyecto": True, "lista_items": [], "revision_cubicacion": revision, "bloquea_publicacion": True}
+    respuesta = _respuesta_lista("Evaluación instalación solar", [item], revision)
+    respuesta["mensaje"] = "Puedes solicitar cotizaciones preliminares; el proveedor deberá validar potencia, techo y conexión en terreno."
+    return respuesta
 
 
 def _respuesta_lista(nombre: str, items_base: list[dict[str, Any]], revision: dict[str, Any]) -> dict[str, Any]:
