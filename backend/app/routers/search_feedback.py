@@ -7,7 +7,7 @@ endpoints.
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/buscar/sesiones", tags=["search-feedback"])
 
@@ -18,8 +18,8 @@ class CrearSesionRequest(BaseModel):
     lista_proyecto_id: Optional[str] = None
     item_nombre: Optional[str] = None
     categoria_predicha: Optional[str] = None
-    categorias_usadas: list[str] = []
-    terminos: list[str] = []
+    categorias_usadas: list[str] = Field(default_factory=list)
+    terminos: list[str] = Field(default_factory=list)
     modo: str = "directed"  # "directed" | "expanded"
     session_padre_id: Optional[str] = None
 
@@ -76,6 +76,43 @@ _ESTADO_POR_TIPO = {
     "satisfactory": "satisfactoria",
     "expand_search": "expandida",
 }
+
+
+class PrepararComplementariaRequest(BaseModel):
+    user_id: str
+    cotizacion_id: str
+    lista_proyecto_id: Optional[str] = None
+    comentario: str = "Faltan proveedores de confianza; iniciar búsqueda complementaria"
+
+
+@router.post("/complementaria/preparar")
+async def preparar_busqueda_complementaria(req: PrepararComplementariaRequest):
+    """Registra una expansión explícita sobre la última búsqueda dirigida del
+    ítem. Es idempotente para el mismo comentario/sesión y devuelve el padre
+    que deberá enlazar la nueva search_session de modo expanded."""
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+    q = (
+        sb.table("search_sessions").select("id,categoria_predicha")
+        .eq("user_id", req.user_id).eq("cotizacion_id", req.cotizacion_id)
+        .eq("modo", "directed").order("created_at", desc=True).limit(1).execute().data or []
+    )
+    if not q:
+        return {"session_padre_id": None, "feedback_registrado": False}
+    sesion = q[0]
+    existentes = (
+        sb.table("search_feedback").select("id")
+        .eq("session_id", sesion["id"]).eq("user_id", req.user_id)
+        .eq("tipo", "missing_suppliers").eq("comentario", req.comentario).limit(1).execute().data or []
+    )
+    if not existentes:
+        sb.table("search_feedback").insert({
+            "session_id": sesion["id"], "user_id": req.user_id,
+            "tipo": "missing_suppliers", "categoria_predicha": sesion.get("categoria_predicha"),
+            "comentario": req.comentario,
+        }).execute()
+    sb.table("search_sessions").update({"estado": "expandida"}).eq("id", sesion["id"]).execute()
+    return {"session_padre_id": sesion["id"], "feedback_registrado": not bool(existentes)}
 
 
 @router.post("/{session_id}/feedback")

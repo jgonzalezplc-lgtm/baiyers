@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { ArrowLeft, Check, Send, Wand2, Camera, ShoppingBag, Mail, ExternalLink, Network } from "lucide-react";
+import { ArrowLeft, Check, Send, Wand2, Camera, ShoppingBag, Mail, ExternalLink, Network, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, Badge, BtnPrimary, BtnSecondary, SummaryPanel, Input, Spinner } from "@/components/ui";
 
@@ -389,6 +389,11 @@ export default function ListaDetallePage() {
               <BtnPrimary onClick={() => router.push(`/listas/${lista.id}/proveedores-confianza`)} icon={Network}>
                 Proveedores de confianza
               </BtnPrimary>
+            )}
+            {!lista.aprobacion && (
+              <BtnSecondary onClick={() => router.push(`/listas/${lista.id}/busqueda-complementaria`)} icon={Search}>
+                Completar cobertura
+              </BtnSecondary>
             )}
             {!lista.aprobacion && lista.items.some(it => it.comparados.some(c => (c.precio_cotizado ?? c.precio) != null)) && (
               <BtnSecondary onClick={autoSeleccionarBaratos} icon={Wand2}>Escoger lo más barato</BtnSecondary>

@@ -269,6 +269,7 @@ export default function ResultadosPage() {
     setResultados([]);
     setFuentesActivas([]);
     setPrecargado(false);
+    const busquedaExpandida = Boolean(override) || searchParams.get("modo") === "expanded";
 
     let terminos_es: string[] = [];
     let terminos_en: string[] = [];
@@ -298,7 +299,7 @@ export default function ResultadosPage() {
           .select("nombre_identificado, descripcion, terminos_busqueda_es, terminos_busqueda_en, categoria")
           .eq("id", id)
           .single(),
-        !forzarStream && listaId
+        !forzarStream && !busquedaExpandida && listaId
           ? supabase.from("resultados").select("*").eq("cotizacion_id", id).eq("estado", "encontrado")
           : Promise.resolve({ data: null }),
       ]);
@@ -335,8 +336,8 @@ export default function ResultadosPage() {
             categoria_predicha: categoria,
             categorias_usadas: categorias,
             terminos: [...terminos_es, ...terminos_en],
-            modo: override ? "expanded" : "directed",
-            session_padre_id: override ? sessionId : null,
+            modo: busquedaExpandida ? "expanded" : "directed",
+            session_padre_id: busquedaExpandida ? (searchParams.get("session_padre") || sessionId) : null,
           }),
         }).then(sr => (sr.ok ? sr.json() : null)).then(s => {
           if (!s) return;
@@ -353,6 +354,7 @@ export default function ResultadosPage() {
           categoria: categorias[0] ?? categoria,
           categorias: categorias.length ? categorias : (categoria ? [categoria] : null),
           user_id: uid,
+          busqueda_expandida: busquedaExpandida,
         }),
       });
       if (!res.ok || !res.body) throw new Error("Error en la busqueda");

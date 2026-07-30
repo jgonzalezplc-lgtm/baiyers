@@ -22,10 +22,13 @@ class BuscarRequest(BaseModel):
     categorias: Optional[list[str]] = None
     user_id: Optional[str] = None
     incluir_proveedores_custom: bool = True
+    busqueda_expandida: bool = False
 
 
 def _fuentes_de_request(req: "BuscarRequest") -> set[str]:
     from app.services.categoria_mapper import fuentes_para_categoria
+    if req.busqueda_expandida:
+        return fuentes_para_categoria(None)
     cats = [c for c in (req.categorias or []) if c] or ([req.categoria] if req.categoria else [])
     if not cats:
         return fuentes_para_categoria(None)

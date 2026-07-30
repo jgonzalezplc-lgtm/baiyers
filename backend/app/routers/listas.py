@@ -440,6 +440,52 @@ async def guardar_matriz_proveedores_confianza(lista_id: str, req: GuardarMatriz
     return {"success": True, "selecciones": selecciones}
 
 
+@router.get("/{lista_id}/busqueda-complementaria")
+async def estado_busqueda_complementaria(lista_id: str, user_id: str):
+    """Separa ítems sin cobertura de los ya asignados/cotizados. No dispara
+    búsquedas: los cubiertos sólo se buscan si el usuario lo pide."""
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+    proy = sb.table("proyectos").select("*").eq("id", lista_id).eq("user_id", user_id).maybe_single().execute().data
+    data = _parse_lista(proy or {})
+    if not data:
+        raise HTTPException(status_code=404, detail="Lista no encontrada")
+    items = data.get("items", [])
+    cot_ids = [it["cotizacion_id"] for it in items]
+    cots = {c["id"]: c for c in (sb.table("cotizaciones").select("id,nombre_identificado,categoria").in_("id", cot_ids).execute().data or [])} if cot_ids else {}
+    selecciones = (data.get("proveedores_confianza") or {}).get("selecciones") or []
+    proveedor_ids = [s["proveedor_id"] for s in selecciones]
+    proveedores = {p["id"]: p["nombre"] for p in (sb.table("proveedores").select("id,nombre").in_("id", proveedor_ids).execute().data or [])} if proveedor_ids else {}
+    cobertura: dict[str, list[dict]] = {cid: [] for cid in cot_ids}
+    for s in selecciones:
+        for cid in s.get("cotizacion_ids", []):
+            if cid in cobertura:
+                cobertura[cid].append({"proveedor_id": s["proveedor_id"], "nombre": proveedores.get(s["proveedor_id"], "Proveedor")})
+    enviados: set[str] = set()
+    try:
+        batches = sb.table("rfq_batches").select("id").eq("lista_proyecto_id", lista_id).eq("user_id", user_id).eq("estado", "sent").execute().data or []
+        if batches:
+            enviados = {x["cotizacion_id"] for x in (sb.table("rfq_batch_items").select("cotizacion_id").in_("rfq_batch_id", [b["id"] for b in batches]).execute().data or [])}
+    except Exception:
+        pass
+    salida = []
+    for it in items:
+        cid = it["cotizacion_id"]
+        cot = cots.get(cid, {})
+        salida.append({
+            "cotizacion_id": cid, "nombre": it.get("nombre") or cot.get("nombre_identificado") or "Ítem",
+            "cantidad": float(it.get("cantidad") or 1), "unidad": it.get("unidad") or "un",
+            "categoria": cot.get("categoria") or it.get("categoria") or "otro",
+            "proveedores": cobertura[cid], "n_proveedores": len(cobertura[cid]),
+            "rfq_enviada": cid in enviados,
+        })
+    return {
+        "lista_id": lista_id,
+        "requieren_proveedores": [it for it in salida if it["n_proveedores"] == 0],
+        "ya_cubiertos": [it for it in salida if it["n_proveedores"] > 0],
+    }
+
+
 @router.post("/{lista_id}/comparado")
 async def marcar_comparado(lista_id: str, req: MarcarComparadoRequest):
     from app.services.supabase import get_supabase
