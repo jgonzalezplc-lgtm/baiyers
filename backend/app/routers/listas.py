@@ -278,6 +278,168 @@ class MarcarComparadoRequest(BaseModel):
     cotizacion_id: str
 
 
+class SeleccionProveedorConfianza(BaseModel):
+    proveedor_id: str
+    contacto_id: Optional[str] = None
+    cotizacion_ids: list[str]
+
+
+class GuardarMatrizConfianzaRequest(BaseModel):
+    user_id: str
+    selecciones: list[SeleccionProveedorConfianza]
+
+
+def _matriz_proveedores_confianza(sb, user_id: str, items: list[dict], borrador: dict) -> dict:
+    """Construye recomendaciones explicables usando sólo el directorio privado
+    y supplier_capabilities. No escribe evidencia: esta pantalla es un borrador
+    editable; la confirmación real ocurre al enviar la RFQ (Fase 5)."""
+    cot_ids = [it["cotizacion_id"] for it in items]
+    cotizaciones = {
+        c["id"]: c for c in (
+            sb.table("cotizaciones").select("id,nombre_identificado,categoria")
+            .in_("id", cot_ids).execute().data or []
+        )
+    } if cot_ids else {}
+
+    proveedores = (
+        sb.table("proveedores")
+        .select("id,nombre,email,score,categoria_score,bloqueado,preferido")
+        .eq("user_id", user_id).eq("bloqueado", False).execute().data or []
+    )
+    proveedor_ids = [p["id"] for p in proveedores]
+    capacidades = (
+        sb.table("supplier_capabilities").select(
+            "proveedor_id,categoria,confianza,estado,evidencia_positiva,cotizaciones_validas,compras"
+        ).eq("user_id", user_id).in_("proveedor_id", proveedor_ids)
+        .neq("estado", "rejected").execute().data or []
+    ) if proveedor_ids else []
+    contactos = (
+        sb.table("proveedor_contactos").select("id,proveedor_id,nombre,email,cargo,es_principal")
+        .eq("user_id", user_id).in_("proveedor_id", proveedor_ids).execute().data or []
+    ) if proveedor_ids else []
+
+    contacto_por_proveedor: dict[str, dict] = {}
+    for contacto in sorted(contactos, key=lambda c: not c.get("es_principal")):
+        contacto_por_proveedor.setdefault(contacto["proveedor_id"], contacto)
+
+    caps_por_clave = {(c["proveedor_id"], c["categoria"]): c for c in capacidades}
+    guardadas = {
+        (s.get("proveedor_id"), cid): s.get("contacto_id")
+        for s in borrador.get("selecciones", []) for cid in s.get("cotizacion_ids", [])
+    }
+    matriz: dict[str, dict] = {}
+    candidatos_por_item: dict[str, list[dict]] = {cid: [] for cid in cot_ids}
+
+    for item in items:
+        cid = item["cotizacion_id"]
+        cot = cotizaciones.get(cid, {})
+        categoria = cot.get("categoria") or item.get("categoria") or "otro"
+        for proveedor in proveedores:
+            cap = caps_por_clave.get((proveedor["id"], categoria))
+            if not cap:
+                continue
+            confianza = float(cap.get("confianza") or 0)
+            score_general = float(proveedor.get("score") or 0)
+            ranking = confianza + (0.08 if proveedor.get("preferido") else 0) + min(score_general, 100) / 1000
+            razones = []
+            if cap.get("compras"):
+                razones.append(f"{cap['compras']} compra(s) completada(s)")
+            if cap.get("cotizaciones_validas"):
+                razones.append(f"{cap['cotizaciones_validas']} cotización(es) válida(s)")
+            if not razones and cap.get("evidencia_positiva"):
+                razones.append(f"{cap['evidencia_positiva']} señal(es) positiva(s)")
+            if proveedor.get("preferido"):
+                razones.append("marcado como preferido")
+            explicacion = "Recomendado por " + ", ".join(razones) + "." if razones else "Capacidad inferida con confianza baja."
+            candidato = {
+                "cotizacion_id": cid,
+                "nombre": item.get("nombre") or cot.get("nombre_identificado") or "Ítem",
+                "cantidad": float(item.get("cantidad") or 1),
+                "unidad": item.get("unidad") or "un",
+                "categoria": categoria,
+                "confianza": confianza,
+                "estado": cap.get("estado"),
+                "ranking": round(ranking, 4),
+                "explicacion": explicacion,
+                "seleccionado": (proveedor["id"], cid) in guardadas,
+            }
+            candidatos_por_item[cid].append({**candidato, "proveedor_id": proveedor["id"]})
+            entrada = matriz.setdefault(proveedor["id"], {
+                "proveedor_id": proveedor["id"], "nombre": proveedor.get("nombre"),
+                "score": proveedor.get("score") or 0, "preferido": bool(proveedor.get("preferido")),
+                "contacto": contacto_por_proveedor.get(proveedor["id"]) or ({"id": None, "email": proveedor.get("email"), "nombre": None, "cargo": None} if proveedor.get("email") else None),
+                "items": [],
+            })
+            entrada["items"].append(candidato)
+
+    # Sin borrador previo, preseleccionar hasta 3 recomendaciones por ítem.
+    if not borrador.get("revisado"):
+        recomendados = set()
+        for cid, candidatos in candidatos_por_item.items():
+            for c in sorted(candidatos, key=lambda x: x["ranking"], reverse=True)[:3]:
+                recomendados.add((c["proveedor_id"], cid))
+        for pid, proveedor in matriz.items():
+            for item in proveedor["items"]:
+                item["seleccionado"] = (pid, item["cotizacion_id"]) in recomendados
+
+    proveedores_matriz = sorted(
+        matriz.values(),
+        key=lambda p: max((it["ranking"] for it in p["items"]), default=0), reverse=True,
+    )
+    items_salida = []
+    for item in items:
+        cid = item["cotizacion_id"]
+        cot = cotizaciones.get(cid, {})
+        items_salida.append({
+            "cotizacion_id": cid, "nombre": item.get("nombre") or cot.get("nombre_identificado") or "Ítem",
+            "cantidad": float(item.get("cantidad") or 1), "unidad": item.get("unidad") or "un",
+            "categoria": cot.get("categoria") or item.get("categoria") or "otro",
+            "n_candidatos": len(candidatos_por_item[cid]),
+        })
+    return {"items": items_salida, "proveedores": proveedores_matriz, "revisado": bool(borrador.get("revisado"))}
+
+
+@router.get("/{lista_id}/proveedores-confianza")
+async def matriz_proveedores_confianza(lista_id: str, user_id: str):
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+    proy = sb.table("proyectos").select("*").eq("id", lista_id).eq("user_id", user_id).maybe_single().execute().data
+    data = _parse_lista(proy or {})
+    if not data:
+        raise HTTPException(status_code=404, detail="Lista no encontrada")
+    return _matriz_proveedores_confianza(sb, user_id, data.get("items", []), data.get("proveedores_confianza") or {})
+
+
+@router.put("/{lista_id}/proveedores-confianza")
+async def guardar_matriz_proveedores_confianza(lista_id: str, req: GuardarMatrizConfianzaRequest):
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+    async with _lock_de(lista_id):
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).eq("user_id", req.user_id).maybe_single().execute().data
+        data = _parse_lista(proy or {})
+        if not data:
+            raise HTTPException(status_code=404, detail="Lista no encontrada")
+        ids_validos = {it["cotizacion_id"] for it in data.get("items", [])}
+        proveedores_validos = {
+            p["id"] for p in (sb.table("proveedores").select("id").eq("user_id", req.user_id).eq("bloqueado", False).execute().data or [])
+        }
+        contactos_validos = {
+            (c["id"], c["proveedor_id"])
+            for c in (sb.table("proveedor_contactos").select("id,proveedor_id").eq("user_id", req.user_id).execute().data or [])
+        }
+        selecciones = []
+        for s in req.selecciones:
+            if s.proveedor_id not in proveedores_validos:
+                continue
+            cotizaciones = sorted(set(s.cotizacion_ids) & ids_validos)
+            if cotizaciones:
+                contacto_id = s.contacto_id if (s.contacto_id, s.proveedor_id) in contactos_validos else None
+                selecciones.append({"proveedor_id": s.proveedor_id, "contacto_id": contacto_id, "cotizacion_ids": cotizaciones})
+        data["proveedores_confianza"] = {"revisado": True, "selecciones": selecciones}
+        _guardar_lista(sb, lista_id, data)
+    return {"success": True, "selecciones": selecciones}
+
+
 @router.post("/{lista_id}/comparado")
 async def marcar_comparado(lista_id: str, req: MarcarComparadoRequest):
     from app.services.supabase import get_supabase

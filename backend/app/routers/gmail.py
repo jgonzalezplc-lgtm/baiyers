@@ -510,6 +510,22 @@ def _items_contexto(sb, conv: dict) -> list[dict]:
     """Ítem(s) sobre los que trata esta conversación, para dárselos como
     contexto al Email Understanding Agent."""
     items = []
+    # RFQ agrupada: una conversación representa varios resultados/ítems.
+    # Se intenta primero y se tolera que la migración 026 aún no exista.
+    try:
+        batch = sb.table("rfq_batches").select("id").eq("conversation_id", conv["id"]).maybe_single().execute().data
+        if batch:
+            batch_items = sb.table("rfq_batch_items").select("resultado_id,cotizacion_id").eq("rfq_batch_id", batch["id"]).execute().data or []
+            for item in batch_items:
+                items.append({
+                    "entity_id": item["resultado_id"],
+                    "nombre": _nombre_cotizacion(sb, item["cotizacion_id"]),
+                    "proveedor": conv.get("proveedor_nombre"),
+                })
+            if items:
+                return items
+    except Exception:
+        pass
     if conv.get("resultado_id"):
         r = sb.table("resultados").select("id,proveedor_nombre,cotizacion_id").eq("id", conv["resultado_id"]).maybe_single().execute()
         if r.data:
@@ -733,6 +749,12 @@ async def _sincronizar_usuario(user_id: str) -> dict:
 
                         if auto_aplicar:
                             _aplicar_campo_resultado(sb, entity_id, p["field"], p["new_value"], recibido_iso)
+                            try:
+                                sb.table("rfq_batch_items").update({
+                                    "estado": "responded", "updated_at": recibido_iso,
+                                }).eq("resultado_id", entity_id).execute()
+                            except Exception:
+                                pass
                             campos_recibidos.add(campo_seguimiento)
 
                     if campos_recibidos:
