@@ -62,8 +62,11 @@ class CubicacionTest(unittest.TestCase):
         r = flujo_determinista("instalación solar", {"consumo_kwh_mes": 300, "potencia_simultanea_kw": 5, "ubicacion": "Santiago", "orientacion": "sur", "area_techo_m2": 30})
         self.assertEqual(r["estado_flujo"], "listo")
         self.assertNotIn("bloquea_publicacion", r)
-        self.assertEqual(len(r["lista_items"]), 1)
-        self.assertEqual(r["lista_items"][0]["categoria"], "servicio")
+        self.assertEqual(len(r["lista_items"]), 6)
+        self.assertEqual(r["lista_items"][0]["categoria"], "electrico")
+        self.assertIn("550 W", r["lista_items"][0]["nombre_tecnico"])
+        self.assertIn("opcional", r["lista_items"][-1]["nombre_tecnico"])
+        self.assertEqual(r["lista_items"][-1]["categoria"], "servicio")
         avisos = " ".join(r["revision_cubicacion"]["advertencias"])
         self.assertIn("kW", avisos); self.assertIn("kWh", avisos); self.assertIn("sur", avisos)
 

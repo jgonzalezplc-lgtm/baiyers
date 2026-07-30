@@ -350,7 +350,8 @@ de `cotizaciones` + `listas.py`.
 
 Pintura propone rendimiento, merma y envase únicamente cuando el usuario marca “No lo sé”, y
 exige confirmar cada supuesto. Solar mantiene separados kW y kWh y advierte orientación sur e
-inspección. Permite continuar cotizando un servicio profesional de evaluación/diseño/instalación,
-pero nunca inventa ni publica automáticamente cantidades de paneles, baterías o potencia.
+inspección. Entrega una lista preliminar de paneles, inversor, estructura, protecciones y conectores
+con supuestos visibles; el servicio profesional queda como ítem opcional. Baterías y cableado se
+excluyen mientras no existan datos de autonomía y trazado.
 
 Pruebas deterministas: `backend/tests/test_cubicacion.py`.

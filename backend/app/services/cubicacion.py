@@ -212,17 +212,41 @@ def _flujo_solar(datos: dict[str, Any]) -> dict[str, Any]:
               "Requiere inspección eléctrica y estructural en terreno antes de cotizar una solución contractual."]
     if "sur" in orientacion:
         avisos.append("La orientación sur reduce el aprovechamiento solar y requiere revisión especializada.")
-    item = _item(
+    # Dimensionamiento energético preliminar versionado. No sustituye el cálculo
+    # eléctrico: 4,5 h solares pico, 80% de rendimiento global y panel de 550 W.
+    energia_dia = consumo / 30
+    potencia_fv_kwp = energia_dia / (4.5 * .80)
+    panel_w = 550
+    paneles = math.ceil(potencia_fv_kwp * 1000 / panel_w)
+    potencia_instalada_kwp = paneles * panel_w / 1000
+    inversor_kw = max(1, math.ceil(potencia_instalada_kwp))
+    area_requerida = round(paneles * 2.4, 1)
+    area_disponible = datos.get("area_techo_m2")
+
+    items = [
+        _item(f"Panel solar fotovoltaico monocristalino {panel_w} W", paneles, "unidad", 1, "unidad", "electrico", f"{consumo:g} kWh/mes ÷ 30 ÷ (4,5 h × 80%) = {potencia_fv_kwp:.2f} kWp; {paneles} paneles de {panel_w} W"),
+        _item(f"Inversor solar de aproximadamente {inversor_kw} kW", 1, "unidad", 1, "unidad", "electrico", f"Potencia preliminar del campo: {potencia_instalada_kwp:.2f} kWp; validar por potencia simultánea y diseño de strings"),
+        _item("Estructura de montaje para panel solar en techo", paneles, "panel", 1, "panel", "construccion", f"Estructura para {paneles} paneles; fijaciones sujetas al tipo y estado del techo"),
+        _item("Kit de protecciones eléctricas fotovoltaicas DC y AC", 1, "unidad", 1, "kit", "electrico", "Un conjunto preliminar; calibres y protecciones dependen del diseño eléctrico"),
+        _item("Conectores solares MC4 macho y hembra", paneles, "paquete", 1, "par", "electrico", f"Estimación de un par por panel; validar configuración de strings"),
+    ]
+    servicio = _item(
         "Servicio de evaluación, diseño e instalación fotovoltaica",
         1, "unidad", 1, "servicio", "servicio",
         f"Evaluación para {consumo:g} kWh/mes en {datos.get('ubicacion')}; dimensionamiento final sujeto a visita técnica",
     )
-    item["terminos_busqueda_es"] = ["instalación paneles solares hogar", "empresa energía solar fotovoltaica", "diseño sistema solar residencial"]
-    item["terminos_busqueda_en"] = ["residential solar installation service", "photovoltaic system design"]
-    revision = {"receta": "solar-evaluacion@1", "items": [item], "supuestos": [], "advertencias": avisos,
+    servicio["nombre_tecnico"] += " (opcional)"
+    servicio["terminos_busqueda_es"] = ["instalación paneles solares hogar", "empresa energía solar fotovoltaica", "diseño sistema solar residencial"]
+    servicio["terminos_busqueda_en"] = ["residential solar installation service", "photovoltaic system design"]
+    items.append(servicio)
+    if isinstance(area_disponible, (int, float)) and area_disponible < area_requerida:
+        avisos.append(f"La estimación requiere aproximadamente {area_requerida:g} m2 y declaraste {area_disponible:g} m2 disponibles; se debe ajustar el diseño.")
+    avisos.append("Baterías y cableado no se incluyen: requieren autonomía deseada, trazado y distancias reales.")
+    revision = {"receta": "solar-evaluacion@1", "items": items,
+                "supuestos": ["4,5 horas solares pico", "80% de rendimiento global", f"Paneles de {panel_w} W y 2,4 m2"], "advertencias": avisos,
                 "resumen": {"consumo_kwh_mes": consumo, "potencia_simultanea_kw": datos.get("potencia_simultanea_kw"), "ubicacion": datos.get("ubicacion"), "orientacion": datos.get("orientacion"), "area_techo_m2": datos.get("area_techo_m2")}}
-    respuesta = _respuesta_lista("Evaluación instalación solar", [item], revision)
-    respuesta["mensaje"] = "Puedes solicitar cotizaciones preliminares; el proveedor deberá validar potencia, techo y conexión en terreno."
+    respuesta = _respuesta_lista("Sistema solar fotovoltaico preliminar", items, revision)
+    respuesta["mensaje"] = "Lista preliminar de materiales; puedes quitar el servicio opcional. El proveedor deberá validar el diseño final."
     return respuesta
 
 
