@@ -91,6 +91,8 @@ MODO CUBICACION CONVERSACIONAL:
   fórmulas reproducibles; no uses cantidades genéricas de un proyecto típico.
 - Para una cotización simple o una lista explícita con cantidades suficientes, responde
   inmediatamente con estado_flujo "listo" y no hagas preguntas.
+- En proyectos/cubicaciones genera sólo bienes, materiales y equipos. No agregues servicios,
+  ingeniería, consultoría, permisos, estudios, instalación ni mano de obra.
 """
 
 
@@ -144,6 +146,23 @@ def _normalizar_preguntas(preguntas: list) -> list[dict]:
     return normalizadas
 
 
+def _excluir_servicios_de_proyecto(result: dict) -> dict:
+    """Los proyectos/cubicaciones sólo producen bienes cotizables por ahora."""
+    if not result.get("es_proyecto"):
+        return result
+    items = [it for it in (result.get("lista_items") or []) if it.get("categoria") != "servicio"]
+    result["lista_items"] = items
+    revision = result.get("revision_cubicacion")
+    if isinstance(revision, dict):
+        revision["items"] = [it for it in (revision.get("items") or []) if it.get("categoria") != "servicio"]
+    if items:
+        primero = items[0]
+        for campo in ("nombre_tecnico", "marca", "numero_parte", "categoria", "terminos_busqueda_es", "terminos_busqueda_en"):
+            if campo in primero:
+                result[campo] = primero[campo]
+    return result
+
+
 @router.post("/identificar")
 async def identificar_item(req: IdentificarRequest):
     # Las recetas conocidas no dependen del LLM: cálculo, unidades y redondeos son
@@ -155,7 +174,7 @@ async def identificar_item(req: IdentificarRequest):
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc))
         if resultado_cubicacion is not None:
-            return resultado_cubicacion
+            return _excluir_servicios_de_proyecto(resultado_cubicacion)
 
     from app.config import settings
     import google.generativeai as genai
@@ -247,7 +266,7 @@ async def identificar_item(req: IdentificarRequest):
     if not result.get("n_cotizaciones_solicitadas"):
         result["n_cotizaciones_solicitadas"] = 3
 
-    return result
+    return _excluir_servicios_de_proyecto(result) if req.modo_cubicacion_conversacional else result
 
 
 # ─── Refinar búsqueda con contexto del usuario ────────────────────────────────

@@ -357,4 +357,8 @@ excluyen mientras no existan datos de autonomía y trazado.
 Los proyectos utility-scale (`parque`, `planta`, `central`, MWh o MWp) usan `parque-solar@1`:
 preguntan período de generación/almacenamiento, ubicación, hectáreas e interconexión, nunca techo.
 
+Por decisión de producto, las cubicaciones excluyen ítems de categoría `servicio` (ingeniería,
+consultoría, permisos, estudios, instalación y mano de obra). Una solicitud explícita que sea
+solamente un servicio conserva el flujo normal fuera de proyectos.
+
 Pruebas deterministas: `backend/tests/test_cubicacion.py`.

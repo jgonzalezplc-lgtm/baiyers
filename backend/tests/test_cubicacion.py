@@ -113,6 +113,15 @@ class CubicacionHttpTest(unittest.TestCase):
             "respuestas_cubicacion": {"completos_por_persona": 2, "tipo": "italiano", "veganos": 2, "extras": True}})
         self.assertEqual(final.json()["revision_cubicacion"]["totales"]["completos"], 20)
 
+    def test_endpoint_solar_no_expone_servicios_generados(self):
+        res = self.client.post("/api/identificar", json={"descripcion": "parque solar de 3MWh", "modo_cubicacion_conversacional": True,
+            "respuestas_cubicacion": {"tipo_objetivo": "3 MWp", "ubicacion": "Copiapó", "area_terreno_ha": 6, "potencia_interconexion_mw": 3, "tipo_montaje": "fijo"}})
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertTrue(body["lista_items"])
+        self.assertFalse(any(i["categoria"] == "servicio" for i in body["lista_items"]))
+        self.assertFalse(any(i["categoria"] == "servicio" for i in body["revision_cubicacion"]["items"]))
+
 
 if __name__ == "__main__":
     unittest.main()
