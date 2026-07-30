@@ -203,6 +203,20 @@ def _normalizar_revision_generada(result: dict) -> dict:
     return result
 
 
+def _modelos_identificacion(modo_cubicacion_conversacional: bool) -> list[str]:
+    """Modelos en orden de preferencia; el segundo cubre retiros por cuenta/región."""
+    if modo_cubicacion_conversacional:
+        return ["gemini-3.5-flash-lite", "gemini-2.5-flash"]
+    return ["gemini-2.5-flash"]
+
+
+def _es_error_modelo_no_disponible(exc: Exception) -> bool:
+    mensaje = str(exc).lower()
+    return any(fragmento in mensaje for fragmento in (
+        "404", "not found", "no longer available", "is not available",
+    ))
+
+
 @router.post("/identificar")
 async def identificar_item(req: IdentificarRequest):
     # Las recetas conocidas no dependen del LLM: cálculo, unidades y redondeos son
@@ -226,18 +240,6 @@ async def identificar_item(req: IdentificarRequest):
         raise HTTPException(status_code=400, detail="Se requiere descripcion o imagen")
 
     genai.configure(api_key=settings.gemini_api_key)
-    # El flujo conversacional genera JSON estructurado largo. Flash-Lite reduce
-    # notablemente la latencia; response_mime_type evita markdown y reparsing.
-    nombre_modelo = "gemini-2.5-flash-lite" if req.modo_cubicacion_conversacional else "gemini-2.5-flash"
-    model = genai.GenerativeModel(
-        nombre_modelo,
-        generation_config={
-            "response_mime_type": "application/json",
-            "temperature": 0.15,
-            "max_output_tokens": 8192,
-        },
-    )
-
     parts = []
 
     if req.imagen_base64:
@@ -273,16 +275,33 @@ async def identificar_item(req: IdentificarRequest):
         )
     parts.append(prompt)
 
-    try:
-        response = await asyncio.wait_for(
-            model.generate_content_async(parts),
-            timeout=45.0,
+    # Flash-Lite reduce la latencia del JSON largo. Si Google retira el modelo
+    # para una cuenta o región, degradamos inmediatamente al modelo estable sin
+    # repetir llamadas lentas ni ocultar otros errores de Gemini.
+    text = ""
+    modelos = _modelos_identificacion(req.modo_cubicacion_conversacional)
+    for indice, nombre_modelo in enumerate(modelos):
+        model = genai.GenerativeModel(
+            nombre_modelo,
+            generation_config={
+                "response_mime_type": "application/json",
+                "max_output_tokens": 8192,
+            },
         )
-        text = _limpiar_json(response.text)
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="La cubicación está tomando más de lo esperado. Tus respuestas se conservaron; intenta nuevamente.")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error con Gemini: {str(e)}")
+        try:
+            response = await asyncio.wait_for(
+                model.generate_content_async(parts),
+                timeout=45.0,
+            )
+            text = _limpiar_json(response.text)
+            break
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail="La cubicación está tomando más de lo esperado. Tus respuestas se conservaron; intenta nuevamente.")
+        except Exception as exc:
+            tiene_fallback = indice < len(modelos) - 1
+            if tiene_fallback and _es_error_modelo_no_disponible(exc):
+                continue
+            raise HTTPException(status_code=500, detail=f"Error con Gemini: {str(exc)}")
 
     try:
         result = json.loads(text)

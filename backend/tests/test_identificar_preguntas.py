@@ -1,9 +1,28 @@
 import unittest
 
-from app.routers.identificar import _excluir_servicios_de_proyecto, _normalizar_preguntas, _normalizar_revision_generada
+from app.routers.identificar import (
+    _es_error_modelo_no_disponible,
+    _excluir_servicios_de_proyecto,
+    _modelos_identificacion,
+    _normalizar_preguntas,
+    _normalizar_revision_generada,
+)
 
 
 class PreguntasCubicacionTest(unittest.TestCase):
+    def test_cubicacion_prefiere_modelo_actual_y_conserva_fallback(self):
+        self.assertEqual(
+            _modelos_identificacion(True),
+            ["gemini-3.5-flash-lite", "gemini-2.5-flash"],
+        )
+
+    def test_flujo_antiguo_conserva_modelo_estable(self):
+        self.assertEqual(_modelos_identificacion(False), ["gemini-2.5-flash"])
+
+    def test_fallback_solo_para_modelo_no_disponible(self):
+        self.assertTrue(_es_error_modelo_no_disponible(Exception("404 model no longer available")))
+        self.assertFalse(_es_error_modelo_no_disponible(Exception("quota exceeded")))
+
     def test_ids_no_dependen_de_la_posicion(self):
         primera = _normalizar_preguntas(["¿Cuáles son las dimensiones?", "¿Qué material usarás?"])
         segunda = _normalizar_preguntas(["¿Cuántos pisos tendrá?", "¿Qué cimentación usarás?"])
