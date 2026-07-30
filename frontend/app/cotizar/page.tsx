@@ -35,6 +35,12 @@ interface ResultadoIA {
     categoria: string;
     cantidad?: number;
     unidad?: string;
+    cantidad_neta?: number;
+    unidad_compra?: string;
+    cantidad_comercial?: number;
+    calculo?: string;
+    supuestos?: string[];
+    advertencias?: string[];
     terminos_busqueda_es: string[];
     terminos_busqueda_en: string[];
   }[];

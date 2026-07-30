@@ -1,6 +1,6 @@
 import unittest
 
-from app.routers.identificar import _excluir_servicios_de_proyecto, _normalizar_preguntas
+from app.routers.identificar import _excluir_servicios_de_proyecto, _normalizar_preguntas, _normalizar_revision_generada
 
 
 class PreguntasCubicacionTest(unittest.TestCase):
@@ -34,6 +34,18 @@ class PreguntasCubicacionTest(unittest.TestCase):
     def test_cotizacion_explicita_de_servicio_no_se_filtra(self):
         resultado = _excluir_servicios_de_proyecto({"es_proyecto": False, "lista_items": [{"nombre_tecnico": "Consultoría", "categoria": "servicio"}]})
         self.assertEqual(len(resultado["lista_items"]), 1)
+
+    def test_proyecto_general_construye_revision_por_item(self):
+        resultado = _normalizar_revision_generada({"es_proyecto": True, "lista_items": [{
+            "nombre_tecnico": "Cemento 42,5 kg", "categoria": "construccion", "cantidad": 18,
+            "cantidad_neta": 750, "unidad": "kg", "unidad_compra": "saco",
+            "cantidad_comercial": 765, "calculo": "0,75 m3 × 300 kg/m3 ÷ 42,5 kg por saco",
+            "supuestos": ["radier de 10 cm"], "advertencias": ["validar suelo"],
+        }]})
+        revision = resultado["revision_cubicacion"]
+        self.assertEqual(revision["items"][0]["cantidad_compra"], 18)
+        self.assertIn("42,5 kg", revision["items"][0]["calculo"])
+        self.assertEqual(revision["supuestos"], ["radier de 10 cm"])
 
 
 if __name__ == "__main__":

@@ -47,6 +47,12 @@ Interpreta la intencion, extrae CADA item por separado, y responde SOLO en JSON 
       "categoria": "una de las categorias de arriba",
       "cantidad": 1,
       "unidad": "und|kg|m|lt|caja|otro",
+      "cantidad_neta": 1,
+      "unidad_compra": "saco|caja|plancha|rollo|unidad|kg|m|otro",
+      "cantidad_comercial": 1,
+      "calculo": "fórmula o criterio concreto que explica la cantidad",
+      "supuestos": ["supuesto explícito usado en este ítem"],
+      "advertencias": ["limitación o validación pendiente"],
       "terminos_busqueda_es": ["termino1", "termino2", "termino3"],
       "terminos_busqueda_en": ["term1", "term2", "term3"]
     }
@@ -66,6 +72,8 @@ Reglas:
   resumen corto ("Herramientas taller"); null si es 1 solo item.
 - En proyectos: items CONCRETOS y buscables en retail/distribuidores (nada de "materiales varios"),
   cada uno con su categoria correcta y terminos de busqueda de comprador experto.
+- En proyectos, cada ítem debe explicar su cubicación: cantidad_neta, unidad, cantidad comercial,
+  formato/unidad de compra, cálculo o criterio, supuestos y advertencias. Nunca omitas `calculo`.
 - Los campos de nivel superior (nombre_tecnico, terminos_busqueda_es, etc.) corresponden al PRIMER item, para retrocompatibilidad."""
 
 PROMPT_CUBICACION_CONVERSACIONAL = """
@@ -160,6 +168,38 @@ def _excluir_servicios_de_proyecto(result: dict) -> dict:
         for campo in ("nombre_tecnico", "marca", "numero_parte", "categoria", "terminos_busqueda_es", "terminos_busqueda_en"):
             if campo in primero:
                 result[campo] = primero[campo]
+    return result
+
+
+def _normalizar_revision_generada(result: dict) -> dict:
+    """Convierte la trazabilidad por ítem del generador general al contrato UI."""
+    if result.get("revision_cubicacion") or not result.get("es_proyecto"):
+        return result
+    detalles = []
+    supuestos: list[str] = []
+    advertencias: list[str] = []
+    for item in result.get("lista_items") or []:
+        calculo = item.get("calculo")
+        if not calculo:
+            continue
+        detalles.append({
+            "nombre_tecnico": item.get("nombre_tecnico"),
+            "categoria": item.get("categoria"),
+            "cantidad_neta": item.get("cantidad_neta", item.get("cantidad", 1)),
+            "unidad": item.get("unidad", "unidad"),
+            "cantidad_compra": item.get("cantidad", 1),
+            "unidad_compra": item.get("unidad_compra", item.get("unidad", "unidad")),
+            "cantidad_comercial": item.get("cantidad_comercial", item.get("cantidad", 1)),
+            "calculo": calculo,
+        })
+        supuestos.extend(str(x) for x in (item.get("supuestos") or []))
+        advertencias.extend(str(x) for x in (item.get("advertencias") or []))
+    if detalles:
+        result["revision_cubicacion"] = {
+            "receta": "proyecto-generado@1", "items": detalles,
+            "supuestos": list(dict.fromkeys(supuestos)),
+            "advertencias": list(dict.fromkeys(advertencias)),
+        }
     return result
 
 
@@ -266,7 +306,10 @@ async def identificar_item(req: IdentificarRequest):
     if not result.get("n_cotizaciones_solicitadas"):
         result["n_cotizaciones_solicitadas"] = 3
 
-    return _excluir_servicios_de_proyecto(result) if req.modo_cubicacion_conversacional else result
+    if req.modo_cubicacion_conversacional:
+        result = _normalizar_revision_generada(result)
+        result = _excluir_servicios_de_proyecto(result)
+    return result
 
 
 # ─── Refinar búsqueda con contexto del usuario ────────────────────────────────
