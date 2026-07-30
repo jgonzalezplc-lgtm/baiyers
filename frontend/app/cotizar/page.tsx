@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUp, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import FormularioCotizar from "./components/FormularioCotizar";
 import ResultadoIdentificacion from "./components/ResultadoIdentificacion";
@@ -129,7 +129,7 @@ export default function CotizarPage() {
         return;
       }
       const items = data.lista_items ?? [];
-      if (items.length > 1) {
+      if (items.length > 1 || (items.length === 1 && data.revision_cubicacion)) {
         setNombreListaSugerido(data.nombre_lista_sugerido ?? "");
         setEsProyecto(data.es_proyecto ?? false);
         setResultadosMulti(items.map(li => ({
@@ -141,6 +141,10 @@ export default function CotizarPage() {
           terminos_busqueda_es: li.terminos_busqueda_es ?? [],
           terminos_busqueda_en: li.terminos_busqueda_en ?? [],
           confianza: data.confianza,
+          cubicacion: (() => {
+            const detalle = data.revision_cubicacion?.items.find(ri => ri.nombre_tecnico === li.nombre_tecnico);
+            return detalle ? { ...detalle, supuestos: data.revision_cubicacion?.supuestos ?? [], advertencias: data.revision_cubicacion?.advertencias ?? [] } : undefined;
+          })(),
         })));
         setEtapa("resultado");
         return;
@@ -316,17 +320,11 @@ export default function CotizarPage() {
             {preguntasCubicacion.map((pregunta) => (
               <label key={pregunta.id} style={{ display: "grid", gap: 7, fontSize: 14, color: "var(--n-900)" }}>
                 <span>{pregunta.texto}</span>
-                {pregunta.tipo === "booleano" ? (
-                  <select value={String(respuestasCubicacion[pregunta.id] ?? "")} onChange={e => setRespuestasCubicacion(r => ({ ...r, [pregunta.id]: e.target.value === "true" }))} style={{ padding: 10, border: "1px solid var(--n-300)", background: "var(--surface)" }}>
-                    <option value="">Selecciona…</option><option value="true">Sí</option><option value="false">No</option>
-                  </select>
-                ) : (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <input type={pregunta.tipo === "numero" ? "number" : "text"} min={pregunta.tipo === "numero" ? 0 : undefined} value={respuestasCubicacion[pregunta.id] === "no_se" ? "" : String(respuestasCubicacion[pregunta.id] ?? "")} placeholder={respuestasCubicacion[pregunta.id] === "no_se" ? "Marcado: No lo sé" : undefined} onChange={e => setRespuestasCubicacion(r => ({ ...r, [pregunta.id]: pregunta.tipo === "numero" ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value }))} style={{ flex: 1, padding: 10, border: "1px solid var(--n-300)", background: "var(--surface)" }} />
-                    {pregunta.unidad && <span style={{ alignSelf: "center", color: "var(--n-600)" }}>{pregunta.unidad}</span>}
-                    {pregunta.permite_no_se && <button type="button" className="btn-swiss-secondary" onClick={() => setRespuestasCubicacion(r => ({ ...r, [pregunta.id]: "no_se" }))}>No lo sé</button>}
-                  </div>
-                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input type="text" inputMode={pregunta.tipo === "numero" ? "decimal" : "text"} value={respuestasCubicacion[pregunta.id] === "no_se" ? "" : String(respuestasCubicacion[pregunta.id] ?? "")} placeholder={respuestasCubicacion[pregunta.id] === "no_se" ? "Marcado: No lo sé" : pregunta.tipo === "booleano" ? "Escribe sí o no" : "Escribe tu respuesta"} onChange={e => setRespuestasCubicacion(r => ({ ...r, [pregunta.id]: e.target.value }))} style={{ flex: 1, padding: 10, border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)", font: "inherit" }} />
+                  {pregunta.unidad && <span style={{ alignSelf: "center", color: "var(--n-600)" }}>{pregunta.unidad}</span>}
+                  {pregunta.permite_no_se && <button type="button" className="btn-swiss-secondary" onClick={() => setRespuestasCubicacion(r => ({ ...r, [pregunta.id]: "no_se" }))}>No lo sé</button>}
+                </div>
               </label>
             ))}
           </div>
@@ -340,7 +338,7 @@ export default function CotizarPage() {
             className="btn-swiss-primary"
             style={{ height: 44, display: "inline-flex", alignItems: "center", gap: 7 }}
           >
-            Continuar <ArrowUp size={16} />
+            Continuar
           </button>
         </div>
 
@@ -482,25 +480,6 @@ export default function CotizarPage() {
         }}>
           {error}
         </div>
-      )}
-
-      {revisionCubicacion && (
-        <section style={{ border: "1px solid var(--n-300)", background: "var(--surface)", padding: 20, marginBottom: 22 }}>
-          <span className="label">REVISIÓN DE CUBICACIÓN · {revisionCubicacion.receta}</span>
-          <h2 style={{ fontSize: 20, margin: "12px 0 6px" }}>Así calculamos tu compra</h2>
-          <p style={{ color: "var(--n-600)", fontSize: 13 }}>Revisa cantidades netas, formatos comerciales y redondeos antes de publicar la lista.</p>
-          <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-            {revisionCubicacion.items.map(item => (
-              <div key={item.nombre_tecnico} style={{ borderTop: "1px solid var(--n-200)", paddingTop: 10 }}>
-                <strong>{item.nombre_tecnico}</strong>
-                <div style={{ fontSize: 13, color: "var(--n-700)", marginTop: 3 }}>Neto: {item.cantidad_neta} {item.unidad} · Compra: {item.cantidad_compra} {item.unidad_compra} ({item.cantidad_comercial} {item.unidad})</div>
-                <div style={{ fontSize: 12, color: "var(--n-500)", marginTop: 2 }}>{item.calculo}</div>
-              </div>
-            ))}
-          </div>
-          {!!revisionCubicacion.supuestos.length && <p style={{ fontSize: 12, marginTop: 14 }}><strong>Supuestos confirmados:</strong> {revisionCubicacion.supuestos.join(" · ")}</p>}
-          {!!revisionCubicacion.advertencias.length && <p style={{ fontSize: 12, color: "var(--danger)" }}>{revisionCubicacion.advertencias.join(" · ")}</p>}
-        </section>
       )}
 
       {etapa === "resultado" && resultadosMulti && (

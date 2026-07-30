@@ -49,6 +49,11 @@ class CubicacionTest(unittest.TestCase):
         self.assertAlmostEqual(palta["cantidad_neta"], 2.286, places=3)
         self.assertEqual((pan["cantidad_compra"], pan["cantidad_comercial"]), (3, 24))
 
+    def test_no_lo_se_no_rompe_completos(self):
+        resultado = cubicar_completos({"personas": "10", "completos_por_persona": "2", "tipo": "italiano", "veganos": "no_se", "extras": "no"})
+        self.assertEqual(resultado["totales"]["veganos"], 0)
+        self.assertFalse(any(i["nombre_tecnico"] == "Bebida" for i in resultado["items"]))
+
     def test_pintura_con_supuestos_exige_confirmacion(self):
         datos = {"area": 40, "manos": 2, "rendimiento_m2_l": "no_se", "merma_pct": "no_se", "envase_l": "no_se"}
         r = flujo_determinista("pintar una oficina", datos)

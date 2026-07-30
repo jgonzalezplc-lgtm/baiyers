@@ -7,7 +7,7 @@
  * modelo no haya incluido.
  */
 import { useState, useEffect } from "react";
-import { ChevronRight, Plus, X, Undo2, Sparkles } from "lucide-react";
+import { ChevronRight, Plus, X, Undo2, Calculator } from "lucide-react";
 import { CATEGORIAS } from "./ResultadoIdentificacion";
 
 export interface ItemIdentificado {
@@ -19,6 +19,11 @@ export interface ItemIdentificado {
   terminos_busqueda_es: string[];
   terminos_busqueda_en: string[];
   confianza: "alto" | "medio" | "bajo";
+  cubicacion?: {
+    cantidad_neta: number; unidad: string; cantidad_compra: number;
+    unidad_compra: string; cantidad_comercial: number; calculo: string;
+    supuestos?: string[]; advertencias?: string[];
+  };
 }
 
 interface Props {
@@ -30,7 +35,7 @@ interface Props {
   esProyecto?: boolean;
 }
 
-export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCorregir, guardando, nombreListaInicial = "", esProyecto = false }: Props) {
+export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCorregir, guardando, nombreListaInicial = "" }: Props) {
   const [allItems, setAllItems] = useState<ItemIdentificado[]>(() => [...items]);
   const [nombreLista, setNombreLista] = useState(nombreListaInicial);
   const [incluidos, setIncluidos] = useState<boolean[]>(() => items.map(() => true));
@@ -144,22 +149,6 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
           onFocus={e => { e.currentTarget.style.background = "var(--surface-2)"; }}
           onBlur={e => { e.currentTarget.style.background = "transparent"; }}
         />
-        <p style={{ textAlign: "center", fontSize: 14, color: "var(--n-500)", margin: "2px 0 0" }}>
-          {esProyecto
-            ? `Proyecto detectado · ${allItems.length} materiales. Ajusta cantidades y quita lo que no necesites.`
-            : `${allItems.length} ítems identificados · se cotizarán en paralelo.`}
-        </p>
-      </div>
-
-      {/* Aviso */}
-      <div style={{
-        background: "var(--brand-50)", border: "1px solid var(--brand-100)",
-        color: "var(--brand-700)", borderRadius: "var(--r-md)",
-        padding: "12px 16px", margin: "16px 0", fontSize: 13.5, lineHeight: 1.55,
-        display: "flex", gap: 10, alignItems: "flex-start",
-      }}>
-        <Sparkles size={17} strokeWidth={1.75} style={{ flexShrink: 0, marginTop: 1 }} />
-        <span>Haz clic en el título para renombrar la lista. Abre cada ítem para revisar categorías y términos de búsqueda.</span>
       </div>
 
       {/* Lista de ítems (accordion) */}
@@ -250,6 +239,16 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
                         {incluidos[i] ? <><X size={14} strokeWidth={2} /> Quitar</> : <><Undo2 size={14} strokeWidth={2} /> Incluir</>}
                       </button>
                     </div>
+
+                    {it.cubicacion && (
+                      <div style={{ marginBottom: 16, padding: 14, border: "1px solid var(--brand-100)", borderRadius: "var(--r-md)", background: "var(--brand-50)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7, color: "var(--brand-700)", fontSize: 13, fontWeight: 600, marginBottom: 8 }}><Calculator size={16} /> Cubicación</div>
+                        <div style={{ fontSize: 13, color: "var(--n-800)" }}>Neto: {it.cubicacion.cantidad_neta} {it.cubicacion.unidad} · Compra: {it.cubicacion.cantidad_compra} {it.cubicacion.unidad_compra} ({it.cubicacion.cantidad_comercial} {it.cubicacion.unidad})</div>
+                        <div style={{ fontSize: 12, color: "var(--n-600)", marginTop: 5 }}>{it.cubicacion.calculo}</div>
+                        {!!it.cubicacion.supuestos?.length && <div style={{ fontSize: 12, color: "var(--n-600)", marginTop: 8 }}><strong>Supuestos:</strong> {it.cubicacion.supuestos.join(" · ")}</div>}
+                        {!!it.cubicacion.advertencias?.length && <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 8 }}>{it.cubicacion.advertencias.join(" · ")}</div>}
+                      </div>
+                    )}
 
                     {/* Categorías: activas visibles; "+" despliega las demás */}
                     {(() => {

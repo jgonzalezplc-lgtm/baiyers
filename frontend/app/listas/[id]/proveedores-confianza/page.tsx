@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowLeft, Check, Mail, ShieldCheck, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Building2, Check, Mail, Save, Search, Send, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Badge, BtnPrimary, BtnSecondary, Card, CategoryChip, EmptyState, PageHeader, Spinner } from "@/components/ui";
 
@@ -91,6 +91,14 @@ export default function ProveedoresConfianzaPage() {
     <PageHeader eyebrow="Cotización a proveedores de confianza" title="Matriz ítem–proveedor" subtitle="Revisa qué proveedor recibirá cada ítem. Nada se enviará todavía." />
     {mensaje && <div style={{ padding: 11, marginBottom: 14, borderRadius: "var(--r-md)", background: "var(--surface-2)", color: "var(--n-700)", fontSize: 13 }}>{mensaje}</div>}
 
+    <div style={{ display: "flex", justifyContent: "flex-end", gap: 9, marginBottom: 16, flexWrap: "wrap" }}>
+      {matriz.items[0] && <BtnSecondary icon={Search} onClick={() => router.push(`/cotizar/${matriz.items[0].cotizacion_id}/resultados?lista=${id}`)}>Comparar ofertas</BtnSecondary>}
+      <BtnSecondary icon={Save} disabled={guardando} onClick={() => void guardar()}>{guardando ? "Guardando…" : "Guardar matriz"}</BtnSecondary>
+      <BtnPrimary icon={Send} disabled={preparando || seleccion.size === 0} onClick={() => void prepararCorreos()}>{preparando ? "Preparando…" : "Preparar correos"}</BtnPrimary>
+    </div>
+
+    {matriz.proveedores.length === 0 && <Card style={{ marginBottom: 16, background: "var(--st-cotizando-bg)", borderColor: "var(--st-cotizando-fg)" }}><div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}><AlertTriangle size={20} color="var(--st-cotizando-fg)" /><div style={{ flex: 1, minWidth: 220 }}><strong style={{ color: "var(--n-900)" }}>Aún no hay proveedores disponibles</strong><div style={{ color: "var(--n-600)", fontSize: 13, marginTop: 3 }}>Agrega categorías a tus proveedores o continúa para buscar ofertas externas.</div></div><Link href="/proveedores" style={{ textDecoration: "none" }}><BtnPrimary icon={Building2}>Gestionar proveedores</BtnPrimary></Link></div></Card>}
+
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 18 }}>
       {[["Ítems totales", matriz.items.length], ["Cubiertos", cubiertos], ["Sin proveedor", matriz.items.length - cubiertos], ["Proveedores", proveedoresSeleccionados], ["Solicitudes", seleccion.size]].map(([label, val]) => <Card key={String(label)} padding={14}><div style={{ fontSize: 12, color: "var(--n-500)" }}>{label}</div><div style={{ fontSize: 23, fontWeight: 600, color: label === "Sin proveedor" && Number(val) > 0 ? "var(--danger)" : "var(--n-900)", marginTop: 4 }}>{val}</div></Card>)}
     </div>
@@ -99,11 +107,10 @@ export default function ProveedoresConfianzaPage() {
 
     <Card style={{ marginBottom: 18 }}><h2 style={{ margin: "0 0 12px", fontSize: 16, color: "var(--n-900)" }}>Cobertura por ítem</h2><div style={{ display: "grid", gap: 8 }}>{matriz.items.map(it => { const n = cobertura[it.cotizacion_id] || 0; const low = n === 1; return <div key={it.cotizacion_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 9, borderRadius: "var(--r-md)", background: n ? (low ? "var(--st-cotizando-bg)" : "var(--st-aprobada-bg)") : "var(--st-rechazada-bg)" }}>{n ? (low ? <AlertTriangle size={17} /> : <Check size={17} />) : <X size={17} />}<CategoryChip categoria={it.categoria} size={30} /><div style={{ flex: 1 }}><div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--n-900)" }}>{it.nombre}</div><div style={{ fontSize: 12, color: "var(--n-600)" }}>{it.cantidad} {it.unidad} · {it.categoria.replaceAll("_", " ")}</div></div><strong style={{ fontSize: 12.5, color: "var(--n-700)" }}>{n === 0 ? "Sin proveedor" : n === 1 ? "1 proveedor" : `${n} proveedores`}</strong></div>; })}</div></Card>
 
-    {matriz.proveedores.length === 0 ? <Card><EmptyState icon={ShieldCheck} title="Aún no hay proveedores compatibles" description="Agrega categorías a tus proveedores para que Baiyer pueda relacionarlos con los ítems de esta lista." action={<Link href="/proveedores" style={{ textDecoration: "none" }}><BtnPrimary>Gestionar proveedores</BtnPrimary></Link>} /></Card> : <div style={{ display: "grid", gap: 14 }}>{matriz.proveedores.map(p => <Card key={p.proveedor_id}>
+    {matriz.proveedores.length > 0 && <div style={{ display: "grid", gap: 14 }}>{matriz.proveedores.map(p => <Card key={p.proveedor_id}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}><div><div style={{ display: "flex", alignItems: "center", gap: 8 }}><Link href={`/proveedores/${p.proveedor_id}`} style={{ color: "var(--n-900)", fontWeight: 600, textDecoration: "none", fontSize: 16 }}>{p.nombre}</Link>{p.preferido && <Badge status="cotizando">Preferido</Badge>}</div><div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--n-500)", fontSize: 12.5, marginTop: 4 }}><Mail size={14} /> {p.contacto?.email || "Sin correo configurado"}</div></div><div style={{ color: "var(--n-600)", fontSize: 13 }}>Score {p.score}</div></div>
       <div style={{ display: "grid", gap: 8 }}>{p.items.map(it => { const checked = seleccion.has(`${p.proveedor_id}:${it.cotizacion_id}`); return <label key={it.cotizacion_id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: 10, border: `1px solid ${checked ? "var(--brand-200)" : "var(--n-200)"}`, borderRadius: "var(--r-md)", background: checked ? "var(--brand-50)" : "var(--surface)", cursor: "pointer" }}><input type="checkbox" checked={checked} onChange={() => alternar(p.proveedor_id, it.cotizacion_id)} style={{ marginTop: 4 }} /><CategoryChip categoria={it.categoria} size={34} /><div style={{ flex: 1 }}><div style={{ fontWeight: 600, color: "var(--n-900)", fontSize: 13.5 }}>{it.nombre} · {it.cantidad} {it.unidad}</div><div style={{ color: "var(--n-600)", fontSize: 12, marginTop: 3 }}>{it.explicacion}</div></div><div style={{ textAlign: "right" }}><strong style={{ color: it.confianza >= .8 ? "var(--success)" : "var(--warning)", fontSize: 13 }}>{Math.round(it.confianza * 100)}%</strong><div style={{ color: "var(--n-500)", fontSize: 11.5 }}>{it.estado}</div></div></label>; })}</div>
     </Card>)}</div>}
 
-    <div style={{ display: "flex", justifyContent: "flex-end", gap: 9, marginTop: 18, flexWrap: "wrap" }}><BtnSecondary onClick={() => router.push(`/listas/${id}`)}>Volver a la lista</BtnSecondary>{matriz.items[0] && <BtnSecondary onClick={() => router.push(`/cotizar/${matriz.items[0].cotizacion_id}/resultados?lista=${id}`)}>Continuar a comparar ofertas</BtnSecondary>}<BtnSecondary disabled={guardando} onClick={() => void guardar()}>{guardando ? "Guardando…" : "Guardar matriz"}</BtnSecondary><BtnPrimary disabled={preparando || seleccion.size === 0} onClick={() => void prepararCorreos()}>{preparando ? "Preparando…" : "Preparar correos"}</BtnPrimary></div>
   </>;
 }

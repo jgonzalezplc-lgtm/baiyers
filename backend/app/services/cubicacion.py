@@ -110,7 +110,11 @@ def extraer_completos(texto: str) -> dict[str, Any]:
 
 def cubicar_completos(datos: dict[str, Any]) -> dict[str, Any]:
     personas = int(datos["personas"]); por_persona = int(datos["completos_por_persona"])
-    veganos = int(datos.get("veganos", 0)); total = personas * por_persona
+    veganos_raw = datos.get("veganos", 0)
+    veganos = 0 if veganos_raw == "no_se" else int(veganos_raw)
+    extras_raw = datos.get("extras", False)
+    extras = extras_raw if isinstance(extras_raw, bool) else str(extras_raw).strip().lower() in {"si", "sí", "s", "true", "1", "con", "incluir"}
+    total = personas * por_persona
     if personas <= 0 or por_persona <= 0 or not 0 <= veganos <= personas:
         raise ValueError("datos de comensales inválidos")
     vegan = veganos * por_persona; tradicionales = total - vegan
@@ -126,7 +130,7 @@ def cubicar_completos(datos: dict[str, Any]) -> dict[str, Any]:
         _item("Tomate", tomate_kg, "kg", 1, "kg", "consumible", f"{total} × 70 g = {tomate_kg:.2f} kg"),
         _item("Palta", palta_bruta, "kg", 1, "kg", "consumible", f"{total} × 80 g / 70% rendimiento = {palta_bruta:.3f} kg"),
     ]
-    if datos.get("extras"):
+    if extras:
         items += [_item("Bebida", personas * .5, "L", 1.5, "botella", "consumible", "0,5 L por persona"), _item("Servilletas", total * 2, "unidad", 50, "paquete", "consumible", "2 por completo")]
     return {"receta": "completos@1", "nombre_lista_sugerido": "Completos", "totales": {"completos": total, "tradicionales": tradicionales, "veganos": vegan}, "items": items,
             "supuestos": ["10% de reserva de pan", "palta con 70% de rendimiento útil"], "advertencias": (["Separar utensilios y superficies para las opciones veganas"] if vegan else [])}
