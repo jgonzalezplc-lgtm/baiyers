@@ -143,15 +143,39 @@ async def gmail_callback(code: str, state: str):
 
 @router.get("/status")
 async def gmail_status(user_id: str):
-    """Estado persistente de la integración para la UI del dashboard."""
+    """Estado persistente de la integración para la UI del dashboard. Nunca
+    desde `?gmail=conectado` (query param temporal del callback OAuth) — este
+    endpoint es la única fuente de verdad.
+
+    `estado` de 3 valores para el indicador del dashboard:
+    - "desconectado": no hay refresh_token (no autorizado, o revocado).
+    - "atencion": conectado, pero hay conversaciones que requieren revisión
+      humana o fallaron — la integración funciona pero algo necesita ojo.
+    - "ok": conectado y sin conversaciones pendientes de atención.
+    No se expone ningún token."""
     from app.services.supabase import get_supabase
 
     sb = get_supabase()
-    result = sb.table("user_integrations").select("refresh_token").eq(
+    result = sb.table("user_integrations").select("refresh_token, email").eq(
         "user_id", user_id
     ).eq("provider", "gmail").limit(1).execute()
     integration = (result.data or [{}])[0]
-    return {"connected": bool(integration.get("refresh_token"))}
+    conectado = bool(integration.get("refresh_token"))
+
+    if not conectado:
+        return {"connected": False, "estado": "desconectado", "conversaciones_atencion": 0}
+
+    atencion = sb.table("gmail_conversations").select("id", count="exact").eq(
+        "user_id", user_id
+    ).in_("estado", ["human_review_required", "failed"]).execute()
+    n_atencion = atencion.count or 0
+
+    return {
+        "connected": True,
+        "estado": "atencion" if n_atencion > 0 else "ok",
+        "conversaciones_atencion": n_atencion,
+        "email": integration.get("email"),
+    }
 
 
 # ─── Generar correo ────────────────────────────────────────────────────────────

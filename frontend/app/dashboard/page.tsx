@@ -1,9 +1,55 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { FileText } from "lucide-react";
+import { FileText, CheckCircle2, AlertTriangle, XCircle, Mail, ShieldCheck } from "lucide-react";
 import { Card, Badge, EmptyState } from "@/components/ui";
 import { fmtCLP } from "@/components/ui/tokens";
+
+type EstadoIndicador = "ok" | "atencion" | "desconectado";
+
+const ESTADO_INDICADOR_UI: Record<EstadoIndicador, { color: string; bg: string; Icon: typeof CheckCircle2 }> = {
+  ok:            { color: "var(--success)", bg: "var(--st-aprobada-bg)",  Icon: CheckCircle2 },
+  atencion:      { color: "var(--warning)", bg: "var(--st-cotizando-bg)", Icon: AlertTriangle },
+  desconectado:  { color: "var(--danger)",  bg: "var(--st-rechazada-bg)", Icon: XCircle },
+};
+
+function IndicadorEstado({
+  icono: Icono, titulo, estado, detalle, accion,
+}: {
+  icono: typeof Mail; titulo: string; estado: EstadoIndicador; detalle: string;
+  accion?: { label: string; href: string };
+}) {
+  const { color, bg, Icon } = ESTADO_INDICADOR_UI[estado];
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 240,
+      background: "var(--surface)", border: "1px solid var(--n-200)",
+      borderRadius: "var(--r-lg)", padding: "12px 16px",
+    }}>
+      <span style={{
+        width: 36, height: 36, borderRadius: "var(--r-md)", flexShrink: 0,
+        background: bg, color, display: "inline-flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <Icono size={18} strokeWidth={1.75} />
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--n-900)" }}>{titulo}</span>
+          <Icon size={14} strokeWidth={2} color={color} aria-hidden />
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--n-600)", marginTop: 1 }}>{detalle}</div>
+      </div>
+      {accion && (
+        <Link href={accion.href} style={{
+          fontSize: 12.5, fontWeight: 500, color: "var(--brand)", textDecoration: "none",
+          whiteSpace: "nowrap", flexShrink: 0,
+        }}>
+          {accion.label} →
+        </Link>
+      )}
+    </div>
+  );
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -63,6 +109,10 @@ export default async function DashboardPage({
   let stats = { cotizaciones: 0, proveedores: 0, ocs: 0, totalOC: 0 };
   let listasRecientes: ListaReciente[] = [];
   let gmailConectado = gmailRecienConectado;
+  let gmailEstado: EstadoIndicador = gmailRecienConectado ? "ok" : "desconectado";
+  let gmailDetalle = gmailRecienConectado ? "Gmail conectado y listo para enviar cotizaciones." : "Conecta Gmail para enviar cotizaciones automáticamente.";
+  let autorizacionEstado: EstadoIndicador = "desconectado";
+  let autorizacionDetalle = "Sin ciclo de autorización configurado.";
 
   const fetchConTimeout = async (url: string, ms = 5000): Promise<Response | null> => {
     const ctrl = new AbortController();
@@ -78,16 +128,37 @@ export default async function DashboardPage({
   };
 
   try {
-    const [statsRes, cotRes, gmailRes] = await Promise.all([
+    const [statsRes, cotRes, gmailRes, workflowsRes] = await Promise.all([
       fetchConTimeout(`${API_URL}/api/dashboard/stats?user_id=${user.id}`),
       fetchConTimeout(`${API_URL}/api/listas?user_id=${user.id}`),
       fetchConTimeout(`${API_URL}/api/gmail/status?user_id=${user.id}`),
+      fetchConTimeout(`${API_URL}/api/aprobaciones/workflows?user_id=${user.id}`),
     ]);
     if (statsRes?.ok) stats = await statsRes.json();
     if (cotRes?.ok) listasRecientes = (await cotRes.json()).slice(0, 5);
     if (gmailRes?.ok) {
-      const gmailStatus = await gmailRes.json();
-      gmailConectado = Boolean(gmailStatus.connected);
+      const g = await gmailRes.json();
+      gmailConectado = Boolean(g.connected);
+      gmailEstado = g.estado ?? (gmailConectado ? "ok" : "desconectado");
+      gmailDetalle = !gmailConectado
+        ? "Conecta Gmail para enviar cotizaciones automáticamente."
+        : gmailEstado === "atencion"
+          ? `${g.conversaciones_atencion} conversación(es) necesitan revisión manual.`
+          : "Gmail conectado y sincronizando respuestas automáticamente.";
+    }
+    if (workflowsRes?.ok) {
+      const workflows: { pasos?: unknown[] }[] = await workflowsRes.json();
+      const conAprobadores = workflows.find(w => (w.pasos?.length ?? 0) > 0);
+      if (conAprobadores) {
+        autorizacionEstado = "ok";
+        autorizacionDetalle = "Ciclo de autorización activo y configurado.";
+      } else if (workflows.length > 0) {
+        autorizacionEstado = "atencion";
+        autorizacionDetalle = "Hay un flujo creado pero sin aprobadores asignados.";
+      } else {
+        autorizacionEstado = "desconectado";
+        autorizacionDetalle = "Sin ciclo de autorización configurado — las OC no pasan por aprobación.";
+      }
     }
   } catch (_) { /* silent */ }
 
@@ -112,6 +183,28 @@ export default async function DashboardPage({
           </h1>
           <p style={{ fontSize: 14, color: "var(--n-600)", margin: 0 }}>¿Qué necesitas cotizar hoy?</p>
         </div>
+      </div>
+
+      {/* Estado operativo — arriba, no escondido al final */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
+        <IndicadorEstado
+          icono={Mail}
+          titulo="Agente de correo"
+          estado={gmailEstado}
+          detalle={gmailDetalle}
+          accion={!gmailConectado
+            ? { label: "Conectar Gmail", href: `${API_URL}/api/gmail/auth?user_id=${user.id}` }
+            : gmailEstado === "atencion"
+              ? { label: "Revisar conversaciones", href: "/conversaciones" }
+              : undefined}
+        />
+        <IndicadorEstado
+          icono={ShieldCheck}
+          titulo="Ciclo de autorizaciones"
+          estado={autorizacionEstado}
+          detalle={autorizacionDetalle}
+          accion={{ label: "Editar ciclo", href: "/settings?section=autorizaciones" }}
+        />
       </div>
 
       {/* Stats row */}
@@ -254,38 +347,6 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* Gmail integration (compacto, al final) */}
-      <div style={{
-          marginTop: 24,
-          background: "var(--surface)",
-          border: "1px solid var(--n-200)",
-          borderRadius: "var(--r-lg)",
-          padding: "16px 20px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 16,
-          flexWrap: "wrap",
-        }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)", marginBottom: 2 }}>
-              Agente de correo
-            </div>
-            <div style={{ fontSize: 13.5, color: "var(--n-600)" }}>
-              {gmailConectado
-                ? "Gmail conectado y listo para enviar cotizaciones."
-                : "Conecta Gmail para enviar cotizaciones automáticamente."}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {!gmailConectado && <a href={`${API_URL}/api/gmail/auth?user_id=${user.id}`} className="btn-swiss-secondary" style={{ textDecoration: "none" }}>
-              Conectar Gmail
-            </a>}
-            <Link href="/settings?section=autorizaciones" className="btn-swiss-secondary" style={{ textDecoration: "none" }}>
-              Editar ciclo de autorizaciones
-            </Link>
-          </div>
-        </div>
     </div>
   );
 }
