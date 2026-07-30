@@ -41,8 +41,9 @@ cd frontend && npx tsc --noEmit
 - `onboarding.py` — `investigar-empresa`: desde dominio o nombre, con Gemini + scraping, devuelve empresa/industria/país/logo/RUT/categorías.
 - `contacto.py` + `services/contacto_scraper.py` — al cotizar, scrapea email + WhatsApp del proveedor y arma mensaje pre-hecho (`wa.me`).
 - `cuenta.py` — `/api/cuenta/eliminar` (darse de baja; verifica token, borra usuario auth).
-- `listas.py` — listas de cotización multi-ítem (guardadas como JSON en `proyectos.descripcion`; lock por lista).
-- Otros: `cotizaciones`, `oc`, `aprobaciones`, `proyectos` (Gantt), `analisis` (IA), `gmail`, `facturas` (parser de correos entrantes), `procurement`, `ledger`, `recurrencias`, `estadisticas`, `chat`, `historico`, `suppliers`, `proveedores_import`, MCP + API pública.
+- `listas.py` — listas de cotización multi-ítem (guardadas como JSON en `proyectos.descripcion`; lock por lista). **Es el sistema real y en uso** para proyectos multi-ítem — no confundir con `proyectos.py` (Gantt, tablas `items_proyecto`/`cotizaciones_proyecto`, existen pero con 0 filas reales) ni con `procurement.py` (`quote_items`/`quote_suppliers`/`purchase_events`, **tablas que no existen en producción** — ver Gotchas). Cada ítem de una lista ya tiene identidad estable real: `it.cotizacion_id` es una fila propia de `cotizaciones`, no depende de su posición en el JSON.
+- `procurement_profile.py` / `search_feedback.py` — Fase 1 de Supplier Capability Intelligence (ver sección dedicada más abajo).
+- Otros: `cotizaciones`, `oc`, `aprobaciones`, `proyectos` (Gantt, sin uso real), `analisis` (IA), `gmail`, `facturas` (parser de correos entrantes), `procurement` (roto, ver Gotchas), `ledger`, `recurrencias`, `estadisticas`, `chat`, `historico`, `suppliers`, `proveedores_import`, `notificaciones`, MCP + API pública.
 
 ### Agente de Gmail
 - Migraciones **019, 020 y 021 aplicadas en producción**: conversaciones/mensajes/adjuntos/propuestas, contactos multi-proveedor y etapa `compra_iniciada`.
@@ -59,7 +60,15 @@ Cada categoría → set de fuentes. **carpinteria** = maderas + retail construcc
 Descarta derivados/accesorios (ej: "barniz de madera" al buscar tablones) con negativas por categoría + patrón "X para <ítem>".
 
 ### Fuentes de scraping (`services/fuentes/`)
-`retail_cl.py` (Sodimac, Easy, La Sierra, Construmart, Vitel, Dartel, Ferrelectrica, Gobantes, Rhona), `maderas_cl.py` (CLC, W Maderas, Ferramenta + directorio aserraderos con gate de keywords), `mouser/digikey/tme`. **Arquitectura hardcodeada** — pendiente convertir a registro data-driven.
+`retail_cl.py` (Sodimac, Easy, La Sierra, Construmart, Vitel, Dartel, Ferrelectrica, Gobantes, Rhona), `maderas_cl.py` (CLC, W Maderas, Ferramenta + directorio aserraderos con gate de keywords), `mouser/digikey/tme`. **Arquitectura hardcodeada** — pendiente convertir a registro data-driven. Vitel/Construmart (Magento GraphQL) usan `sku` como respaldo de URL cuando falta `url_key`, para que dos productos distintos nunca compartan `url=""` (ver Gotchas — esto rompía la selección del comparador).
+
+### Supplier Capability Intelligence — Fase 1 (fundaciones, migración 024 aplicada y confirmada)
+Evolución hacia "qué proveedor abastece qué categoría", auditable y por usuario (sin aprendizaje compartido entre clientes todavía). Diseño completo y fases 2-7 en `PROMPT_CLAUDE_CODE_SUPPLIER_INTELLIGENCE.md` (raíz del repo, no tocar).
+- **Migración `024_supplier_capability_intelligence.sql` — aplicada y confirmada en producción.** Tablas nuevas: `procurement_profiles`/`procurement_profile_categories` (perfil de compra por usuario, categorías con confianza/orígenes/confirmación, no una lista plana), `search_sessions`/`search_feedback` (trazabilidad de cada búsqueda + feedback explícito tipo "no encontré lo que buscaba"), `supplier_capability_events` (log inmutable de evidencia, idempotente por `clave_idempotencia`), `supplier_capabilities` (capacidad calculada, **siempre recalculada desde los eventos, nunca incrementada in-place** — evita condiciones de carrera).
+- `services/supplier_capability_intelligence.py` — `PESOS` por tipo de evento (ajustable), `registrar_evento()` (idempotente), `recalcular_capacidad()` (determinístico: suma de pesos clamped a [0,1]), `rankear_proveedores()` (excluye bloqueados y categorías `rejected`, explica el porqué). Probado con un fake in-memory de supabase-py (no hay tablas reales todavía para probar contra la DB).
+- `services/procurement_profile.py` — `crear_o_actualizar_perfil()` (llamado al completar onboarding), `registrar_senal_uso()` (señal débil de uso real que puede **descubrir categorías nuevas** no previstas por el perfil — evita el ciclo de solo reforzar lo ya inferido), `confirmar_categoria()`/`agregar_categoria_manual()`/`eliminar_categoria()`.
+- Endpoints: `POST /api/procurement-profile/generar` (llamado desde `OnboardingChat.tsx` al terminar el onboarding, no bloquea si falla), `GET /api/procurement-profile`, `POST/DELETE /api/procurement-profile/categorias*`. `POST /api/buscar/sesiones` (creada de forma no bloqueante al iniciar `buscar()` en `cotizar/[id]/resultados/page.tsx`), `POST /api/buscar/sesiones/{id}/cerrar`, `POST /api/buscar/sesiones/{id}/feedback` (enganchado al flujo existente "¿No encontraste lo que buscabas?" → "Rebuscar con contexto", que ya existía y ya es, en esencia, la búsqueda expandida del spec).
+- **Pendiente:** todavía no se probó ningún endpoint contra la DB real con datos reales (solo con el fake in-memory); fases 2-7 (indicadores de estado arriba del dashboard, consistencia de tema, alta/investigación de proveedores, matriz proveedor-ítem, RFQ agrupada por correo, búsqueda complementaria priorizada).
 
 ## Auth & Onboarding (frontend)
 - Login/registro: **email/password + Google OAuth** (funcionan). Outlook **oculto** (`{false && ...}` en login/register) — Azure AD requiere cuenta Microsoft de trabajo.
@@ -68,7 +77,8 @@ Descarta derivados/accesorios (ej: "barniz de madera" al buscar tablones) con ne
 - Dashboard saluda con logo+nombre; búsquedas usan `industria` como contexto.
 
 ## Gotchas importantes
-- **Migraciones = manuales.** El service key de Supabase NO hace DDL. Correr los `.sql` de `backend/migrations/` en el SQL Editor de Supabase. Aplicadas al menos hasta **021** (incluye 018 aprobaciones y 019–021 agente Gmail). Los SQL legacy sin número no representan necesariamente producción: antes de tocar `resultados`, `cotizaciones` o `proveedores`, consultar el esquema real.
+- **Migraciones = manuales.** El service key de Supabase NO hace DDL, y no hay `DATABASE_URL` para conexión directa — Claude Code prepara el `.sql` y lo copia al portapapeles (`pbcopy`), pero el usuario lo pega y ejecuta en el SQL Editor de Supabase. Aplicadas y **confirmadas contra la DB real hasta la 024**: 019–021 agente Gmail, 022 notificaciones, 023 seguimiento de OC por correo (`ordenes_compra.recibido_conforme_at/despacho_at/despacho_detalle`, `gmail_conversations.oc_id`), 024 Supplier Capability Intelligence (`procurement_profiles`, `procurement_profile_categories`, `search_sessions`, `search_feedback`, `supplier_capability_events`, `supplier_capabilities`).
+- **Tablas referenciadas en código que NO EXISTEN en producción (confirmado con `sb.table(x).select('*').limit(1)` contra la DB real, no contra los `.sql`):** `supplier_categories` y `procurement_ledger` (de `014_smart_procurement.sql`, migración numerada pero aplicada solo a medias — `approval_workflows`/`approval_requests`/`recurrencia_logs` de ese mismo archivo sí existen), `quote_items`/`quote_suppliers`/`purchase_events` (de `013_procurement_flow.sql`, usadas por `procurement.py` — **el botón "+ Lista" en `/cotizar/[id]/resultados` llama a `POST /api/procurement/eventos` y hoy tira 500**), `supplier_ratings`/`rating_pendiente` (usadas por `supplier_intelligence.py` y `POST /api/suppliers/rating` — fallan en silencio o 500). Ningún numero de migración garantiza que esté realmente en prod: **antes de asumir que una tabla existe, verificar con una query real**, no solo mirar `backend/migrations/`.
 - **Orden de auto-aplicación Gmail:** hoy `item_field_updates` se inserta como `aplicado` antes de actualizar `resultados`. Si el segundo paso falla, la auditoría puede decir “Aplicada” sin que el dato exista. Esto ocurrió en datos antiguos y sigue siendo un riesgo del código actual; conviene hacer la escritura atómica o marcar `aplicado` sólo después del update exitoso.
 - **Estado de conexión Gmail:** el dashboard debe consultar `/api/gmail/status`; no inferir la conexión desde `?gmail=conectado`, porque ese query param sólo existe inmediatamente después del callback OAuth. Al reconectar, conservar el `refresh_token` persistente si Google no devuelve uno nuevo.
 - **credentials.json** (OAuth Gmail) está **gitignored** — en prod se usan env vars `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`.
@@ -83,18 +93,14 @@ Descarta derivados/accesorios (ej: "barniz de madera" al buscar tablones) con ne
 ## Costos infra
 Railway ~$5-10/mes · Supabase free · Serper 2.500 gratis→$50/50k · Gemini free tier. WhatsApp y SII (futuros) sí cuestan.
 
-## Estado verificado en producción (28-jul-2026)
-- Git local y `origin/main` alineados en `726debd`; el único cambio preexistente del worktree es `frontend/next-env.d.ts` y debe conservarse.
-- Backend `GET /api/health` responde healthy y `https://www.baiyer.cl` responde HTTP 200.
-- Supabase confirma las tablas/columnas de 019–021 y las columnas reales de respuesta en `resultados`.
-- Hay actividad reciente procesada por el agente: respuestas inbound seguidas por mensajes outbound automáticos. Dos resultados recientes están en `respondido` con precio y plazo; uno también tiene condiciones de pago. Esto confirma escritura real parcial y seguimiento automático.
-- El flujo **no está verificado punta a punta**: las conversaciones recientes siguen `partially_answered`, no hay ninguna `compra_iniciada`, no se comprobó visualmente el comparador ni se confirmó un agradecimiento final.
-- Además, dos entidades antiguas tienen actualizaciones auditadas como `aplicado` pero siguen `contactado` y sin precio/plazo/timestamp, evidencia del riesgo de orden de escritura descrito arriba.
+## Estado verificado (30-jul-2026)
+- `frontend/next-env.d.ts` sigue siendo el único cambio preexistente del worktree — se conserva sin commitear (es autogenerado por Next.js en dev).
+- Sesión larga de fixes ya en `main`/deployados: campanita de notificaciones (migración 022 aplicada), correo de autorización con un solo link, envío de OC por Gmail con seguimiento de acuse de recibo/despacho por correo (**migración 023 aplicada y confirmada**), fix de selección de ofertas duplicadas en el comparador (bug real: elegir una oferta de Vitel con `url` vacía marcaba varias como seleccionadas — corregido con un id propio `_uid` por resultado en vez de usar `url`, más la causa raíz en el scraper), limpieza de markdown en el correo de cotización generado por Gemini, migración de `OCModal` al design system actual.
+- **Supplier Capability Intelligence, Fase 1**: código completo, **migración 024 aplicada y confirmada**. Probado con fake in-memory; falta probar los endpoints reales end-to-end con datos de producción.
+- `PROJECT_STATUS.md` y `handoff.md` son handoffs **viejos** (28-jul, de antes de esta sesión) — según instrucción explícita del usuario, **la continuidad vive solo en este archivo**, no confiar en esos dos para el estado actual.
 
 ## Próximos pasos
-1. Ejecutar una prueba nueva y trazable en producción: enviar cotización a otra cuenta, responder con precio, disponibilidad, plazo y condiciones de pago, y esperar al cron sin usar sincronización manual.
-2. Verificar que el resultado queda `respondido`, que los cuatro datos aparecen en el comparador y que llega el agradecimiento automático.
-3. Aprobar esa lista sin observaciones y comprobar el correo de inicio de compra y el estado `compra_iniciada`.
-4. Después, corregir la atomicidad/orden de auto-aplicación y reconciliar las auditorías antiguas inconsistentes.
-
-Ver `PROJECT_STATUS.md` para el handoff detallado y `handoff.md` para las 4 fases del roadmap.
+1. Probar en producción el seguimiento de OC por correo (023): responder "recibido, gracias" desde otra cuenta y verificar que `ordenes_compra.estado` pasa a `recibido_conforme` solo, vía el cron de 1 min.
+2. Probar Supplier Capability Intelligence (024) con datos reales: completar un onboarding y confirmar que aparece la fila en `procurement_profiles`; hacer una búsqueda y confirmar que se crea `search_sessions`; usar "Rebuscar con contexto" y confirmar que cae en `search_feedback`.
+3. Fase 2 de Supplier Capability Intelligence: indicadores de estado (Gmail/autorizaciones) arriba del dashboard con estado real, y arreglar el cambio de tema inesperado entre dashboard y "Nueva cotización".
+4. Considerar si vale la pena arreglar o eliminar `procurement.py` (endpoint roto usado por el botón "+ Lista") y el sistema de Gantt sin uso (`proyectos.py`) — no tocado en esta sesión, solo detectado.

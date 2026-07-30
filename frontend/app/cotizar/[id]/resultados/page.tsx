@@ -203,6 +203,9 @@ export default function ResultadosPage() {
   const [formResp, setFormResp] = useState({ precio: "", moneda: "CLP", plazo: "", condiciones: "", notas: "" });
   const [guardandoResp, setGuardandoResp] = useState(false);
   const [fuentesActivas, setFuentesActivas] = useState<string[]>([]);
+  // Sesión de búsqueda auditable (Supplier Capability Intelligence, Fase 1) —
+  // no afecta la búsqueda en sí, solo registra trazabilidad para feedback/evidencia.
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [evaluaciones, setEvaluaciones] = useState<Record<string, {
     evaluacion: string; emoji: string; color: string; mensaje: string;
     precio_promedio_historico?: number; total_compras?: number; ultima_compra?: string;
@@ -313,8 +316,35 @@ export default function ResultadosPage() {
     }
     setNombreItem(nombre_item);
 
+    let currentSessionId: string | null = null;
     try {
       const uid = (await createClient().auth.getUser()).data.user?.id ?? null;
+
+      // Sesión de búsqueda auditable — en paralelo, nunca bloquea el inicio
+      // de la búsqueda real. Para cuando llegue "done" del stream (varios
+      // segundos después) ya debería estar creada.
+      if (uid && id !== "demo") {
+        fetch(`${API_URL}/api/buscar/sesiones`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: uid,
+            cotizacion_id: id,
+            lista_proyecto_id: listaId || null,
+            item_nombre: nombre_item,
+            categoria_predicha: categoria,
+            categorias_usadas: categorias,
+            terminos: [...terminos_es, ...terminos_en],
+            modo: override ? "expanded" : "directed",
+            session_padre_id: override ? sessionId : null,
+          }),
+        }).then(sr => (sr.ok ? sr.json() : null)).then(s => {
+          if (!s) return;
+          currentSessionId = s.id;
+          setSessionId(s.id);
+        }).catch(() => {});
+      }
+
       const res = await fetch(`${API_URL}/api/buscar/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -346,6 +376,13 @@ export default function ResultadosPage() {
             const msg = JSON.parse(line.slice(6));
             if (msg.done) {
               setLoading(false);
+              if (currentSessionId && uid) {
+                fetch(`${API_URL}/api/buscar/sesiones/${currentSessionId}/cerrar`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ user_id: uid, n_resultados: msg.total ?? 0 }),
+                }).catch(() => {});
+              }
             } else if (msg.result) {
               // Un resultado individual, efecto cascada
               const r: Resultado = { ...msg.result, _uid: crypto.randomUUID() };
@@ -414,6 +451,23 @@ export default function ResultadosPage() {
       setSeleccionados(new Set<string>());
       setToast("Rebuscando con los términos depurados...");
       setTimeout(() => setToast(""), 3000);
+
+      // Feedback explícito: el usuario dijo que la búsqueda original no sirvió
+      // y dio contexto para ampliarla — señal fuerte para el perfil/evidencia.
+      if (sessionId && userId) {
+        fetch(`${API_URL}/api/buscar/sesiones/${sessionId}/feedback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: userId,
+            tipo: "expand_search",
+            categoria_predicha: searchParams.get("cats")?.split(",")[0] ?? null,
+            categoria_corregida: r.categoria ?? null,
+            comentario: contextoRefinar.trim(),
+          }),
+        }).catch(() => {});
+      }
+
       buscar({
         terminos_es: r.terminos_busqueda_es ?? [],
         terminos_en: r.terminos_busqueda_en ?? [],

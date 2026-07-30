@@ -119,22 +119,46 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     const logoUrl = inv?.logo_candidatos?.[logoIdx] ?? null;
     const logoSeguro = logoUrl && logoUrl.length < 500 && logoUrl.startsWith("http") ? logoUrl : null;
     try {
-      const { error } = await createClient().auth.updateUser({
+      const empresaFinal = empresa.trim() || (typeof prev.empresa === "string" ? prev.empresa : null);
+      const industriaFinal = inv?.industria ?? (typeof prev.industria === "string" ? prev.industria : null);
+      const paisFinal = inv?.pais ?? inv?.pais_tld ?? (typeof prev.pais === "string" ? prev.pais : null);
+      const categoriasFinal = cats.length ? cats.slice(0, 20) : (prev.categorias_default ?? []);
+      const { data, error } = await createClient().auth.updateUser({
         data: {
           ...prev,
           onboarding_completo: true,
-          empresa: empresa.trim() || (typeof prev.empresa === "string" ? prev.empresa : null),
+          empresa: empresaFinal,
           nombre_usuario: nombreUsuario.trim() || (typeof prev.nombre_usuario === "string" ? prev.nombre_usuario : null),
-          industria: inv?.industria ?? (typeof prev.industria === "string" ? prev.industria : null),
+          industria: industriaFinal,
           rut: rut.trim() || (typeof prev.rut === "string" ? prev.rut : null),
           logo_url: logoSeguro ?? (typeof prev.logo_url === "string" ? prev.logo_url : null),
           sitio_web: inv?.sitio_web ?? (typeof prev.sitio_web === "string" ? prev.sitio_web : null),
-          pais: inv?.pais ?? inv?.pais_tld ?? (typeof prev.pais === "string" ? prev.pais : null),
-          categorias_default: cats.length ? cats.slice(0, 20) : (prev.categorias_default ?? []),
+          pais: paisFinal,
+          categorias_default: categoriasFinal,
           proceso_compra: (proceso ?? "").trim() || (typeof prev.proceso_compra === "string" ? prev.proceso_compra : null),
         },
       });
       if (error) throw error;
+
+      // Genera/actualiza el perfil de procurement (prior inicial para búsqueda
+      // e identificación) — no bloquea el onboarding si falla.
+      if (data.user?.id) {
+        fetch(`${API_URL}/api/procurement-profile/generar`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: data.user.id,
+            empresa: empresaFinal,
+            dominio: inv?.sitio_web ? inv.sitio_web.replace(/^https?:\/\//, "").replace(/^www\./, "") : null,
+            industria: industriaFinal,
+            pais: paisFinal,
+            categorias_probables: categoriasFinal,
+            descripcion_actividad: inv?.descripcion ?? null,
+            origen: "onboarding",
+          }),
+        }).catch(() => {});
+      }
+
       router.refresh();
       if (floating) { onDone?.(); return; }
       await espera(600);
