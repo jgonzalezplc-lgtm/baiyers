@@ -19,12 +19,14 @@ interface OC {
 }
 
 const ESTADO_CONFIG: Record<string, { label: string; color: string }> = {
-  borrador:   { label: "Borrador",   color: "var(--text-muted)" },
-  enviada:    { label: "Enviada",    color: "#2980b9" },
-  confirmada: { label: "Confirmada", color: "var(--text-success)" },
-  rechazada:  { label: "Rechazada", color: "var(--text-error)" },
-  pendiente:  { label: "Pendiente",  color: "var(--text-warning)" },
-  pagada:     { label: "Pagada",     color: "var(--text-success)" },
+  borrador:          { label: "Borrador",           color: "var(--text-muted)" },
+  enviada:           { label: "Enviada",             color: "#2980b9" },
+  confirmada:        { label: "Confirmada",          color: "var(--text-success)" },
+  recibido_conforme: { label: "Recibido conforme",   color: "var(--text-success)" },
+  despachada:        { label: "Despachada",          color: "var(--text-success)" },
+  rechazada:         { label: "Rechazada",           color: "var(--text-error)" },
+  pendiente:         { label: "Pendiente",           color: "var(--text-warning)" },
+  pagada:            { label: "Pagada",              color: "var(--text-success)" },
 };
 
 function fmt(n: number) {
@@ -57,7 +59,9 @@ export default function OCPage() {
   };
 
   const filtradas = filtroEstado === "todas" ? ocs : ocs.filter(o => o.estado === filtroEstado);
-  const totalMes = ocs.filter(o => o.estado === "confirmada" || o.estado === "pagada").reduce((s, o) => s + o.total, 0);
+  const totalMes = ocs
+    .filter(o => ["confirmada", "recibido_conforme", "despachada", "pagada"].includes(o.estado))
+    .reduce((s, o) => s + o.total, 0);
 
   return (
     <>
@@ -77,7 +81,7 @@ export default function OCPage() {
 
       {/* Filtros */}
       <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
-        {["todas", "enviada", "confirmada", "pendiente", "rechazada", "pagada"].map(e => (
+        {["todas", "enviada", "confirmada", "recibido_conforme", "despachada", "pendiente", "rechazada", "pagada"].map(e => (
           <button key={e} onClick={() => setFiltroEstado(e)} style={{
             fontSize: 10,
             fontWeight: 700,

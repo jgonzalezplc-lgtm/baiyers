@@ -436,6 +436,52 @@ def _nombre_lista(sb, lista_proyecto_id: str | None) -> str | None:
         return None
 
 
+async def _procesar_respuesta_oc(sb, service, conv: dict, mi_email: str, cuerpo: str, recibido_iso: str) -> str:
+    """Respuesta a una OC (conv['oc_id'] presente): a diferencia de una
+    cotización, acá no se extraen campos — sólo interesa si el proveedor
+    acusó recibo o avisó el despacho. Devuelve el nuevo estado de la
+    conversación; el estado de negocio real queda en ordenes_compra."""
+    from app.services.email_understanding import clasificar_respuesta_oc
+    from app.services import gmail_conversation_agent
+
+    oc = sb.table("ordenes_compra").select("id, estado").eq("id", conv["oc_id"]).maybe_single().execute().data
+    if not oc:
+        return "human_review_required"
+
+    clasificacion = await clasificar_respuesta_oc(cuerpo)
+    tipo = clasificacion["tipo"]
+
+    if tipo == "acuse_recibo" and oc["estado"] in ("enviada", "borrador"):
+        sb.table("ordenes_compra").update({
+            "estado": "recibido_conforme", "recibido_conforme_at": recibido_iso,
+        }).eq("id", oc["id"]).execute()
+        try:
+            from app.services.supplier_intelligence import registrar_oc_confirmada, programar_rating
+            registrar_oc_confirmada(oc["id"])
+            programar_rating(oc["id"])
+        except Exception as e:
+            print(f"[OC] SI error (acuse por correo): {e}")
+        cuerpo_resp = (
+            f"Estimados,\n\nGracias por confirmar la recepción de la orden. "
+            f"Quedamos atentos al despacho.\n\nSaludos cordiales."
+        )
+        gmail_conversation_agent._enviar_y_registrar(sb, service, conv, mi_email, cuerpo_resp, "waiting_for_supplier")
+        return "waiting_for_supplier"
+
+    if tipo == "despacho":
+        sb.table("ordenes_compra").update({
+            "estado": "despachada", "despacho_at": recibido_iso,
+            "despacho_detalle": clasificacion.get("detalle"),
+        }).eq("id", oc["id"]).execute()
+        cuerpo_resp = (
+            f"Estimados,\n\nGracias por avisarnos. Quedamos atentos a la llegada del pedido.\n\nSaludos cordiales."
+        )
+        gmail_conversation_agent._enviar_y_registrar(sb, service, conv, mi_email, cuerpo_resp, "closed")
+        return "closed"
+
+    return "human_review_required"
+
+
 def _items_contexto(sb, conv: dict) -> list[dict]:
     """Ítem(s) sobre los que trata esta conversación, para dárselos como
     contexto al Email Understanding Agent."""
@@ -612,6 +658,8 @@ async def _sincronizar_usuario(user_id: str) -> dict:
 
                 if _parece_automatico(h.get("Subject", ""), from_email, cuerpo):
                     nuevo_estado = "human_review_required"
+                elif conv.get("oc_id"):
+                    nuevo_estado = await _procesar_respuesta_oc(sb, service, conv, mi_email, cuerpo, recibido_iso)
                 else:
                     items_ctx = _items_contexto(sb, conv)
                     extraccion = await extraer_actualizaciones(cuerpo, items_ctx)

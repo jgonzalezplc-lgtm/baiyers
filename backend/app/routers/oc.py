@@ -9,6 +9,49 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/api/oc", tags=["oc"])
 
 
+def _registrar_conversacion_oc(sb, req, mi_email: str, msg: dict, subject: str, body: str) -> None:
+    """Engancha el envío de la OC al agente de Gmail (mismo mecanismo que las
+    cotizaciones): así el cron que ya lee respuestas cada 1 min también
+    detecta el acuse de recibo o el aviso de despacho de esta OC. No bloquea
+    el envío si falla — la OC ya salió, esto es solo para el seguimiento."""
+    from datetime import datetime, timezone as _tz
+    try:
+        from app.services.proveedores_matching import resolver_o_crear_proveedor, resolver_o_crear_contacto
+        thread_id = msg.get("threadId")
+        now_iso = datetime.now(_tz.utc).isoformat()
+        proveedor_id = resolver_o_crear_proveedor(sb, req.user_id, req.proveedor_nombre or req.proveedor_email, req.proveedor_email)
+        contacto_id = resolver_o_crear_contacto(sb, req.user_id, proveedor_id, req.proveedor_email, origen="gmail_agent")
+
+        conv = sb.table("gmail_conversations").upsert({
+            "user_id": req.user_id,
+            "gmail_thread_id": thread_id,
+            "proveedor_id": proveedor_id,
+            "contacto_id": contacto_id,
+            "proveedor_nombre": req.proveedor_nombre or None,
+            "proveedor_email": req.proveedor_email,
+            "oc_id": req.oc_id,
+            "subject": subject,
+            "estado": "sent",
+            "tipo": "compra",
+            "last_message_at": now_iso,
+        }, on_conflict="user_id,gmail_thread_id").execute()
+        conversation_id = conv.data[0]["id"]
+        sb.table("gmail_messages").upsert({
+            "conversation_id": conversation_id,
+            "gmail_message_id": msg.get("id"),
+            "gmail_thread_id": thread_id,
+            "direction": "outbound",
+            "from_email": mi_email,
+            "to_email": req.proveedor_email,
+            "subject": subject,
+            "body_text": body,
+            "received_at": now_iso,
+            "procesado": True,
+        }, on_conflict="gmail_message_id").execute()
+    except Exception as e:
+        print(f"[OC] No se pudo registrar la conversación para seguimiento: {e}")
+
+
 class CrearOCRequest(BaseModel):
     cotizacion_id: str
     resultado_id: Optional[str] = None
@@ -146,25 +189,30 @@ async def enviar_oc(req: EnviarOCRequest):
     confirm_url = f"{settings.frontend_url}/oc/confirmar/{token_oc}"
     total_fmt = f"${int(req.precio_total):,}".replace(",", ".")
     from_email = integration["email"]
+    subject_proveedor = f"Orden de Compra {req.numero_oc} — Claria"
 
-    # Email al proveedor
+    # Email al proveedor — pide el acuse de recibo por el mismo correo (lo
+    # normal para un proveedor real); el link de confirmación queda solo como
+    # alternativa para quien prefiera no responder por texto.
     if req.proveedor_email:
         body_proveedor = (
             f"Estimado {req.proveedor_nombre},\n\n"
             f"Adjuntamos la Orden de Compra {req.numero_oc} por {total_fmt} {req.moneda}.\n\n"
-            f"Para confirmar la recepción haga clic aquí:\n{confirm_url}\n\n"
+            f"Por favor confírmennos por este mismo correo la recepción de la orden, y avísennos cuando "
+            f"despachen el pedido. Si lo prefieren, también pueden confirmar la recepción aquí:\n{confirm_url}\n\n"
             f"Saludos,\nEquipo Claria\nhola@claria.cc"
         )
         try:
-            send_email_with_attachment(
+            msg = send_email_with_attachment(
                 service=service,
                 to=req.proveedor_email,
-                subject=f"Orden de Compra {req.numero_oc} — Claria",
+                subject=subject_proveedor,
                 body=body_proveedor,
                 from_email=from_email,
                 pdf_bytes=pdf_bytes,
                 pdf_filename=f"{req.numero_oc}.pdf",
             )
+            _registrar_conversacion_oc(sb, req, integration["email"], msg, subject_proveedor, body_proveedor)
         except Exception as e:
             print(f"[OC] Error enviando al proveedor: {e}")
 

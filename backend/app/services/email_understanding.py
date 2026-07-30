@@ -129,3 +129,64 @@ async def extraer_actualizaciones(cuerpo: str, items_contexto: list[dict]) -> di
         "respondio_todo": bool(data.get("respondio_todo")),
         "requiere_aclaracion": bool(data.get("requiere_aclaracion")),
     }
+
+
+# ─── Clasificador de respuestas a una Orden de Compra ──────────────────────
+# A diferencia de una cotización, acá no hay campos que extraer: el correo ya
+# tiene precio/condiciones acordados. Sólo interesa distinguir si el proveedor
+# está acusando recibo de la OC o avisando que despachó el pedido.
+
+PROMPT_OC = """Eres un asistente de procurement B2B en Chile. Un proveedor respondió a un
+correo que le enviamos junto con una Orden de Compra (OC) adjunta en PDF.
+
+Clasifica el correo en UNA sola categoría:
+- "acuse_recibo": confirma que recibió la OC y la va a procesar (ej: "recibido, gracias",
+  "confirmado, procedemos con el despacho", "ok, quedamos en eso").
+- "despacho": avisa que el pedido ya fue despachado/enviado (ej: menciona guía de despacho,
+  transportista, que el pedido salió o está en camino, número de seguimiento).
+- "otro": cualquier otra cosa (pregunta, rechazo, fuera de oficina, no aporta información
+  clara sobre recepción o despacho).
+
+Correo del proveedor:
+\"\"\"
+{cuerpo}
+\"\"\"
+
+Responde SOLO JSON válido, sin markdown, con esta forma exacta:
+{{"tipo": "acuse_recibo|despacho|otro", "detalle": "string o null — ej: numero de guia/seguimiento si lo menciona"}}"""
+
+
+async def clasificar_respuesta_oc(cuerpo: str) -> dict:
+    """Devuelve {"tipo": "acuse_recibo"|"despacho"|"otro", "detalle": str|None}.
+    Ante cualquier falla, "otro" — un mensaje ambiguo queda para revisión
+    humana en vez de mover el estado de la OC solo."""
+    from app.config import settings
+
+    vacio_seguro = {"tipo": "otro", "detalle": None}
+
+    texto = (cuerpo or "").strip()
+    if not texto or not settings.gemini_api_key:
+        return vacio_seguro
+
+    import google.generativeai as genai
+    genai.configure(api_key=settings.gemini_api_key)
+    model = genai.GenerativeModel("gemini-2.5-flash")
+
+    try:
+        resp = await asyncio.wait_for(
+            model.generate_content_async(PROMPT_OC.format(cuerpo=texto[:4000])), timeout=20.0
+        )
+        text = resp.text.strip()
+        if "```" in text:
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        data = json.loads(text.strip())
+    except Exception as e:
+        print(f"[EmailUnderstanding] error clasificando respuesta OC: {e}")
+        return vacio_seguro
+
+    tipo = data.get("tipo")
+    if tipo not in ("acuse_recibo", "despacho", "otro"):
+        tipo = "otro"
+    return {"tipo": tipo, "detalle": data.get("detalle") or None}
