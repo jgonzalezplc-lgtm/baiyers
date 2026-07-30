@@ -83,7 +83,7 @@ PREGUNTAS_SOLAR = [
 
 PREGUNTAS_PARQUE_SOLAR = [
     {"id": "energia_mwh", "texto": "¿Cuál es la energía objetivo en MWh?", "tipo": "numero", "unidad": "MWh"},
-    {"id": "alcance_mwh", "texto": "¿Los MWh corresponden a generación diaria, mensual, anual o capacidad de almacenamiento?", "tipo": "texto"},
+    {"id": "tipo_objetivo", "texto": "¿Quisiste decir potencia instalada en MWp, generación objetivo en MWh/año o almacenamiento BESS en MWh?", "tipo": "texto"},
     {"id": "ubicacion", "texto": "¿En qué comuna o coordenadas estará el parque?", "tipo": "texto"},
     {"id": "area_terreno_ha", "texto": "¿Cuántas hectáreas útiles de terreno hay?", "tipo": "numero", "unidad": "ha", "permite_no_se": True},
     {"id": "potencia_interconexion_mw", "texto": "¿Qué potencia admite el punto de conexión?", "tipo": "numero", "unidad": "MW", "permite_no_se": True},
@@ -276,23 +276,28 @@ def _flujo_parque_solar(descripcion: str, datos: dict[str, Any]) -> dict[str, An
         return _preguntar("parque-solar@1", PREGUNTAS_PARQUE_SOLAR, datos, "Un parque solar se dimensiona por generación, terreno e interconexión; no por superficie u orientación de techo.")
 
     energia_mwh = float(datos["energia_mwh"])
-    alcance = str(datos["alcance_mwh"]).lower()
+    alcance = str(datos["tipo_objetivo"]).lower()
     if "almacen" in alcance or "bater" in alcance:
         item = _item(f"Sistema BESS de {energia_mwh:g} MWh", 1, "unidad", 1, "sistema", "electrico", "Capacidad energética declarada; potencia MW, duración, química y conexión requieren ingeniería")
         servicio = _item("Ingeniería y estudio de interconexión para BESS (opcional)", 1, "unidad", 1, "servicio", "servicio", "Definición de potencia, duración, protecciones y conexión")
         revision = {"receta": "parque-solar@1", "items": [item, servicio], "supuestos": [], "advertencias": ["MWh expresa energía almacenada; falta definir potencia MW y horas de descarga."]}
         return _respuesta_lista(f"Sistema de almacenamiento {energia_mwh:g} MWh", [item, servicio], revision)
 
-    if "dia" in alcance or "día" in alcance:
+    potencia_directa = "mwp" in alcance or "potencia" in alcance or "una hora" in alcance or "1 hora" in alcance
+    if potencia_directa:
+        potencia_mwp = energia_mwh
+        energia_dia_mwh = potencia_mwp * 4.5 * .80
+    elif "dia" in alcance or "día" in alcance:
         energia_dia_mwh = energia_mwh
     elif "mes" in alcance:
         energia_dia_mwh = energia_mwh / 30
     elif "ano" in alcance or "año" in alcance or "anual" in alcance:
         energia_dia_mwh = energia_mwh / 365
     else:
-        return _preguntar("parque-solar@1", [{"id": "alcance_mwh", "texto": "Aclara si la generación objetivo es por día, mes o año.", "tipo": "texto"}], {k: v for k, v in datos.items() if k != "alcance_mwh"}, "MWh es energía y necesita un período para dimensionar la potencia del parque.")
+        return _preguntar("parque-solar@1", [{"id": "tipo_objetivo", "texto": "Indica MWp si es potencia instalada, MWh/año si es generación o MWh BESS si es almacenamiento.", "tipo": "texto"}], {k: v for k, v in datos.items() if k != "tipo_objetivo"}, "Para dimensionar la planta necesito distinguir potencia, generación y almacenamiento.")
 
-    potencia_mwp = energia_dia_mwh / (4.5 * .80)
+    if not potencia_directa:
+        potencia_mwp = energia_dia_mwh / (4.5 * .80)
     panel_w = 550
     paneles = math.ceil(potencia_mwp * 1_000_000 / panel_w)
     inversores_100kw = math.ceil(potencia_mwp * 1000 / 100)
@@ -310,7 +315,8 @@ def _flujo_parque_solar(descripcion: str, datos: dict[str, Any]) -> dict[str, An
     if area != "no_se" and float(area) < area_estimada_ha:
         avisos.append(f"Se estiman {area_estimada_ha:g} ha y declaraste {float(area):g} ha; revisa potencia o tecnología.")
     revision = {"receta": "parque-solar@1", "items": items, "supuestos": ["4,5 horas solares pico", "80% rendimiento global", "1,8 ha/MWp"], "advertencias": avisos}
-    return _respuesta_lista(f"Parque solar {energia_mwh:g} MWh", items, revision)
+    nombre = f"Parque solar {potencia_mwp:g} MWp" if potencia_directa else f"Parque solar para {energia_mwh:g} MWh"
+    return _respuesta_lista(nombre, items, revision)
 
 
 def _respuesta_lista(nombre: str, items_base: list[dict[str, Any]], revision: dict[str, Any]) -> dict[str, Any]:

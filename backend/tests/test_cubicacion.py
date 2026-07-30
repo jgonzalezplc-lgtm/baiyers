@@ -80,15 +80,22 @@ class CubicacionTest(unittest.TestCase):
         self.assertEqual(r["receta"], "parque-solar@1")
         textos = " ".join(p["texto"].lower() for p in r["preguntas"])
         self.assertNotIn("techo", textos)
-        self.assertIn("generación", textos)
+        self.assertIn("mwp", textos)
+        self.assertIn("bess", textos)
 
     def test_parque_solar_genera_lista_utility_scale(self):
-        r = flujo_determinista("parque solar de 3MWh", {"alcance_mwh": "generación diaria", "ubicacion": "Copiapó", "area_terreno_ha": 2,
+        r = flujo_determinista("parque solar de 3MWh", {"tipo_objetivo": "generación diaria", "ubicacion": "Copiapó", "area_terreno_ha": 2,
             "potencia_interconexion_mw": "no_se", "tipo_montaje": "seguidores"})
         self.assertEqual(r["estado_flujo"], "listo")
         self.assertGreater(r["lista_items"][0]["cantidad"], 1000)
         self.assertTrue(any("SCADA" in i["nombre_tecnico"] for i in r["lista_items"]))
         self.assertFalse(any("techo" in i["nombre_tecnico"].lower() for i in r["lista_items"]))
+
+    def test_parque_solar_mwp_dimensiona_por_potencia(self):
+        r = flujo_determinista("parque solar de 3MWh", {"tipo_objetivo": "quise decir 3 MWp de potencia instalada", "ubicacion": "Copiapó", "area_terreno_ha": 6,
+            "potencia_interconexion_mw": 3, "tipo_montaje": "seguidores"})
+        self.assertEqual(r["nombre_lista_sugerido"], "Parque solar 3 MWp")
+        self.assertEqual(r["lista_items"][0]["cantidad"], 5455)
 
 
 class CubicacionHttpTest(unittest.TestCase):
