@@ -68,30 +68,6 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
 
-  // Bloqueo por plan
-  if (plan === "free" || plan === "starter") {
-    return (
-      <div style={{
-        position: "fixed", inset: 0, background: "rgba(33,29,24,.4)", backdropFilter: "blur(2px)",
-        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16,
-      }}>
-        <div style={{
-          background: "var(--surface)", borderRadius: "var(--r-xl)", boxShadow: "var(--shadow-modal)",
-          padding: 28, maxWidth: 400, width: "100%", textAlign: "center",
-        }}>
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--n-900)", marginBottom: 8 }}>OC automática</h2>
-          <p style={{ fontSize: 14, color: "var(--n-600)", marginBottom: 24, lineHeight: 1.5 }}>
-            La emisión de Órdenes de Compra está disponible desde el plan <strong style={{ color: "var(--brand)" }}>Pro</strong>.
-          </p>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button onClick={onClose} className="btn-swiss-secondary" style={{ flex: 1 }}>Cancelar</button>
-            <a href="/pricing" className="btn-swiss-primary" style={{ flex: 1, textDecoration: "none", textAlign: "center" }}>Ver planes</a>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const subtotal = cantidad * precioUnitario;
   const iva = Math.round(subtotal * 0.19);
   const total = subtotal + iva;
