@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import health, identificar, buscar, gmail, oc, suppliers, calendario, recurrencias, estadisticas, facturas, proveedores_import, proveedores, proyectos, reportes, chat, historico, procurement, ledger, analisis, aprobaciones, listas, rfq, workflows, contacto, onboarding, cuenta, notificaciones, procurement_profile, search_feedback, admin_control_plane, cotizaciones as cotizaciones_router
+from app.routers import health, identificar, buscar, gmail, oc, suppliers, calendario, recurrencias, estadisticas, facturas, proveedores_import, proveedores, proyectos, reportes, chat, historico, procurement, ledger, analisis, aprobaciones, listas, rfq, workflows, contacto, onboarding, cuenta, notificaciones, procurement_profile, search_feedback, admin_control_plane, organizacion, cotizaciones as cotizaciones_router
 from app.mcp import oauth as mcp_oauth
 from app.mcp import transport as mcp_transport
 from app.api_publica.router import router as api_v1_router, register_error_handlers
@@ -56,6 +56,7 @@ app.include_router(notificaciones.router)
 app.include_router(procurement_profile.router)
 app.include_router(search_feedback.router)
 app.include_router(admin_control_plane.router)
+app.include_router(organizacion.router)
 app.include_router(cotizaciones_router.router)
 app.include_router(mcp_oauth.router)
 app.include_router(mcp_transport.router)
