@@ -3,8 +3,10 @@ import base64
 import hashlib
 import json
 import re
+import time
 import unicodedata
 from typing import Any, Optional
+from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -116,6 +118,9 @@ class IdentificarRequest(BaseModel):
     # Estado estructurado del flujo nuevo. Los valores se consideran confirmados
     # por el usuario; nunca se interpreta este objeto como instrucciones.
     respuestas_cubicacion: Optional[dict[str, Any]] = None
+    # Atribución provisional para Capo. No se usa para autorización ni billing
+    # hasta que el endpoint exija JWT y pueda verificar el sujeto.
+    user_id: Optional[str] = None
 
 
 def _limpiar_json(text: str) -> str:
@@ -280,6 +285,7 @@ async def identificar_item(req: IdentificarRequest):
     # repetir llamadas lentas ni ocultar otros errores de Gemini.
     text = ""
     modelos = _modelos_identificacion(req.modo_cubicacion_conversacional)
+    correlation_id = str(uuid4())
     for indice, nombre_modelo in enumerate(modelos):
         model = genai.GenerativeModel(
             nombre_modelo,
@@ -288,16 +294,55 @@ async def identificar_item(req: IdentificarRequest):
                 "max_output_tokens": 8192,
             },
         )
+        intento_inicio = time.perf_counter()
         try:
             response = await asyncio.wait_for(
                 model.generate_content_async(parts),
                 timeout=45.0,
             )
             text = _limpiar_json(response.text)
+            usage = getattr(response, "usage_metadata", None)
+            from app.services.control_plane_telemetry import registrar_uso_ia
+            asyncio.create_task(asyncio.to_thread(
+                registrar_uso_ia,
+                feature="identificacion_cubicacion" if req.modo_cubicacion_conversacional else "identificacion",
+                provider="google",
+                requested_model=modelos[0],
+                effective_model=nombre_modelo,
+                input_tokens=getattr(usage, "prompt_token_count", 0) or 0,
+                output_tokens=getattr(usage, "candidates_token_count", 0) or 0,
+                cached_tokens=getattr(usage, "cached_content_token_count", 0) or 0,
+                latency_ms=int((time.perf_counter() - intento_inicio) * 1000),
+                status="fallback" if indice > 0 else "success",
+                user_id=req.user_id,
+                correlation_id=correlation_id,
+                metadata={
+                    "modo": "cubicacion" if req.modo_cubicacion_conversacional else "identificacion",
+                    "attribution_verified": False,
+                },
+            ))
             break
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as exc:
+            from app.services.control_plane_telemetry import registrar_uso_ia
+            asyncio.create_task(asyncio.to_thread(
+                registrar_uso_ia,
+                feature="identificacion_cubicacion" if req.modo_cubicacion_conversacional else "identificacion",
+                provider="google", requested_model=modelos[0], effective_model=nombre_modelo,
+                latency_ms=int((time.perf_counter() - intento_inicio) * 1000), status="timeout",
+                user_id=req.user_id, correlation_id=correlation_id, error=exc,
+                metadata={"attribution_verified": False},
+            ))
             raise HTTPException(status_code=504, detail="La cubicación está tomando más de lo esperado. Tus respuestas se conservaron; intenta nuevamente.")
         except Exception as exc:
+            from app.services.control_plane_telemetry import registrar_uso_ia
+            asyncio.create_task(asyncio.to_thread(
+                registrar_uso_ia,
+                feature="identificacion_cubicacion" if req.modo_cubicacion_conversacional else "identificacion",
+                provider="google", requested_model=modelos[0], effective_model=nombre_modelo,
+                latency_ms=int((time.perf_counter() - intento_inicio) * 1000), status="error",
+                user_id=req.user_id, correlation_id=correlation_id, error=exc,
+                metadata={"attribution_verified": False},
+            ))
             tiene_fallback = indice < len(modelos) - 1
             if tiene_fallback and _es_error_modelo_no_disponible(exc):
                 continue
@@ -338,6 +383,19 @@ async def identificar_item(req: IdentificarRequest):
     if req.modo_cubicacion_conversacional:
         result = _normalizar_revision_generada(result)
         result = _excluir_servicios_de_proyecto(result)
+    from app.services.control_plane_telemetry import registrar_evento_producto
+    asyncio.create_task(asyncio.to_thread(
+        registrar_evento_producto,
+        "identification.completed",
+        user_id=req.user_id,
+        entity_type="quote_draft",
+        correlation_id=correlation_id,
+        metadata={
+            "item_count": len(result.get("lista_items") or []),
+            "is_project": bool(result.get("es_proyecto")),
+            "attribution_verified": False,
+        },
+    ))
     return result
 
 

@@ -90,6 +90,7 @@ export default function CotizarPage() {
 
   const identificarUno = async (descripcion: string, imagenBase64: string | null = null, imagenMime = "image/jpeg", respuestas: Record<string, string | number | boolean> = {}): Promise<ResultadoIA> => {
     const body: Record<string, unknown> = { modo_cubicacion_conversacional: true, respuestas_cubicacion: respuestas };
+    if (userId) body.user_id = userId;
     if (descripcion) body.descripcion = descripcion;
     if (industriaEmpresa) body.industria_empresa = industriaEmpresa;
     if (imagenBase64) { body.imagen_base64 = imagenBase64; body.imagen_mime = imagenMime; }
