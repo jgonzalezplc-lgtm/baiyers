@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Trash2, Plus, Link2, CheckCircle2, XCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { BtnPrimary, BtnSecondary, BtnGhost, Card, Input, Spinner } from "@/components/ui";
+import { BtnPrimary, BtnSecondary, BtnGhost, Card, Input, SkeletonBox, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -317,7 +317,29 @@ export default function CanvasWorkflowPage() {
     }
   };
 
-  if (cargando) return <Spinner label="Cargando workflow…" />;
+  if (cargando) return (
+    <div>
+      <SkeletonBox height={13} width={120} style={{ marginBottom: 12 }} />
+      <SkeletonBox height={20} width={220} style={{ marginBottom: 14 }} />
+      <div style={{ display: "flex", gap: 14 }}>
+        <Card padding={14} style={{ width: 190, flexShrink: 0 }}>
+          <CascadeWrapper>
+            {Array.from({ length: 9 }).map((_, i) => <SkeletonBox key={i} height={28} width="100%" style={{ marginBottom: 6 }} />)}
+          </CascadeWrapper>
+        </Card>
+        <div style={{ position: "relative", flex: 1, minHeight: 560, background: "var(--canvas)", border: "1px solid var(--n-200)", borderRadius: "var(--r-md)" }}>
+          <CascadeWrapper>
+            <SkeletonBox width={168} height={60} style={{ position: "absolute", left: 60, top: 40 }} />
+            <SkeletonBox width={168} height={60} style={{ position: "absolute", left: 300, top: 40 }} />
+            <SkeletonBox width={168} height={60} style={{ position: "absolute", left: 540, top: 40 }} />
+          </CascadeWrapper>
+        </div>
+        <Card padding={16} style={{ width: 240, flexShrink: 0 }}>
+          <SkeletonBox height={13} width="60%" />
+        </Card>
+      </div>
+    </div>
+  );
   if (!workflow) return <div>No se encontró el workflow.</div>;
 
   const centro = (n: Nodo) => ({

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Building2, Check, Mail, Save, Search, Send, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Badge, BtnPrimary, BtnSecondary, Card, CategoryChip, EmptyState, PageHeader, Spinner } from "@/components/ui";
+import { Badge, BtnPrimary, BtnSecondary, Card, CategoryChip, EmptyState, PageHeader, SkeletonBox, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -80,7 +80,34 @@ export default function ProveedoresConfianzaPage() {
     finally { setPreparando(false); }
   };
 
-  if (loading) return <Spinner label="Analizando proveedores conocidos…" />;
+  if (loading) return (
+    <div>
+      <SkeletonBox height={13} width={140} style={{ marginBottom: 14 }} />
+      <SkeletonBox height={20} width={260} style={{ marginBottom: 8 }} />
+      <SkeletonBox height={13} width={420} style={{ marginBottom: 20 }} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 18 }}>
+        <CascadeWrapper>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Card key={i} padding={14}>
+              <SkeletonBox height={11} width="70%" style={{ marginBottom: 8 }} />
+              <SkeletonBox height={20} width="35%" />
+            </Card>
+          ))}
+        </CascadeWrapper>
+      </div>
+      <div style={{ display: "grid", gap: 10 }}>
+        <CascadeWrapper staggerMs={70}>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} padding={16}>
+              <SkeletonBox height={15} width="30%" style={{ marginBottom: 10 }} />
+              <SkeletonBox height={11} width="80%" style={{ marginBottom: 6 }} />
+              <SkeletonBox height={11} width="60%" />
+            </Card>
+          ))}
+        </CascadeWrapper>
+      </div>
+    </div>
+  );
   if (!matriz) return <Card><EmptyState icon={AlertTriangle} title="No pudimos construir la matriz" description={mensaje} /></Card>;
 
   const cubiertos = matriz.items.filter(it => cobertura[it.cotizacion_id] > 0).length;

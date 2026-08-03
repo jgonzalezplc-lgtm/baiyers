@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { AlertCircle, Workflow } from "lucide-react";
-import { BtnPrimary, Input, PageHeader, Card, Spinner } from "@/components/ui";
+import { BtnPrimary, Input, PageHeader, Card, SkeletonBox, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -122,7 +122,25 @@ export default function SettingsPage() {
 
       <div style={{ maxWidth: 620 }}>
         {loading ? (
-          <Spinner />
+          <>
+            <Card style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 16 }} padding={20}>
+              <SkeletonBox width={56} height={56} radius="var(--r-md)" />
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+                <SkeletonBox height={17} width="35%" />
+                <SkeletonBox height={12} width="22%" />
+              </div>
+            </Card>
+            <Card padding={24} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <CascadeWrapper>
+                {CAMPOS_PERFIL.map(c => (
+                  <div key={c.key}>
+                    <SkeletonBox height={11} width={110} style={{ marginBottom: 7 }} />
+                    <SkeletonBox height={38} width="100%" radius="var(--r-md)" />
+                  </div>
+                ))}
+              </CascadeWrapper>
+            </Card>
+          </>
         ) : (
           <>
             {/* Alerta de perfil incompleto */}

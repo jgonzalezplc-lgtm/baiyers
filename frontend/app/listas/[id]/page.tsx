@@ -5,7 +5,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { ArrowLeft, Check, Send, Wand2, Camera, ShoppingBag, Mail, ExternalLink, Network, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Card, Badge, BtnPrimary, BtnSecondary, SummaryPanel, Input, Spinner } from "@/components/ui";
+import { Card, Badge, BtnPrimary, BtnSecondary, SummaryPanel, Input, SkeletonBox, SkeletonText, CascadeWrapper } from "@/components/ui";
 
 const InformeLista = dynamic(() => import("@/components/InformeLista"), { ssr: false });
 const OCModal = dynamic(() => import("@/components/OCModal"), { ssr: false });
@@ -349,8 +349,34 @@ export default function ListaDetallePage() {
     }
   };
 
-  if (loading) return <Spinner />;
-  if (!lista) return <Spinner label="Lista no encontrada." />;
+  if (loading) return (
+    <div>
+      <SkeletonBox height={13} width={140} style={{ marginBottom: 16 }} />
+      <SkeletonBox height={26} width={320} style={{ marginBottom: 8 }} />
+      <SkeletonBox height={13} width={220} style={{ marginBottom: 20 }} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 }}>
+        <CascadeWrapper>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} padding={16}>
+              <SkeletonBox height={11} width="60%" style={{ marginBottom: 8 }} />
+              <SkeletonBox height={22} width="40%" />
+            </Card>
+          ))}
+        </CascadeWrapper>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <CascadeWrapper staggerMs={70}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i} padding={16}>
+              <SkeletonBox height={15} width="35%" style={{ marginBottom: 8 }} />
+              <SkeletonText lines={1} widths={["50%"]} />
+            </Card>
+          ))}
+        </CascadeWrapper>
+      </div>
+    </div>
+  );
+  if (!lista) return <div style={{ color: "var(--n-600)", padding: "40px 0", textAlign: "center", fontSize: 13.5 }}>Lista no encontrada.</div>;
 
   const definitivos = lista.items.filter(it => it.definitivo);
   const totalCLP = definitivos.reduce((a, it) => a + (it.definitivo?.precio_clp ?? 0) * (it.cantidad || 1), 0);

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Check, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Badge, BtnPrimary, BtnSecondary, Card, CategoryChip, EmptyState, PageHeader, Spinner } from "@/components/ui";
+import { Badge, BtnPrimary, BtnSecondary, Card, CategoryChip, EmptyState, PageHeader, SkeletonBox, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 interface Item { cotizacion_id: string; nombre: string; cantidad: number; unidad: string; categoria: string; proveedores: { proveedor_id: string; nombre: string }[]; n_proveedores: number; rfq_enviada: boolean; }
@@ -44,7 +44,27 @@ export default function BusquedaComplementariaPage() {
     router.push(`/cotizar/${item.cotizacion_id}/resultados?${qs.toString()}`);
   };
 
-  if (loading) return <Spinner label="Revisando cobertura…" />;
+  if (loading) return (
+    <div>
+      <SkeletonBox height={13} width={140} style={{ marginBottom: 14 }} />
+      <SkeletonBox height={20} width={260} style={{ marginBottom: 8 }} />
+      <SkeletonBox height={13} width={420} style={{ marginBottom: 22 }} />
+      <div style={{ display: "grid", gap: 9 }}>
+        <CascadeWrapper>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} style={{ display: "flex", alignItems: "center", gap: 11, flexWrap: "wrap" }}>
+              <SkeletonBox width={34} height={34} radius="var(--r-md)" />
+              <div style={{ flex: 1, minWidth: 180, display: "flex", flexDirection: "column", gap: 6 }}>
+                <SkeletonBox height={14} width="40%" />
+                <SkeletonBox height={11} width="60%" />
+              </div>
+              <SkeletonBox width={140} height={32} />
+            </Card>
+          ))}
+        </CascadeWrapper>
+      </div>
+    </div>
+  );
   return <>
     <Link href={`/listas/${id}`} style={{ display: "inline-flex", gap: 6, alignItems: "center", color: "var(--n-600)", textDecoration: "none", fontSize: 13, marginBottom: 14 }}><ArrowLeft size={15} /> Volver a la lista</Link>
     <PageHeader eyebrow="Búsqueda complementaria" title="Completar cobertura" subtitle="Primero buscaremos proveedores para los ítems que aún no están cubiertos. También puedes buscar alternativas para los ya asignados." />

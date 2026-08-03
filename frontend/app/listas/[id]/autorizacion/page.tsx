@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { BtnPrimary, BtnSecondary, Card, Input, Spinner } from "@/components/ui";
+import { BtnPrimary, BtnSecondary, Card, Input, SkeletonBox, SkeletonText, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const fmtCLP = (n: number) => `$${Math.round(n).toLocaleString("es-CL")}`;
@@ -57,14 +57,36 @@ export default function AutorizarListaPage() {
     } catch (e) { setError(e instanceof Error ? e.message : "Error al enviar"); }
     finally { setEnviando(false); }
   };
-  if (!lista) return <Spinner label={error || "Cargando autorización…"} />;
+  if (!lista) return error ? (
+    <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13.5, color: "var(--n-500)" }}>{error}</div>
+  ) : (
+    <div style={{ maxWidth: 820, margin: "0 auto" }}>
+      <SkeletonBox height={26} width={280} style={{ marginBottom: 8 }} />
+      <SkeletonBox height={13} width={400} style={{ marginBottom: 20 }} />
+      <Card padding={18} style={{ marginBottom: 16 }}><SkeletonBox height={38} width="100%" /></Card>
+      <CascadeWrapper>
+        {Array.from({ length: 2 }).map((_, i) => (
+          <Card key={i} padding={18} style={{ marginBottom: 12 }}>
+            <SkeletonBox height={15} width="40%" style={{ marginBottom: 10 }} />
+            <SkeletonText lines={2} widths={["60%", "45%"]} />
+          </Card>
+        ))}
+      </CascadeWrapper>
+    </div>
+  );
   return <div style={{ maxWidth: 820, margin: "0 auto" }}>
     <button onClick={() => router.back()} style={{ border: 0, background: "none", color: "var(--n-600)", cursor: "pointer", display: "inline-flex", gap: 6, alignItems: "center", marginBottom: 16 }}><ArrowLeft size={16} /> Volver a la selección</button>
     <h1 style={{ margin: "0 0 6px", fontSize: 26 }}>Solicitar autorización</h1>
     <p style={{ color: "var(--n-600)", margin: "0 0 20px" }}>Lista: <strong>{lista.nombre}</strong>. Explica por qué se eligió cada alternativa antes de enviarla.</p>
     <Card padding={18} style={{ marginBottom: 16 }}>
       {cargandoSugerencia ? (
-        <Spinner label="Revisando tu ciclo de autorizaciones…" />
+        <div>
+          <SkeletonBox height={13} width="55%" style={{ marginBottom: 8 }} />
+          <div style={{ display: "flex", gap: 6 }}>
+            <SkeletonBox height={24} width={130} radius="var(--r-sm)" />
+            <SkeletonBox height={24} width={110} radius="var(--r-sm)" />
+          </div>
+        </div>
       ) : sugerencia ? (
         <div>
           <div style={{ fontSize: 13, color: "var(--n-600)", marginBottom: 6 }}>Según tu ciclo de compras, esto se enviará a <strong>{sugerencia.nodo_nombre}</strong>{sugerencia.modo_autorizacion === "secuencial" ? " (en orden)" : sugerencia.responsables.length > 1 ? " (todos deben aprobar)" : ""}:</div>

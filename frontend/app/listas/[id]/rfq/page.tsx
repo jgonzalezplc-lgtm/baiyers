@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Check, Mail, Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Badge, BtnPrimary, BtnSecondary, Card, CategoryChip, EmptyState, Input, PageHeader, Spinner, Textarea } from "@/components/ui";
+import { Badge, BtnPrimary, BtnSecondary, Card, CategoryChip, EmptyState, Input, PageHeader, SkeletonBox, CascadeWrapper, Textarea } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -57,7 +57,30 @@ export default function RevisarRFQPage() {
     finally { setOcupado(null); }
   };
 
-  if (loading) return <Spinner label="Preparando borradores agrupados…" />;
+  if (loading) return (
+    <div>
+      <SkeletonBox height={13} width={140} style={{ marginBottom: 14 }} />
+      <SkeletonBox height={20} width={280} style={{ marginBottom: 8 }} />
+      <SkeletonBox height={13} width={380} style={{ marginBottom: 20 }} />
+      <div style={{ display: "grid", gap: 16 }}>
+        <CascadeWrapper staggerMs={80}>
+          {Array.from({ length: 2 }).map((_, i) => (
+            <Card key={i}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+                <SkeletonBox height={17} width={160} />
+                <SkeletonBox height={20} width={80} />
+              </div>
+              <div style={{ display: "grid", gap: 11 }}>
+                <SkeletonBox height={38} width="100%" />
+                <SkeletonBox height={38} width="100%" />
+                <SkeletonBox height={90} width="100%" />
+              </div>
+            </Card>
+          ))}
+        </CascadeWrapper>
+      </div>
+    </div>
+  );
   const enviados = batches.filter(b => b.estado === "sent").length;
 
   return <>

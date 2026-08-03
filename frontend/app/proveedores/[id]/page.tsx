@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Badge, BtnPrimary, BtnSecondary, Card, CategoryChip, FieldLabel, Input, PageHeader, Spinner, Textarea } from "@/components/ui";
+import { Badge, BtnPrimary, BtnSecondary, Card, CategoryChip, FieldLabel, Input, PageHeader, SkeletonBox, CascadeWrapper, Textarea } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const CATEGORIAS = ["electronica", "construccion", "carpinteria", "insumos_medicos", "industrial", "tuberias_valvulas", "mecanico", "electrico", "hidraulico", "neumatico", "servicio", "consumible", "otro"];
@@ -59,7 +59,22 @@ export default function ProveedorPage() {
     if (res.ok) { setCapacidades(prev => prev.filter(c => c.categoria !== categoria)); setMensaje("Categoría quitada"); } else setMensaje("No pudimos quitar la categoría");
   };
 
-  if (loading) return <Spinner />;
+  if (loading) return (
+    <div>
+      <SkeletonBox height={13} width={100} style={{ marginBottom: 14 }} />
+      <SkeletonBox height={24} width={260} style={{ marginBottom: 20 }} />
+      <Card padding={20} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <CascadeWrapper>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i}>
+              <SkeletonBox height={11} width={100} style={{ marginBottom: 7 }} />
+              <SkeletonBox height={38} width="100%" />
+            </div>
+          ))}
+        </CascadeWrapper>
+      </Card>
+    </div>
+  );
   if (!proveedor) return <Card><div style={{ color: "var(--danger)" }}>{mensaje || "Proveedor no encontrado"}</div></Card>;
   const disponibles = CATEGORIAS.filter(c => !capacidades.some(x => x.categoria === c && x.estado !== "rejected"));
 

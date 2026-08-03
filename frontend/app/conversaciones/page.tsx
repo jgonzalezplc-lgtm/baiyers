@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Mail, ExternalLink, RefreshCw, ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { PageHeader, Table, TableHead, TableRow, EmptyState, Spinner, Badge, BtnSecondary } from "@/components/ui";
+import { PageHeader, Table, TableHead, TableRow, EmptyState, Badge, BtnSecondary, SkeletonTableRow, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -113,7 +113,21 @@ export default function ConversacionesPage() {
       )}
 
       {loading ? (
-        <Spinner />
+        <Table>
+          <TableHead cols={COLS}>
+            <span>Proveedor</span>
+            <span>Asunto</span>
+            <span>Estado</span>
+            <span>Propuestas</span>
+            <span>Último mensaje</span>
+            <span />
+          </TableHead>
+          <CascadeWrapper>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <SkeletonTableRow key={i} cols={COLS} last={i === 4} />
+            ))}
+          </CascadeWrapper>
+        </Table>
       ) : convs.length === 0 ? (
         <Table>
           <EmptyState
