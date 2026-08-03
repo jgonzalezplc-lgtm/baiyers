@@ -14,7 +14,6 @@ const CAMPOS_PERFIL = [
   { key: "nombre_usuario", label: "Tu nombre", placeholder: "Juan Pérez" },
   { key: "pais", label: "País", placeholder: "Chile" },
   { key: "sitio_web", label: "Sitio web", placeholder: "https://miempresa.cl" },
-  { key: "proceso_compra", label: "Proceso de compra", placeholder: "Ej: yo cotizo y mi jefe autoriza sobre $500.000" },
   { key: "autorizador_email", label: "Email del autorizador", placeholder: "jefe@empresa.cl, quién aprueba tus compras" },
 ] as const;
 
@@ -34,7 +33,7 @@ export default function SettingsPage() {
 
   const [perfil, setPerfil] = useState<Record<CampoKey, string>>({
     empresa: "", industria: "", rut: "", nombre_usuario: "",
-    pais: "", sitio_web: "", proceso_compra: "", autorizador_email: "",
+    pais: "", sitio_web: "", autorizador_email: "",
   });
 
   const camposFaltantes = CAMPOS_REQUERIDOS.filter(k => !perfil[k]?.trim());
@@ -53,7 +52,6 @@ export default function SettingsPage() {
         nombre_usuario: m.nombre_usuario ?? "",
         pais: m.pais ?? "",
         sitio_web: m.sitio_web ?? "",
-        proceso_compra: m.proceso_compra ?? "",
         autorizador_email: m.autorizador_email ?? "",
       });
       setLogoUrl(m.logo_url ?? null);
@@ -74,7 +72,6 @@ export default function SettingsPage() {
         nombre_usuario: perfil.nombre_usuario.trim() || null,
         pais: perfil.pais.trim() || null,
         sitio_web: perfil.sitio_web.trim() || null,
-        proceso_compra: perfil.proceso_compra.trim() || null,
         autorizador_email: perfil.autorizador_email.trim() || null,
       },
     });
