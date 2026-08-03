@@ -60,6 +60,16 @@ async def listar_workflows(user_id: str):
     return listar_workflows(user_id)
 
 
+@router.get("/autorizadores-sugeridos")
+async def autorizadores_sugeridos(user_id: str, monto_total: float = 0):
+    """Fase 4: a quién le llegaría la solicitud de autorización de una lista
+    con este monto, según el ciclo activo del usuario — sin crear nada.
+    Devuelve null si no hay ciclo activo o nadie asignado (el frontend cae
+    al campo de email manual)."""
+    from app.services.workflow_execution import previsualizar_autorizadores
+    return previsualizar_autorizadores(user_id, monto_total)
+
+
 @router.get("/{workflow_id}")
 async def obtener_workflow(workflow_id: str, user_id: str):
     from app.services.workflow_service import obtener_workflow

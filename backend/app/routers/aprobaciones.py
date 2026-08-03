@@ -22,12 +22,13 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _texto_notificacion_lista(decision: str, nombre: str) -> tuple[str, str, str]:
+def _texto_notificacion_lista(decision: str, nombre: str, decidido_por: Optional[str] = None) -> tuple[str, str, str]:
+    sufijo = f" — hecho por {decidido_por}" if decidido_por else ""
     if decision == "rechazar":
-        return "cotizacion_rechazada", "Cotización rechazada", f"Se rechazó la lista '{nombre}'."
+        return "cotizacion_rechazada", "Cotización rechazada", f"Se rechazó la lista '{nombre}'{sufijo}."
     if decision == "aprobar_con_observaciones":
-        return "cotizacion_observada", "Cotización aprobada con observaciones", f"La lista '{nombre}' fue aprobada con observaciones."
-    return "cotizacion_aprobada", "Cotización aprobada", f"Se aprobó la lista '{nombre}'."
+        return "cotizacion_observada", "Cotización aprobada con observaciones", f"La lista '{nombre}' fue aprobada con observaciones{sufijo}."
+    return "cotizacion_aprobada", "Cotización aprobada", f"Se aprobó la lista '{nombre}'{sufijo}."
 
 
 # ─── Workflows ─────────────────────────────────────────────────────────────
@@ -69,6 +70,12 @@ class SolicitudRequest(BaseModel):
     aprobador_email: Optional[str] = None
     workflow_id: Optional[str] = None
     dias_expiracion: int = 7
+    # Fase 4 — Workflow Builder: si esta solicitud nació de un ciclo de
+    # compras activo (no del `approval_workflows` legado), queda atada al
+    # nodo/instancia/responsable real que debe decidir.
+    workflow_instance_id: Optional[str] = None
+    workflow_nodo_id: Optional[str] = None
+    responsable_id: Optional[str] = None
 
 
 @router.post("/solicitar")
@@ -89,6 +96,9 @@ async def solicitar_aprobacion(req: SolicitudRequest):
         "token": token,
         "aprobador_email": req.aprobador_email,
         "expira_at": expira,
+        "workflow_instance_id": req.workflow_instance_id,
+        "workflow_nodo_id": req.workflow_nodo_id,
+        "responsable_id": req.responsable_id,
     }).execute()
 
     base = settings.frontend_url.rstrip("/")
@@ -180,6 +190,27 @@ async def decidir(token: str, req: DecisionRequest):
         update_data["resumen"] = resumen
     sb.table("approval_requests").update(update_data).eq("id", row["id"]).execute()
 
+    # Fase 4 del Workflow Builder: si esta solicitud pertenece a un ciclo de
+    # compras activo (varios responsables posibles, en paralelo o en orden),
+    # el motor decide si el tramo ya quedó resuelto y, si falta gente por
+    # decidir, esta llamada no debe finalizar la lista todavía. Las
+    # decisiones "con observaciones" siguen siendo terminales de inmediato,
+    # como en el flujo legado — no hay tramos "con observaciones".
+    avance_pendiente = None
+    es_decision_de_workflow = bool(row.get("workflow_instance_id")) and req.decision in ("aprobar", "rechazar") and not decisiones_items
+    if es_decision_de_workflow:
+        from app.services.workflow_execution import avanzar_tras_decision, registrar_evento
+        try:
+            registrar_evento(row["workflow_instance_id"], row["workflow_nodo_id"], row.get("responsable_id"), nuevo)
+        except Exception as e:
+            print(f"[Aprobaciones] registrar_evento falló: {e}")
+        avance = avanzar_tras_decision({**row, **update_data})
+        if not avance["resuelto"]:
+            return {"ok": True, "estado": "pendiente", "mensaje": "Registrado. Falta que otros responsables de este tramo decidan."}
+        if avance["resultado"] == "aprobado" and not avance["terminado"]:
+            avance_pendiente = avance["siguiente"]
+            nuevo = "aprobado"  # este tramo se resolvió aprobado; la lista sigue pendiente del próximo tramo
+
     from app.services.notificaciones import crear_notificacion
 
     # Si la referencia es un quote_supplier y fue aprobado, marcarlo seleccionado
@@ -211,12 +242,44 @@ async def decidir(token: str, req: DecisionRequest):
             proy = sb.table("proyectos").select("nombre, descripcion, user_id").eq("id", lista_id).single().execute()
             if proy.data:
                 data = json.loads(proy.data.get("descripcion") or "{}")
+                if data.get("tipo") == "lista_cotizacion" and avance_pendiente:
+                    # Este tramo aprobó, pero el workflow exige otro más
+                    # (ej: jefe directo → finanzas). No finalizar: notificar
+                    # al siguiente tramo y dejar la lista pendiente.
+                    aprobacion = data.get("aprobacion", {})
+                    aprobacion["estado"] = "pendiente"
+                    aprobacion["nodo_actual_id"] = avance_pendiente["nodo_id"]
+                    aprobacion["nodo_actual_nombre"] = avance_pendiente["nodo_nombre"]
+                    aprobacion["aprobadores_pendientes"] = [
+                        {"responsable_id": r["id"], "nombre": r["nombre"], "email": r["email"]}
+                        for r in avance_pendiente["responsables_a_notificar"]
+                    ]
+                    data["aprobacion"] = aprobacion
+                    sb.table("proyectos").update({
+                        "descripcion": json.dumps(data, ensure_ascii=False),
+                    }).eq("id", lista_id).execute()
+
+                    resumen_previo = row.get("resumen") or {}
+                    lista_nombre = proy.data.get("nombre") or "cotización"
+                    from app.routers.listas import _crear_y_enviar_solicitudes
+                    await _crear_y_enviar_solicitudes(sb, proy.data["user_id"], lista_id, lista_nombre, resumen_previo, avance_pendiente)
+                    return {"ok": True, "estado": "pendiente", "nodo_actual_nombre": avance_pendiente["nodo_nombre"]}
+
                 if data.get("tipo") == "lista_cotizacion":
                     aprobacion = data.get("aprobacion", {})
                     aprobacion["estado"] = "aprobado_con_observaciones" if req.decision == "aprobar_con_observaciones" else nuevo
                     if req.decision == "aprobar_con_observaciones":
                         aprobacion["resultado"] = "aprobado_con_observaciones"
                     aprobacion["decidido_at"] = _now()
+                    # "Hecho por X": si la solicitud está atada a un responsable
+                    # real (Fase 4 del Workflow Builder) queda su nombre; si no,
+                    # el email al que se le envió (flujo legado).
+                    decidido_por = row.get("aprobador_email")
+                    if row.get("responsable_id"):
+                        resp = sb.table("responsables").select("nombre").eq("id", row["responsable_id"]).maybe_single().execute().data
+                        if resp and resp.get("nombre"):
+                            decidido_por = resp["nombre"]
+                    aprobacion["decidido_por"] = decidido_por
                     if decisiones_items:
                         aprobacion["decisiones_items"] = decisiones_items
                         aprobacion["observaciones_items"] = {
@@ -232,7 +295,7 @@ async def decidir(token: str, req: DecisionRequest):
                     }).eq("id", lista_id).execute()
 
                     lista_nombre = proy.data.get("nombre") or "cotización"
-                    tipo_notificacion, titulo, cuerpo = _texto_notificacion_lista(req.decision, lista_nombre)
+                    tipo_notificacion, titulo, cuerpo = _texto_notificacion_lista(req.decision, lista_nombre, aprobacion.get("decidido_por"))
                     crear_notificacion(
                         sb, proy.data["user_id"], tipo_notificacion,
                         titulo,

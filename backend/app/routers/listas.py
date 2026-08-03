@@ -605,15 +605,72 @@ async def actualizar_cantidad(lista_id: str, req: CantidadRequest):
 
 class SolicitarAprobacionRequest(BaseModel):
     user_id: str
-    aprobador_email: str
+    aprobador_email: Optional[str] = None
     justificaciones: dict = {}  # {cotizacion_id: "texto justificación"}
     nombre_solicitante: str = ""
     empresa: str = ""
 
 
+async def _crear_y_enviar_solicitudes(sb, user_id: str, lista_id: str, lista_nombre: str, resumen: dict, resolucion: dict) -> list[dict]:
+    """Crea una `approval_requests` por cada responsable a notificar (Fase 4
+    del Workflow Builder) y le envía su propio correo con magic link. Se usa
+    tanto en la ronda inicial como cuando el workflow avanza a un tramo
+    siguiente (ej: aprobación de finanzas tras la del jefe directo)."""
+    from app.routers.aprobaciones import solicitar_aprobacion as crear_solicitud
+    from app.routers.aprobaciones import SolicitudRequest
+    from app.services.gmail_service import get_gmail_service, send_email
+
+    integ = sb.table("user_integrations").select("*").eq("user_id", user_id).eq("provider", "gmail").limit(1).execute()
+    integration = (integ.data or [None])[0]
+    if not integration:
+        raise HTTPException(status_code=400, detail="Gmail no conectado. Conéctalo en Configuración para poder enviar la solicitud de autorización.")
+
+    item_lines = "\n".join(
+        f"- {it['nombre']} ×{it.get('cantidad', 1)}: {it.get('proveedor') or '—'}"
+        f" ({_fmt_clp(it['precio_clp'] * it.get('cantidad', 1)) if it.get('precio_clp') is not None else '—'})"
+        + (f", {it['justificacion']}" if it.get("justificacion") else "")
+        for it in resumen.get("items", [])
+    )
+
+    enviadas = []
+    for responsable in resolucion["responsables_a_notificar"]:
+        sol = await crear_solicitud(SolicitudRequest(
+            user_id=user_id,
+            referencia=f"lista:{lista_id}",
+            resumen=resumen,
+            aprobador_email=responsable["email"],
+            workflow_instance_id=resolucion["workflow_instance_id"],
+            workflow_nodo_id=resolucion["nodo_id"],
+            responsable_id=responsable["id"],
+        ))
+        try:
+            service, creds = get_gmail_service(integration["access_token"], integration["refresh_token"])
+            if creds.token != integration["access_token"]:
+                sb.table("user_integrations").update({
+                    "access_token": creds.token,
+                    "token_expiry": creds.expiry.isoformat() if creds.expiry else None,
+                }).eq("user_id", user_id).eq("provider", "gmail").execute()
+            asunto = f"Solicitud de aprobación ({resolucion['nodo_nombre']}): {lista_nombre}"
+            cuerpo = (
+                f"Hola {responsable['nombre']},\n\n{resumen.get('solicitante') or 'Un usuario'} de {resumen.get('empresa') or 'la empresa'} "
+                f"solicita tu aprobación como {resolucion['nodo_nombre']} para la siguiente lista de compra:\n\n"
+                f"Lista: {lista_nombre}\nTotal: {_fmt_clp(resumen.get('monto_total', 0))}\n\n{item_lines}\n\n"
+                f"Revisa el detalle y aprueba o rechaza (puedes agregar comentarios) desde este enlace:\n{sol['magic_link']}\n\n"
+                f"Este enlace expira el {sol['expira_at'][:10]}.\n\nBaiyer, Procurement Inteligente"
+            )
+            send_email(service, responsable["email"], asunto, cuerpo, integration["email"])
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"No se pudo enviar el correo de autorización a {responsable['email']}: {e}")
+        enviadas.append({"responsable_id": responsable["id"], "nombre": responsable["nombre"], "email": responsable["email"], "token": sol["token"]})
+    return enviadas
+
+
 @router.post("/{lista_id}/solicitar-aprobacion")
 async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest):
     from app.services.supabase import get_supabase
+    from app.services.workflow_execution import iniciar_autorizacion_workflow
     sb = get_supabase()
 
     async with _lock_de(lista_id):
@@ -664,6 +721,39 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest):
             "items": resumen_items,
             "monto_total": monto_total,
         }
+
+        # Fase 4 del Workflow Builder: si hay un ciclo de compras activo con
+        # responsables reales asignados al rol autorizador, el motor decide
+        # a quién(es) escribirle — puede ser más de una persona (paralelo o
+        # secuencial) y puede depender del monto (tramos). Si no hay ciclo
+        # activo o nadie fue asignado todavía, cae íntegro al flujo legado de
+        # un solo `aprobador_email` escrito a mano.
+        resolucion = iniciar_autorizacion_workflow(req.user_id, lista_id, monto_total)
+
+        if resolucion:
+            enviadas = await _crear_y_enviar_solicitudes(sb, req.user_id, lista_id, proy.data["nombre"], resumen, resolucion)
+            data["aprobacion"] = {
+                "estado": "pendiente",
+                "modo": "workflow",
+                "workflow_id": resolucion["workflow_id"],
+                "workflow_instance_id": resolucion["workflow_instance_id"],
+                "nodo_actual_id": resolucion["nodo_id"],
+                "nodo_actual_nombre": resolucion["nodo_nombre"],
+                "aprobadores_pendientes": [
+                    {"responsable_id": r["id"], "nombre": r["nombre"], "email": r["email"]}
+                    for r in resolucion["responsables_a_notificar"]
+                ],
+            }
+            _guardar_lista(sb, lista_id, data)
+            return {
+                "success": True,
+                "modo": "workflow",
+                "nodo_actual_nombre": resolucion["nodo_nombre"],
+                "notificados": enviadas,
+            }
+
+        if not req.aprobador_email or not req.aprobador_email.strip():
+            raise HTTPException(status_code=400, detail="No hay un ciclo de autorizaciones configurado con responsables asignados: ingresa el email del autorizador.")
 
         from app.routers.aprobaciones import solicitar_aprobacion as crear_solicitud
         from app.routers.aprobaciones import SolicitudRequest
