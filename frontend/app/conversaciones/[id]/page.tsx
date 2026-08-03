@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ExternalLink, Paperclip, Check, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { Card, Badge, BtnPrimary, BtnSecondary, Spinner } from "@/components/ui";
+import { Card, Badge, BtnPrimary, BtnSecondary, SkeletonText, SkeletonChatBubble, SkeletonBox, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -115,7 +115,27 @@ export default function ConversacionDetallePage() {
     }
   };
 
-  if (loading) return <Spinner />;
+  if (loading) return (
+    <div>
+      <div style={{ marginBottom: 24 }}>
+        <SkeletonBox height={22} width={260} style={{ marginBottom: 8 }} />
+        <SkeletonBox height={13} width={180} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20, alignItems: "start" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <CascadeWrapper>
+            <SkeletonChatBubble align="right" width="70%" />
+            <SkeletonChatBubble align="left" width="60%" />
+            <SkeletonChatBubble align="right" width="55%" />
+          </CascadeWrapper>
+        </div>
+        <Card padding={16}>
+          <SkeletonBox height={14} width={140} style={{ marginBottom: 12 }} />
+          <SkeletonText lines={3} />
+        </Card>
+      </div>
+    </div>
+  );
   if (!conv) return <div style={{ color: "var(--n-600)" }}>Conversación no encontrada.</div>;
 
   const propuestasPendientes = propuestas.filter(p => p.estado === "propuesta");

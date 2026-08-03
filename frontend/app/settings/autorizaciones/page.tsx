@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Bot, Send, CheckCircle2, XCircle, LayoutGrid } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { BtnPrimary, BtnSecondary, Card, Input, Spinner } from "@/components/ui";
+import { BtnPrimary, BtnSecondary, Card, Input, TypingBubble } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -271,7 +271,7 @@ export default function ConfiguracionAutorizacionesPage() {
         )}
 
         {cargando && !propuesta && (
-          <div style={{ marginLeft: 36 }}><Spinner label="Pensando…" /></div>
+          <div style={{ marginLeft: 36 }}><TypingBubble icon={Bot} /></div>
         )}
         <div ref={finRef} />
       </div>

@@ -5,7 +5,7 @@
  * SectionRule, Divider) se mantienen para no romper pantallas existentes, pero
  * su implementación es la nueva.
  */
-import { createElement, isValidElement, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { Children, createElement, isValidElement, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { X, Moon, Sun, Eye, EyeOff, type LucideIcon } from "lucide-react";
 import {
   ESTADO_TOKENS, normalizarEstado, categoriaToken, CATEGORIA_TOKENS_DARK,
@@ -481,6 +481,121 @@ export function Spinner({ label = "Cargando…" }: { label?: string }) {
     <div style={{ padding: "48px 0", textAlign: "center", fontSize: 13.5, color: "var(--n-500)" }}>
       {label}
     </div>
+  );
+}
+
+// ═══ Skeletons — "progressive skeleton loading" ═══════════════════════════════
+// Reemplazan al <Spinner/> texto plano donde tiene sentido: la pantalla se
+// arma con la forma real del contenido en vez de un mensaje estático.
+export function SkeletonBox({
+  width = "100%", height = 14, radius = "var(--r-sm)", style,
+}: { width?: number | string; height?: number | string; radius?: string; style?: CSSProperties }) {
+  return <div className="skeleton" style={{ width, height, borderRadius: radius, flexShrink: 0, ...style }} />;
+}
+
+export function SkeletonText({
+  lines = 1, widths, style,
+}: { lines?: number; widths?: (string | number)[]; style?: CSSProperties }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, ...style }}>
+      {Array.from({ length: lines }).map((_, i) => (
+        <SkeletonBox key={i} height={12} width={widths?.[i] ?? (i === lines - 1 && lines > 1 ? "55%" : "100%")} />
+      ))}
+    </div>
+  );
+}
+
+/** Forma de una fila de <TableRow/> — mismo `cols` para que no salte el layout. */
+export function SkeletonTableRow({ cols, last }: { cols: string; last?: boolean }) {
+  const n = cols.trim().split(/\s+/).length;
+  return (
+    <div style={{
+      display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
+      padding: "12px 16px", borderBottom: last ? "none" : "1px solid var(--n-100)",
+    }}>
+      {Array.from({ length: n }).map((_, i) => (
+        <SkeletonBox key={i} height={13} width={i === 0 ? "70%" : "45%"} />
+      ))}
+    </div>
+  );
+}
+
+/** Forma de una <Card/> horizontal tipo listado (proveedores, responsables…). */
+export function SkeletonCard({ style }: { style?: CSSProperties }) {
+  return (
+    <Card style={{ display: "flex", alignItems: "center", gap: 14, ...style }}>
+      <SkeletonBox width={64} height={22} radius="var(--r-pill)" />
+      <div style={{ flex: 1, minWidth: 180, display: "flex", flexDirection: "column", gap: 7 }}>
+        <SkeletonBox height={15} width="42%" />
+        <SkeletonBox height={11} width="65%" />
+      </div>
+      <SkeletonBox width={78} height={30} />
+    </Card>
+  );
+}
+
+/** Forma de una burbuja de chat ya recibida (historial). */
+export function SkeletonChatBubble({
+  align = "left", width = "55%",
+}: { align?: "left" | "right"; width?: string | number }) {
+  return (
+    <div style={{ display: "flex", justifyContent: align === "right" ? "flex-end" : "flex-start" }}>
+      <div style={{
+        maxWidth: width, width: "100%", padding: "10px 14px",
+        borderRadius: align === "right" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+        background: "var(--surface)", border: "1px solid var(--n-200)",
+        display: "flex", flexDirection: "column", gap: 6,
+      }}>
+        <SkeletonBox height={11} width="70%" />
+        <SkeletonBox height={11} width="45%" />
+      </div>
+    </div>
+  );
+}
+
+/** Burbuja "escribiendo…" — reemplaza al Spinner mientras se espera respuesta
+ * de un chat conversacional (misma animación `dotWave` que ya usa /cotizar). */
+export function TypingBubble({ icon: Icon }: { icon?: LucideIcon }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      {Icon && (
+        <span style={{
+          width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+          background: "var(--brand-50)", color: "var(--brand)",
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <Icon size={16} strokeWidth={1.75} />
+        </span>
+      )}
+      <div style={{
+        padding: "13px 16px", borderRadius: "16px 16px 16px 4px",
+        background: "var(--surface)", border: "1px solid var(--n-200)",
+        display: "inline-flex", alignItems: "center", gap: 4,
+      }}>
+        {[0, 1, 2].map(i => (
+          <span key={i} style={{
+            width: 6, height: 6, borderRadius: "50%", background: "var(--n-400)",
+            display: "inline-block", animation: "dotWave 1.2s ease-in-out infinite", animationDelay: `${i * 0.15}s`,
+          }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Envuelve una lista de skeletons/resultados y los anima en cascada
+ * (staggered), para que aparezcan de a uno en vez de todos de golpe. */
+export function CascadeWrapper({
+  children, staggerMs = 60, style,
+}: { children: ReactNode; staggerMs?: number; style?: CSSProperties }) {
+  return (
+    <>
+      {Children.toArray(children).map((child, i) => (
+        <div key={i} className="cascade-item" style={{ animation: "fadeUp .35s ease both", animationDelay: `${i * staggerMs}ms`, ...style }}>
+          {child}
+        </div>
+      ))}
+    </>
   );
 }
 

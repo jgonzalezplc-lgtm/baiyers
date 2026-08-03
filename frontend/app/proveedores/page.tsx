@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Building2, Plus, Search, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { BtnPrimary, BtnSecondary, Card, CategoryChip, EmptyState, FieldLabel, Input, Modal, PageHeader, Spinner, Textarea } from "@/components/ui";
+import { BtnPrimary, BtnSecondary, Card, CategoryChip, EmptyState, FieldLabel, Input, Modal, PageHeader, Textarea, SkeletonCard, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -135,7 +135,13 @@ export default function ProveedoresPage() {
         <BtnSecondary size="sm" onClick={() => setFiltro("bloqueados")} style={filtro === "bloqueados" ? { borderColor: "var(--brand)", color: "var(--brand)" } : undefined}>Bloqueados</BtnSecondary>
       </div>
 
-      {loading ? <Spinner /> : visibles.length === 0 ? (
+      {loading ? (
+        <div style={{ display: "grid", gap: 10 }}>
+          <CascadeWrapper>
+            {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
+          </CascadeWrapper>
+        </div>
+      ) : visibles.length === 0 ? (
         <Card padding={0}><EmptyState icon={Building2} title={filtro === "bloqueados" ? "No hay proveedores bloqueados" : "Aún no tienes proveedores"} description="Agrégalos manualmente o importa tu directorio desde Excel." action={filtro === "activos" ? <BtnPrimary icon={Plus} onClick={() => setModal(true)}>Agregar proveedor</BtnPrimary> : undefined} /></Card>
       ) : (
         <div style={{ display: "grid", gap: 10 }}>

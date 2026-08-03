@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { ListChecks } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  PageHeader, Table, TableHead, TableRow, EmptyState, Spinner, BtnPrimary, Badge, fmtCLP,
+  PageHeader, Table, TableHead, TableRow, EmptyState, BtnPrimary, Badge, fmtCLP,
+  SkeletonTableRow, CascadeWrapper,
 } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -57,7 +58,21 @@ export default function ListasPage() {
       />
 
       {loading ? (
-        <Spinner />
+        <Table>
+          <TableHead cols={COLS}>
+            <div>Cotización</div>
+            <div>Ítems</div>
+            <div>Comparados</div>
+            <div>Definitivos</div>
+            <div>Autorización</div>
+            <div style={{ textAlign: "right" }}>Total</div>
+          </TableHead>
+          <CascadeWrapper>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <SkeletonTableRow key={i} cols={COLS} last={i === 4} />
+            ))}
+          </CascadeWrapper>
+        </Table>
       ) : listas.length === 0 ? (
         <Table>
           <EmptyState

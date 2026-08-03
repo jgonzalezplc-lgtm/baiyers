@@ -328,6 +328,23 @@ input, textarea, select, button { font-family: inherit; }
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Skeleton loading — shimmer que recorre el bloque de izquierda a derecha */
+@keyframes skeletonShimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--n-200) 25%, var(--surface-2) 50%, var(--n-200) 75%);
+  background-size: 400% 100%;
+  animation: skeletonShimmer 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; opacity: .7; }
+  .cascade-item { animation: none !important; opacity: 1 !important; }
+}
+
 /* Acordeón estilo iOS: anima la altura con grid-template-rows */
 .acc-panel {
   display: grid;
