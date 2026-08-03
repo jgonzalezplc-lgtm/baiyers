@@ -61,6 +61,38 @@ class ValidarGrafoTest(unittest.TestCase):
         errores = validar_grafo(nodos, conexiones)
         self.assertTrue(any(e["codigo"] == "decision_sin_salida" and e["nodo_id"] == "decidir" for e in errores))
 
+    def test_etapa_no_autorizacion_puede_declarar_sus_propios_resultados(self):
+        """Una revisión (o cualquier etapa humana) puede tener más de una
+        salida propia — ej: aprobar / aprobar con cambios / rechazar — sin
+        ser de tipo 'decision' ni 'autorizacion'."""
+        nodos = [
+            _nodo("inicio", "inicio"),
+            _nodo("revisar", "revision", roles=["revisor"], resultados=["aprobar", "aprobar_con_cambios", "rechazar"]),
+            _nodo("fin", "fin"),
+        ]
+        conexiones = [
+            _conexion("inicio", "revisar"),
+            _conexion("revisar", "fin", "aprobar"),
+            _conexion("revisar", "fin", "aprobar_con_cambios"),
+            # falta "rechazar"
+        ]
+        errores = validar_grafo(nodos, conexiones)
+        self.assertTrue(any(e["codigo"] == "decision_sin_salida" and e["nodo_id"] == "revisar" for e in errores))
+
+        conexiones.append(_conexion("revisar", "inicio", "rechazar"))
+        self.assertEqual(validar_grafo(nodos, conexiones), [])
+
+    def test_etapa_sin_resultados_declarados_sigue_bastando_una_salida(self):
+        """Compatibilidad: una etapa que no declara `resultados` (la
+        mayoría) sigue exigiendo solo una conexión de salida, como antes."""
+        nodos = [
+            _nodo("inicio", "inicio"),
+            _nodo("cotizar", "tarea_humana", roles=["cotizador"]),
+            _nodo("fin", "fin"),
+        ]
+        conexiones = [_conexion("inicio", "cotizar"), _conexion("cotizar", "fin")]
+        self.assertEqual(validar_grafo(nodos, conexiones), [])
+
     def test_nodo_inaccesible(self):
         nodos = [
             _nodo("inicio", "inicio"),

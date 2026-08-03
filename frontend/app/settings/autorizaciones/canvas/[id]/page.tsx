@@ -23,6 +23,8 @@ interface Nodo {
   resultados?: string[];
   condicion_entrada?: Condicion | null;
   posicion?: Posicion;
+  entrada?: string;
+  proceso?: string;
 }
 
 interface Conexion {
@@ -31,12 +33,30 @@ interface Conexion {
   resultado?: string;
 }
 
+interface ResponsableInfo {
+  id: string;
+  nombre: string;
+  cargo?: string | null;
+  email: string | null;
+  telefono?: string | null;
+  activo: boolean;
+}
+
+interface AsignacionRol {
+  id: string;
+  rol_clave: string;
+  orden_autorizacion: number | null;
+  responsables: ResponsableInfo;
+}
+
 interface Workflow {
   id: string;
   nombre: string;
   estado: string;
   nodos: Nodo[];
   conexiones: Conexion[];
+  roles?: { clave: string; nombre: string }[];
+  responsables?: AsignacionRol[];
 }
 
 const TIPOS: { valor: string; label: string }[] = [
@@ -89,6 +109,11 @@ export default function CanvasWorkflowPage() {
   const [errores, setErrores] = useState<{ codigo: string; mensaje: string }[] | null>(null);
   const [activando, setActivando] = useState(false);
   const [toast, setToast] = useState("");
+  const [responsablesOrg, setResponsablesOrg] = useState<ResponsableInfo[]>([]);
+  const [asignandoRol, setAsignandoRol] = useState<string | null>(null);
+  const [nuevoNombre, setNuevoNombre] = useState("");
+  const [nuevoEmail, setNuevoEmail] = useState("");
+  const [guardandoResponsable, setGuardandoResponsable] = useState(false);
 
   const arrastre = useRef<{ id: string; offX: number; offY: number } | null>(null);
   const lienzoRef = useRef<HTMLDivElement>(null);
@@ -97,20 +122,78 @@ export default function CanvasWorkflowPage() {
     createClient().auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
   }, []);
 
+  const cargarWorkflow = async (uid: string) => {
+    const data: Workflow = await fetch(`${API_URL}/api/workflows/${workflowId}?user_id=${uid}`).then(r => r.json());
+    setWorkflow(data);
+    setNodos(prev => {
+      const conPosicion = (data.nodos || []).map((n, i) => {
+        const existente = prev.find(p => p.id === n.id);
+        return { ...n, posicion: existente?.posicion ?? n.posicion ?? { x: 60 + (i % 3) * 220, y: 40 + Math.floor(i / 3) * 130 } };
+      });
+      return conPosicion;
+    });
+    setConexiones(data.conexiones || []);
+    return data;
+  };
+
   useEffect(() => {
     if (!userId) return;
     (async () => {
-      const data: Workflow = await fetch(`${API_URL}/api/workflows/${workflowId}?user_id=${userId}`).then(r => r.json());
-      const conPosicion = (data.nodos || []).map((n, i) => ({
-        ...n,
-        posicion: n.posicion ?? { x: 60 + (i % 3) * 220, y: 40 + Math.floor(i / 3) * 130 },
-      }));
-      setWorkflow(data);
-      setNodos(conPosicion);
-      setConexiones(data.conexiones || []);
+      await cargarWorkflow(userId);
+      const org: ResponsableInfo[] = await fetch(`${API_URL}/api/workflows/responsables/listar?user_id=${userId}`).then(r => r.json()).catch(() => []);
+      setResponsablesOrg(org || []);
       setCargando(false);
     })();
   }, [userId, workflowId]);
+
+  const asignaciones = workflow?.responsables || [];
+
+  const asignarExistente = async (rol: string, responsableId: string) => {
+    if (!userId) return;
+    setGuardandoResponsable(true);
+    try {
+      await fetch(`${API_URL}/api/workflows/responsables/${responsableId}/roles`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, workflow_id: workflowId, rol_clave: rol }),
+      });
+      await cargarWorkflow(userId);
+      setAsignandoRol(null);
+    } finally {
+      setGuardandoResponsable(false);
+    }
+  };
+
+  const crearYAsignar = async (rol: string) => {
+    if (!userId || !nuevoNombre.trim() || !nuevoEmail.trim()) return;
+    setGuardandoResponsable(true);
+    try {
+      const creado = await fetch(`${API_URL}/api/workflows/responsables`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, nombre: nuevoNombre.trim(), email: nuevoEmail.trim() }),
+      }).then(r => r.json());
+      await fetch(`${API_URL}/api/workflows/responsables/${creado.id}/roles`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, workflow_id: workflowId, rol_clave: rol }),
+      });
+      const org: ResponsableInfo[] = await fetch(`${API_URL}/api/workflows/responsables/listar?user_id=${userId}`).then(r => r.json()).catch(() => []);
+      setResponsablesOrg(org || []);
+      await cargarWorkflow(userId);
+      setAsignandoRol(null); setNuevoNombre(""); setNuevoEmail("");
+    } finally {
+      setGuardandoResponsable(false);
+    }
+  };
+
+  const quitarAsignacion = async (rol: string, responsableId: string) => {
+    if (!userId) return;
+    setGuardandoResponsable(true);
+    try {
+      await fetch(`${API_URL}/api/workflows/responsables/${responsableId}/roles/${workflowId}/${rol}?user_id=${userId}`, { method: "DELETE" });
+      await cargarWorkflow(userId);
+    } finally {
+      setGuardandoResponsable(false);
+    }
+  };
 
   const nodoSel = nodos.find(n => n.id === seleccionado) || null;
 
@@ -141,7 +224,7 @@ export default function CanvasWorkflowPage() {
     if (conectando === id) { setConectando(null); return; }
     if (conectando) {
       const origenNodo = nodos.find(n => n.id === conectando);
-      const necesitaResultado = origenNodo && (origenNodo.tipo === "decision" || origenNodo.tipo === "autorizacion");
+      const necesitaResultado = !!origenNodo?.resultados?.length;
       let resultado: string | undefined;
       if (necesitaResultado) {
         const opciones = origenNodo!.resultados || [];
@@ -393,6 +476,23 @@ export default function CanvasWorkflowPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <Input label="Nombre" value={nodoSel.nombre} onChange={e => actualizarNodo(nodoSel.id, { nombre: e.target.value })} />
 
+              {nodoSel.tipo !== "inicio" && nodoSel.tipo !== "fin" && (
+                <>
+                  <Input
+                    label="Entrada (qué recibe esta etapa)"
+                    value={nodoSel.entrada || ""}
+                    onChange={e => actualizarNodo(nodoSel.id, { entrada: e.target.value })}
+                    placeholder="Ej: la lista de ítems con sus definitivos"
+                  />
+                  <Input
+                    label="Qué debe hacer"
+                    value={nodoSel.proceso || ""}
+                    onChange={e => actualizarNodo(nodoSel.id, { proceso: e.target.value })}
+                    placeholder="Ej: revisar y decidir si autoriza la compra"
+                  />
+                </>
+              )}
+
               {["tarea_humana", "revision", "autorizacion", "homologacion"].includes(nodoSel.tipo) && (
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 6 }}>Roles</div>
@@ -415,14 +515,72 @@ export default function CanvasWorkflowPage() {
                 </div>
               )}
 
-              {(nodoSel.tipo === "decision" || nodoSel.tipo === "autorizacion") && (
+              {["tarea_humana", "revision", "autorizacion", "homologacion"].includes(nodoSel.tipo) && (nodoSel.roles || []).map(rol => {
+                const asignados = asignaciones.filter(a => a.rol_clave === rol);
+                const disponibles = responsablesOrg.filter(r => r.activo && !asignados.some(a => a.responsables?.id === r.id));
+                return (
+                  <div key={rol}>
+                    <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--n-600)", marginBottom: 6 }}>Responsables de &quot;{rol}&quot;</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 6 }}>
+                      {asignados.length === 0 && <div style={{ fontSize: 11.5, color: "var(--n-500)" }}>Nadie asignado todavía.</div>}
+                      {asignados.map(a => (
+                        <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, fontSize: 11.5, padding: "4px 7px", background: "var(--surface-2)", borderRadius: "var(--r-sm)" }}>
+                          <span>{a.responsables?.nombre} <span style={{ color: "var(--n-500)" }}>· {a.responsables?.email}</span></span>
+                          <button onClick={() => quitarAsignacion(rol, a.responsables.id)} disabled={guardandoResponsable} style={{ border: 0, background: "none", color: "var(--n-400)", cursor: "pointer", padding: 0, flexShrink: 0 }}>
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    {asignandoRol === rol ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        {disponibles.length > 0 && (
+                          <select
+                            defaultValue=""
+                            onChange={e => { if (e.target.value) asignarExistente(rol, e.target.value); }}
+                            style={{ width: "100%", padding: "5px 6px", fontSize: 11.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }}
+                          >
+                            <option value="">Elegir existente…</option>
+                            {disponibles.map(r => <option key={r.id} value={r.id}>{r.nombre} · {r.email}</option>)}
+                          </select>
+                        )}
+                        <div style={{ fontSize: 10.5, color: "var(--n-500)" }}>o crear uno nuevo:</div>
+                        <input placeholder="Nombre" value={nuevoNombre} onChange={e => setNuevoNombre(e.target.value)} style={{ padding: "5px 6px", fontSize: 11.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }} />
+                        <input placeholder="Email" type="email" value={nuevoEmail} onChange={e => setNuevoEmail(e.target.value)} style={{ padding: "5px 6px", fontSize: 11.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }} />
+                        <div style={{ display: "flex", gap: 5 }}>
+                          <BtnGhost onClick={() => { setAsignandoRol(null); setNuevoNombre(""); setNuevoEmail(""); }} size="sm">Cancelar</BtnGhost>
+                          <BtnPrimary onClick={() => crearYAsignar(rol)} disabled={!nuevoNombre.trim() || !nuevoEmail.trim() || guardandoResponsable} size="sm">Crear y asignar</BtnPrimary>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => setAsignandoRol(rol)} style={{ display: "inline-flex", alignItems: "center", gap: 4, border: 0, background: "none", color: "var(--brand)", fontSize: 11.5, cursor: "pointer", padding: 0 }}>
+                        <Plus size={11} /> Agregar responsable
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+
+              {nodoSel.tipo !== "inicio" && nodoSel.tipo !== "fin" && (
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 6 }}>Resultados posibles</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 6 }}>
+                    Salidas (out) {nodoSel.tipo !== "decision" && nodoSel.tipo !== "autorizacion" && <span style={{ fontWeight: 400, color: "var(--n-500)" }}>· opcional</span>}
+                  </div>
                   <Input
                     value={(nodoSel.resultados || []).join(", ")}
                     onChange={e => actualizarNodo(nodoSel.id, { resultados: e.target.value.split(",").map(s => s.trim()).filter(Boolean) })}
-                    placeholder="aprobado, rechazado"
+                    placeholder={nodoSel.tipo === "decision" || nodoSel.tipo === "autorizacion" ? "aprobado, rechazado" : "vacío = una sola salida"}
                   />
+                  {nodoSel.tipo === "autorizacion" && (
+                    <div style={{ fontSize: 10.5, color: "var(--n-500)", marginTop: 4, lineHeight: 1.4 }}>
+                      El motor real hoy solo distingue aprobado/rechazado (&quot;con observaciones&quot; ya existe como variante de aprobado en el correo de autorización). Salidas adicionales quedan documentadas en el grafo pero no cambian el ruteo todavía.
+                    </div>
+                  )}
+                  {!["decision", "autorizacion"].includes(nodoSel.tipo) && (nodoSel.resultados || []).length > 0 && (
+                    <div style={{ fontSize: 10.5, color: "var(--n-500)", marginTop: 4, lineHeight: 1.4 }}>
+                      Esta etapa todavía no tiene ejecución real conectada (solo el paso de autorización la tiene) — las salidas quedan como documentación del proceso y validan el grafo.
+                    </div>
+                  )}
                 </div>
               )}
 

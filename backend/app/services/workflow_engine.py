@@ -96,21 +96,25 @@ def validar_grafo(nodos: list[dict], conexiones: list[dict]) -> list[dict]:
                     n["id"],
                 ))
 
-    # Decisiones/autorizaciones: cada resultado declarado debe tener salida.
+    # Cada resultado declarado debe tener salida. decision/autorizacion
+    # siempre necesitan al menos un resultado (para eso existen); cualquier
+    # otro tipo de etapa puede declarar sus propios resultados también (ej:
+    # una revisión con "aprobar / aprobar con cambios / rechazar") — si no
+    # declara ninguno, sigue bastando con una única conexión de salida.
     salidas_por_nodo: dict[str, set[str]] = {}
     for c in conexiones_validas:
         salidas_por_nodo.setdefault(c["origen_nodo_id"], set()).add(c.get("resultado") or "default")
 
     for n in nodos:
-        if n.get("tipo") in ("decision", "autorizacion"):
-            resultados_declarados = set(n.get("resultados") or [])
-            if not resultados_declarados:
-                errores.append(ErrorValidacion(
-                    "decision_sin_resultados",
-                    f"El nodo '{n.get('nombre', n['id'])}' no declara resultados posibles.",
-                    n["id"],
-                ))
-                continue
+        resultados_declarados = set(n.get("resultados") or [])
+        if n.get("tipo") in ("decision", "autorizacion") and not resultados_declarados:
+            errores.append(ErrorValidacion(
+                "decision_sin_resultados",
+                f"El nodo '{n.get('nombre', n['id'])}' no declara resultados posibles.",
+                n["id"],
+            ))
+            continue
+        if resultados_declarados:
             salidas = salidas_por_nodo.get(n["id"], set())
             faltantes = resultados_declarados - salidas
             if faltantes:
