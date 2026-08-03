@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Bot, Send, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowLeft, Bot, Send, CheckCircle2, XCircle, LayoutGrid } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { BtnPrimary, BtnSecondary, Card, Input, Spinner } from "@/components/ui";
 
@@ -58,6 +58,7 @@ export default function ConfiguracionAutorizacionesPage() {
   const [workflowGuardado, setWorkflowGuardado] = useState<{ id: string; estado: string } | null>(null);
   const [errores, setErrores] = useState<{ codigo: string; mensaje: string }[]>([]);
   const [activando, setActivando] = useState(false);
+  const [creandoEnBlanco, setCreandoEnBlanco] = useState(false);
   const finRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -151,6 +152,25 @@ export default function ConfiguracionAutorizacionesPage() {
     }
   };
 
+  const empezarEnBlanco = async () => {
+    if (!userId) return;
+    setCreandoEnBlanco(true);
+    try {
+      const nodos = [
+        { id: "inicio", tipo: "inicio", nombre: "Inicio", posicion: { x: 60, y: 40 } },
+        { id: "fin", tipo: "fin", nombre: "Fin", posicion: { x: 60, y: 200 } },
+      ];
+      const creado = await fetch(`${API_URL}/api/workflows`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, nombre: "Ciclo de compras", nodos, conexiones: [], origen: "visual" }),
+      }).then(r => r.json());
+      router.push(`/settings/autorizaciones/canvas/${creado.id}`);
+    } catch {
+      setCreandoEnBlanco(false);
+    }
+  };
+
   return (
     <div style={{ maxWidth: 640, margin: "0 auto" }}>
       <button onClick={() => router.push("/settings")} style={{ border: 0, background: "none", color: "var(--n-600)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 16, fontSize: 13.5 }}>
@@ -237,11 +257,16 @@ export default function ConfiguracionAutorizacionesPage() {
                 {errores.map((e, i) => <li key={i}>{e.mensaje}</li>)}
               </ul>
             )}
-            {workflowGuardado.estado !== "activo" && (
-              <BtnPrimary onClick={activar} disabled={activando || errores.length > 0} style={{ width: "100%" }}>
-                {activando ? "Activando…" : "Activar este ciclo"}
-              </BtnPrimary>
-            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <BtnSecondary onClick={() => router.push(`/settings/autorizaciones/canvas/${workflowGuardado.id}`)} style={{ flex: 1 }}>
+                Ajustar visualmente
+              </BtnSecondary>
+              {workflowGuardado.estado !== "activo" && (
+                <BtnPrimary onClick={activar} disabled={activando || errores.length > 0} style={{ flex: 1 }}>
+                  {activando ? "Activando…" : "Activar este ciclo"}
+                </BtnPrimary>
+              )}
+            </div>
           </Card>
         )}
 
@@ -250,6 +275,19 @@ export default function ConfiguracionAutorizacionesPage() {
         )}
         <div ref={finRef} />
       </div>
+
+      {!workflowGuardado && mensajes.length === 1 && (
+        <button
+          onClick={empezarEnBlanco}
+          disabled={creandoEnBlanco || !userId}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 12,
+            border: 0, background: "none", color: "var(--n-500)", fontSize: 12.5, cursor: "pointer",
+          }}
+        >
+          <LayoutGrid size={13} /> {creandoEnBlanco ? "Creando…" : "¿Prefieres armarlo visualmente? Empezar en blanco →"}
+        </button>
+      )}
 
       {!workflowGuardado && (
         <div style={{ display: "flex", gap: 10 }}>
