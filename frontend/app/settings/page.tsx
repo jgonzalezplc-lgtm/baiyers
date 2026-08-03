@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Workflow } from "lucide-react";
 import { BtnPrimary, Input, PageHeader, Card, Spinner } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -190,6 +191,29 @@ export default function SettingsPage() {
               <BtnPrimary onClick={handleGuardar} disabled={guardando} style={{ width: "100%" }}>
                 {guardando ? "Guardando…" : "Guardar cambios"}
               </BtnPrimary>
+            </Card>
+
+            {/* Ciclo de compras y autorizaciones — evoluciona "Proceso de compra"
+                (texto libre) hacia roles, responsables y reglas reales. */}
+            <Card padding={20} style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{
+                width: 44, height: 44, flexShrink: 0, borderRadius: "var(--r-md)",
+                background: "var(--brand-50)", color: "var(--brand)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <Workflow size={22} strokeWidth={1.75} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)" }}>
+                  Ciclo de compras y autorizaciones
+                </div>
+                <div style={{ fontSize: 13, color: "var(--n-600)", marginTop: 2 }}>
+                  Define etapas, roles, responsables y reglas de aprobación por monto — contándoselo a Baiyer o armándolo visualmente.
+                </div>
+              </div>
+              <Link href="/settings/autorizaciones" className="btn-swiss-secondary" style={{ textDecoration: "none", whiteSpace: "nowrap" }}>
+                Configurar →
+              </Link>
             </Card>
           </>
         )}
