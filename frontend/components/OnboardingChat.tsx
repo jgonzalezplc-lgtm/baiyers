@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { camposFaltantes, type CampoRequerido } from "@/lib/onboarding";
+import { camposFaltantes, normalizarRut, rutChilenoValido, type CampoRequerido } from "@/lib/onboarding";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -112,7 +112,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
 
   // Guarda lo recolectado, mezclado con lo que ya existía en user_metadata
   // (para no borrar datos de una sesión de onboarding anterior).
-  const guardar = useCallback(async (proceso?: string) => {
+  const guardar = useCallback(async (proceso?: string, overrides?: { rut?: string; nombreUsuario?: string }) => {
     setFase("fin");
     if (!floating) addBot(`¡Listo, ${nombreUsuario || ""}! Configuré tu cuenta de ${empresa || "tu empresa"}. Te llevo al dashboard…`);
     const prev = metaExistenteRef.current;
@@ -123,14 +123,20 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
       const industriaFinal = inv?.industria ?? (typeof prev.industria === "string" ? prev.industria : null);
       const paisFinal = inv?.pais ?? inv?.pais_tld ?? (typeof prev.pais === "string" ? prev.pais : null);
       const categoriasFinal = cats.length ? cats.slice(0, 20) : (prev.categorias_default ?? []);
+      const rutFinal = overrides?.rut !== undefined
+        ? overrides.rut
+        : rut.trim() || (typeof prev.rut === "string" ? prev.rut : "");
+      const nombreFinal = overrides?.nombreUsuario !== undefined
+        ? overrides.nombreUsuario
+        : nombreUsuario.trim() || (typeof prev.nombre_usuario === "string" ? prev.nombre_usuario : "");
       const { data, error } = await createClient().auth.updateUser({
         data: {
           ...prev,
           onboarding_completo: true,
           empresa: empresaFinal,
-          nombre_usuario: nombreUsuario.trim() || (typeof prev.nombre_usuario === "string" ? prev.nombre_usuario : null),
+          nombre_usuario: nombreFinal || null,
           industria: industriaFinal,
-          rut: rut.trim() || (typeof prev.rut === "string" ? prev.rut : null),
+          rut: rutFinal || null,
           logo_url: logoSeguro ?? (typeof prev.logo_url === "string" ? prev.logo_url : null),
           sitio_web: inv?.sitio_web ?? (typeof prev.sitio_web === "string" ? prev.sitio_web : null),
           pais: paisFinal,
@@ -139,6 +145,9 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
         },
       });
       if (error) throw error;
+      if (rutFinal && data.user?.user_metadata?.rut !== rutFinal) {
+        throw new Error("Supabase no confirmó el RUT guardado");
+      }
 
       // Genera/actualiza el perfil de procurement (prior inicial para búsqueda
       // e identificación) — no bloquea el onboarding si falla.
@@ -284,9 +293,15 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
 
     if (fase === "rut") {
       addUser(val || "No lo sé");
-      const rutLimpio = val && esConfirmacion(val) && rut ? rut : extraer(val, "rut");
+      const rutIngresado = val && esConfirmacion(val) && rut ? rut : extraer(val, "rut");
+      const rutLimpio = rutIngresado ? normalizarRut(rutIngresado) : "";
+      if (rutIngresado && !rutChilenoValido(rutIngresado)) {
+        setInput("");
+        addBot("Ese RUT no parece válido. Revisa el número y el dígito verificador (por ejemplo, 76.123.456-7), o déjalo vacío para omitirlo por ahora.");
+        return;
+      }
       setRut(rutLimpio); setInput("");
-      addBot("Perfecto.");
+      addBot(rutLimpio ? `Perfecto, guardaremos ${rutLimpio}.` : "De acuerdo, lo omitimos por ahora.");
       if (faltanRef.current.includes("nombre_usuario")) {
         setFase("nombre_usuario");
         await espera(300);
@@ -296,7 +311,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
         await espera(300);
         addBot(`¿Y tú cómo te llamas?${nombreUsuario ? ` (¿"${nombreUsuario}"?)` : ""}`);
       } else {
-        await guardar();
+        await guardar(undefined, { rut: rutLimpio });
       }
       return;
     }
@@ -311,7 +326,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
         await espera(300);
         addBot(`Encantado, ${nom}. ¿Este es el logo de tu empresa?`, inv ?? undefined);
       } else {
-        await guardar();
+        await guardar(undefined, { nombreUsuario: nom });
       }
       return;
     }
