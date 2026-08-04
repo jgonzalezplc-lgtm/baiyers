@@ -27,11 +27,12 @@ def _index_nodos(nodos: list[dict]) -> dict[str, dict]:
 
 
 def obtener_workflow_activo(user_id: str) -> Optional[dict]:
-    """El workflow activo más reciente del usuario. Si hay varios ciclos
+    """El workflow activo más reciente de la organización. Si hay varios ciclos
     activos con nombres distintos, se usa el más recién activado — elegir
     cuál aplica por categoría/proyecto queda para una mejora futura."""
+    from app.services.organizacion import ids_organizacion
     sb = _sb()
-    rows = sb.table("workflow_definitions").select("*").eq("user_id", user_id).eq(
+    rows = sb.table("workflow_definitions").select("*").in_("user_id", ids_organizacion(user_id)).eq(
         "estado", "activo"
     ).order("updated_at", desc=True).limit(1).execute().data or []
     return rows[0] if rows else None

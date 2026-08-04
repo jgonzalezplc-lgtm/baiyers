@@ -132,7 +132,7 @@ export default async function DashboardPage({
       fetchConTimeout(`${API_URL}/api/dashboard/stats?user_id=${user.id}`),
       fetchConTimeout(`${API_URL}/api/listas?user_id=${user.id}`),
       fetchConTimeout(`${API_URL}/api/gmail/status?user_id=${user.id}`),
-      fetchConTimeout(`${API_URL}/api/aprobaciones/workflows?user_id=${user.id}`),
+      fetchConTimeout(`${API_URL}/api/workflows/estado/resumen?user_id=${user.id}`),
     ]);
     if (statsRes?.ok) stats = await statsRes.json();
     if (cotRes?.ok) listasRecientes = (await cotRes.json()).slice(0, 5);
@@ -147,14 +147,23 @@ export default async function DashboardPage({
           : "Gmail conectado y sincronizando respuestas automáticamente.";
     }
     if (workflowsRes?.ok) {
-      const workflows: { pasos?: unknown[] }[] = await workflowsRes.json();
-      const conAprobadores = workflows.find(w => (w.pasos?.length ?? 0) > 0);
-      if (conAprobadores) {
+      const workflow: {
+        estado?: "activo" | "borrador_validado" | "borrador_pendiente" | "sin_configurar";
+        nombre?: string | null;
+        tiene_autorizacion?: boolean;
+        errores_validacion?: number;
+      } = await workflowsRes.json();
+      if (workflow.estado === "activo") {
         autorizacionEstado = "ok";
-        autorizacionDetalle = "Ciclo de autorización activo y configurado.";
-      } else if (workflows.length > 0) {
+        autorizacionDetalle = workflow.tiene_autorizacion
+          ? `“${workflow.nombre ?? "Ciclo de compras"}” está activo y aplicará sus autorizaciones.`
+          : `“${workflow.nombre ?? "Ciclo de compras"}” está activo; no requiere un aprobador independiente.`;
+      } else if (workflow.estado === "borrador_validado") {
         autorizacionEstado = "atencion";
-        autorizacionDetalle = "Hay un flujo creado pero sin aprobadores asignados.";
+        autorizacionDetalle = `“${workflow.nombre ?? "Ciclo de compras"}” está validado; falta activarlo para aplicarlo.`;
+      } else if (workflow.estado === "borrador_pendiente") {
+        autorizacionEstado = "atencion";
+        autorizacionDetalle = `El borrador tiene ${workflow.errores_validacion ?? 0} punto(s) por corregir antes de activarlo.`;
       } else {
         autorizacionEstado = "desconectado";
         autorizacionDetalle = "Sin ciclo de autorización configurado — las OC no pasan por aprobación.";
@@ -203,7 +212,7 @@ export default async function DashboardPage({
           titulo="Ciclo de autorizaciones"
           estado={autorizacionEstado}
           detalle={autorizacionDetalle}
-          accion={{ label: "Editar ciclo", href: "/settings?section=autorizaciones" }}
+          accion={{ label: "Editar ciclo", href: "/settings/autorizaciones" }}
         />
       </div>
 

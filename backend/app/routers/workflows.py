@@ -63,6 +63,14 @@ async def listar_workflows(user_id: str):
     return listar_workflows(user_id)
 
 
+@router.get("/estado/resumen")
+async def estado_workflow(user_id: str):
+    """Estado operativo del ciclo nuevo (o legado) para superficies como el
+    dashboard. Distingue borrador validado de ausencia de configuración."""
+    from app.services.workflow_service import obtener_estado_workflow
+    return obtener_estado_workflow(user_id)
+
+
 @router.get("/autorizadores-sugeridos")
 async def autorizadores_sugeridos(user_id: str, monto_total: float = 0):
     """Fase 4: a quién le llegaría la solicitud de autorización de una lista

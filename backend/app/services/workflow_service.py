@@ -18,6 +18,11 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _ids_organizacion(user_id: str) -> list[str]:
+    from app.services.organizacion import ids_organizacion
+    return ids_organizacion(user_id)
+
+
 def crear_borrador(
     user_id: str, nombre: str, nodos: list[dict], conexiones: list[dict],
     origen: str = "visual", roles: Optional[list[dict]] = None,
@@ -57,12 +62,14 @@ def listar_workflows(user_id: str) -> list[dict]:
     sb = _sb()
     return sb.table("workflow_definitions").select(
         "id,nombre,version,estado,origen,created_at,updated_at"
-    ).eq("user_id", user_id).order("created_at", desc=True).execute().data or []
+    ).in_("user_id", _ids_organizacion(user_id)).order("created_at", desc=True).execute().data or []
 
 
 def obtener_workflow(user_id: str, workflow_id: str) -> Optional[dict]:
     sb = _sb()
-    workflow = sb.table("workflow_definitions").select("*").eq("id", workflow_id).eq("user_id", user_id).maybe_single().execute().data
+    workflow = sb.table("workflow_definitions").select("*").eq("id", workflow_id).in_(
+        "user_id", _ids_organizacion(user_id)
+    ).maybe_single().execute().data
     if not workflow:
         return None
     roles = sb.table("workflow_roles").select("*").eq("workflow_id", workflow_id).execute().data or []
@@ -93,7 +100,7 @@ def activar_workflow(user_id: str, workflow_id: str) -> dict:
     if errores:
         raise ValueError(f"El workflow tiene {len(errores)} error(es) de validación, no se puede activar")
 
-    anterior = sb.table("workflow_definitions").select("id").eq("user_id", user_id).eq(
+    anterior = sb.table("workflow_definitions").select("id").in_("user_id", _ids_organizacion(user_id)).eq(
         "nombre", workflow["nombre"]
     ).eq("estado", "activo").execute().data or []
     for a in anterior:
@@ -101,6 +108,66 @@ def activar_workflow(user_id: str, workflow_id: str) -> dict:
 
     sb.table("workflow_definitions").update({"estado": "activo", "updated_at": _now()}).eq("id", workflow_id).execute()
     return obtener_workflow(user_id, workflow_id)
+
+
+def obtener_estado_workflow(user_id: str) -> dict:
+    """Resumen operativo del ciclo de la organización para el dashboard.
+
+    Prioriza el ciclo nuevo activo. Si todavía es borrador, informa si ya
+    pasó la validación para que la UI no lo confunda con una ausencia total.
+    Mantiene compatibilidad con los workflows de aprobación legados.
+    """
+    sb = _sb()
+    ids = _ids_organizacion(user_id)
+    rows = sb.table("workflow_definitions").select(
+        "id,nombre,estado,nodos,conexiones,updated_at,created_at"
+    ).in_("user_id", ids).in_("estado", ["activo", "borrador"]).order(
+        "updated_at", desc=True
+    ).execute().data or []
+
+    activos = [row for row in rows if row.get("estado") == "activo"]
+    candidato = activos[0] if activos else (rows[0] if rows else None)
+    if candidato:
+        nodos = candidato.get("nodos") or []
+        errores = validar_grafo(nodos, candidato.get("conexiones") or [])
+        tiene_autorizacion = any(n.get("tipo") == "autorizacion" for n in nodos)
+        estado = "activo" if candidato.get("estado") == "activo" else (
+            "borrador_validado" if not errores else "borrador_pendiente"
+        )
+        return {
+            "configurado": estado == "activo",
+            "estado": estado,
+            "workflow_id": candidato["id"],
+            "nombre": candidato.get("nombre") or "Ciclo de compras",
+            "tiene_autorizacion": tiene_autorizacion,
+            "errores_validacion": len(errores),
+            "origen": "workflow_builder",
+        }
+
+    legados = sb.table("approval_workflows").select("id,nombre,pasos").in_(
+        "user_id", ids
+    ).eq("activo", True).limit(1).execute().data or []
+    if legados:
+        legado = legados[0]
+        return {
+            "configurado": True,
+            "estado": "activo",
+            "workflow_id": legado["id"],
+            "nombre": legado.get("nombre") or "Ciclo de autorizaciones",
+            "tiene_autorizacion": bool(legado.get("pasos")),
+            "errores_validacion": 0,
+            "origen": "legacy",
+        }
+
+    return {
+        "configurado": False,
+        "estado": "sin_configurar",
+        "workflow_id": None,
+        "nombre": None,
+        "tiene_autorizacion": False,
+        "errores_validacion": 0,
+        "origen": None,
+    }
 
 
 # ─── Responsables ───────────────────────────────────────────────────────────
