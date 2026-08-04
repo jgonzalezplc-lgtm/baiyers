@@ -104,7 +104,7 @@ def interpretar_descripcion(descripcion: str, contexto: str = "") -> dict:
     vacio_seguro = {
         "resumen": "", "etapas": [], "reglas_autorizacion": [],
         "requiere_aclaracion": True,
-        "preguntas": ["No pude interpretar la descripción, ¿puedes intentarlo de nuevo con más detalle?"],
+        "preguntas": ["La interpretación tardó más de lo esperado. Tu descripción está bien; vuelve a intentarlo en unos segundos."],
     }
 
     texto = (descripcion or "").strip()
@@ -168,7 +168,10 @@ def interpretar_descripcion(descripcion: str, contexto: str = "") -> dict:
         prompt += f"\n\nConversación previa (preguntas ya hechas y respuestas del usuario):\n{contexto}"
 
     try:
-        resp = model.generate_content(prompt, request_options={"timeout": 12})
+        # Los procesos con varias bifurcaciones y responsables suelen tardar
+        # más de 12 s en Gemini. El frontend espera 40 s para dejar margen a
+        # este timeout sin cortar una respuesta válida antes del backend.
+        resp = model.generate_content(prompt, request_options={"timeout": 30})
         text = resp.text.strip()
         if "```" in text:
             text = text.split("```")[1]
