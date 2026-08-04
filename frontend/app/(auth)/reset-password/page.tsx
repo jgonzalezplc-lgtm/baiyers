@@ -16,15 +16,19 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     let activo = true;
+    const recoveryUserId = sessionStorage.getItem("baiyer_password_recovery_user_id");
 
-    if (sessionStorage.getItem("baiyer_password_recovery") !== "verified") {
+    if (sessionStorage.getItem("baiyer_password_recovery") !== "verified" || !recoveryUserId) {
       setError("Esta pantalla no fue abierta desde un enlace de recuperación válido. Solicita uno nuevo.");
       return () => { activo = false; };
     }
 
     supabase.auth.getUser().then(({ data, error: sessionError }) => {
       if (!activo) return;
-      if (sessionError || !data.user) {
+      if (sessionError || !data.user || data.user.id !== recoveryUserId) {
+        sessionStorage.removeItem("baiyer_password_recovery");
+        sessionStorage.removeItem("baiyer_password_recovery_user_id");
+        void supabase.auth.signOut({ scope: "local" });
         setError("Este enlace no tiene una sesión de recuperación válida. Solicita uno nuevo.");
         return;
       }
@@ -49,6 +53,17 @@ export default function ResetPasswordPage() {
     }
     setLoading(true);
     setError("");
+    const recoveryUserId = sessionStorage.getItem("baiyer_password_recovery_user_id");
+    const { data: currentUserData, error: currentUserError } = await supabase.auth.getUser();
+    if (currentUserError || !currentUserData.user || !recoveryUserId || currentUserData.user.id !== recoveryUserId) {
+      sessionStorage.removeItem("baiyer_password_recovery");
+      sessionStorage.removeItem("baiyer_password_recovery_user_id");
+      await supabase.auth.signOut({ scope: "local" });
+      setLoading(false);
+      setRecoveryReady(false);
+      setError("La identidad de recuperación no coincide con la sesión actual. Solicita un enlace nuevo.");
+      return;
+    }
     const { error } = await supabase.auth.updateUser({ password });
     setLoading(false);
     if (error) {
@@ -64,6 +79,7 @@ export default function ResetPasswordPage() {
       }
     } else {
       sessionStorage.removeItem("baiyer_password_recovery");
+      sessionStorage.removeItem("baiyer_password_recovery_user_id");
       await supabase.auth.signOut({ scope: "local" });
       setListo(true);
       setTimeout(() => router.push("/login"), 2000);

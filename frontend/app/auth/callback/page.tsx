@@ -26,22 +26,32 @@ function CallbackInner() {
 
     if (!code) { irA("/login?error=oauth"); return; }
 
-    supabase.auth.exchangeCodeForSession(code).then(async ({ error }) => {
+    supabase.auth.exchangeCodeForSession(code).then(async ({ data, error }) => {
       if (!error) {
-        if (isRecovery) sessionStorage.setItem("baiyer_password_recovery", "verified");
+        if (isRecovery) {
+          if (!data.user?.id) {
+            await supabase.auth.signOut({ scope: "local" });
+            irA("/login?error=recovery");
+            return;
+          }
+          sessionStorage.setItem("baiyer_password_recovery", "verified");
+          sessionStorage.setItem("baiyer_password_recovery_user_id", data.user.id);
+        }
         irA(next);
         return;
       }
       // En recuperación nunca aceptamos como fallback una sesión anterior:
       // podría corresponder a un usuario distinto del destinatario del correo.
       if (isRecovery) {
+        sessionStorage.removeItem("baiyer_password_recovery");
+        sessionStorage.removeItem("baiyer_password_recovery_user_id");
         await supabase.auth.signOut({ scope: "local" });
         irA("/login?error=recovery");
         return;
       }
       // Si "falló" pero la sesión igual quedó creada (código ya consumido), entrar.
-      const { data } = await supabase.auth.getSession();
-      irA(data.session ? next : "/login?error=oauth");
+      const { data: sessionData } = await supabase.auth.getSession();
+      irA(sessionData.session ? next : "/login?error=oauth");
     });
   }, [params]);
 

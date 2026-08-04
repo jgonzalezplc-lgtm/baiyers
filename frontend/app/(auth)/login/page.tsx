@@ -79,6 +79,8 @@ export default function LoginPage() {
     setError("");
     // Evita que una sesión abierta de otra cuenta sea reutilizada por error
     // mientras se procesa el enlace de recuperación.
+    sessionStorage.removeItem("baiyer_password_recovery");
+    sessionStorage.removeItem("baiyer_password_recovery_user_id");
     await supabase.auth.signOut({ scope: "local" });
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/auth/callback?flow=recovery&next=${encodeURIComponent("/reset-password")}`,
