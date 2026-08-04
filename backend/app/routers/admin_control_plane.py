@@ -180,7 +180,7 @@ DATA_RESOURCES = {
     "searches": ("search_sessions", "id,user_id,item_nombre,categoria_predicha,modo,n_resultados,estado,created_at", "created_at"),
     "projects": ("proyectos", "id,user_id,nombre,estado,created_at", "created_at"),
     "quotes": ("cotizaciones", "id,user_id,nombre_identificado,categoria,estado,created_at", "created_at"),
-    "suppliers": ("proveedores", "id,user_id,nombre,categoria,pais,created_at", "created_at"),
+    "suppliers": ("proveedores", "id,user_id,nombre,categoria_score,pais,score,bloqueado,created_at", "created_at"),
     "email_conversations": ("gmail_conversations", "id,user_id,proveedor_nombre,subject,estado,last_message_at,created_at", "created_at"),
     "product_events": ("product_events", "id,organization_id,user_id,event_type,entity_type,entity_id,status,occurred_at", "occurred_at"),
     "ai_usage": ("ai_usage_events", "id,organization_id,user_id,feature,provider,effective_model,input_tokens,output_tokens,latency_ms,estimated_cost_usd,status,occurred_at", "occurred_at"),
