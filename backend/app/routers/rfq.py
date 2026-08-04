@@ -120,7 +120,14 @@ async def preparar_rfq(lista_id: str, req: PrepararRFQRequest):
                 continue
 
             clave = f"lista:{lista_id}:proveedor:{proveedor_id}:v1"
-            existente = sb.table("rfq_batches").select("*").in_("user_id", _ids_org(req.user_id)).eq("clave_idempotencia", clave).maybe_single().execute().data
+            respuesta_existente = (
+                sb.table("rfq_batches").select("*")
+                .in_("user_id", _ids_org(req.user_id))
+                .eq("clave_idempotencia", clave).maybe_single().execute()
+            )
+            # Algunas versiones de postgrest-py devuelven None (no un objeto
+            # con data=None) cuando maybe_single no encuentra filas.
+            existente = respuesta_existente.data if respuesta_existente else None
             if existente and existente.get("estado") in ("sending", "sent", "delivery_uncertain"):
                 preparados.append(existente)
                 continue
