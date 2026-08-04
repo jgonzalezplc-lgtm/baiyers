@@ -472,15 +472,24 @@ export default function ListaDetallePage() {
             <span style={{ fontSize: 13.5, fontWeight: 500, color: "var(--canvas)" }}>
               {proveedoresSeleccionados} proveedor{proveedoresSeleccionados !== 1 ? "es" : ""} seleccionado{proveedoresSeleccionados !== 1 ? "s" : ""}
             </span>
-            <button onClick={() => void irACompararProveedores()} disabled={preparandoComparacion} style={{
-              background: "var(--brand)", color: "#fff", border: "none",
-              borderRadius: "var(--r-md)", padding: "9px 16px",
-              fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-sans)",
-              cursor: preparandoComparacion ? "not-allowed" : "pointer",
-              opacity: preparandoComparacion ? .5 : 1,
-            }}>
-              {preparandoComparacion ? "Preparando…" : "Ir a comparar →"}
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={() => router.push(`/listas/${id}/busqueda-complementaria`)} style={{
+                background: "var(--surface)", color: "var(--n-900)", border: "none",
+                borderRadius: "var(--r-md)", padding: "9px 14px",
+                fontSize: 13.5, fontWeight: 500, fontFamily: "var(--font-sans)", cursor: "pointer",
+              }}>
+                Buscar online <span style={{ color: "var(--n-500)", fontSize: 12 }}>(opcional)</span>
+              </button>
+              <button onClick={() => void irACompararProveedores()} disabled={preparandoComparacion} style={{
+                background: "var(--brand)", color: "#fff", border: "none",
+                borderRadius: "var(--r-md)", padding: "9px 16px",
+                fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-sans)",
+                cursor: preparandoComparacion ? "not-allowed" : "pointer",
+                opacity: preparandoComparacion ? .5 : 1,
+              }}>
+                {preparandoComparacion ? "Preparando…" : `Comparar (${proveedoresSeleccionados}) →`}
+              </button>
+            </div>
           </div>
         </div>
       )}
