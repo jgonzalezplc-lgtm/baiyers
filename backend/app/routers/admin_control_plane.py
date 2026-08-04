@@ -92,10 +92,8 @@ def _identity_maps(sb: Any) -> tuple[dict[str, dict], dict[str, str]]:
         "id, name, email, organization_id, organization"
     ).limit(5000).execute().data or []
     user_map = {str(row["id"]): row for row in users if row.get("id")}
-    org_map = {
-        str(row["organization_id"]): str(row.get("organization") or "Sin organización")
-        for row in users if row.get("organization_id")
-    }
+    organizations = sb.table("capo_organization_overview").select("id,nombre").limit(5000).execute().data or []
+    org_map = {str(row["id"]): str(row.get("nombre") or "Sin organización") for row in organizations if row.get("id")}
     return user_map, org_map
 
 
@@ -211,8 +209,36 @@ def database_resource(
     if not config:
         raise HTTPException(status_code=404, detail="Recurso administrativo no permitido")
     table, fields, order = config
-    query = get_supabase().table(table).select(fields, count="exact").order(order, desc=True)
-    return {"resource": resource, **_page(query, limit=limit, offset=offset)}
+    sb = get_supabase()
+    query = sb.table(table).select(fields, count="exact").order(order, desc=True)
+    page = _page(query, limit=limit, offset=offset)
+    user_map, org_map = _identity_maps(sb)
+    enriched = []
+    for row in page["items"]:
+        # En vistas de usuarios, `id` es el UID. En el resto se usa user_id.
+        actor_id = str(row.get("user_id") or (row.get("id") if resource == "users" else ""))
+        identity = user_map.get(actor_id, {})
+        organization_id = str(
+            row.get("organization_id")
+            or identity.get("organization_id")
+            or (row.get("id") if resource == "organizations" else "")
+        )
+        organization_name = (
+            str(row.get("organization") or "")
+            or (str(row.get("nombre") or "") if resource == "organizations" else "")
+            or org_map.get(organization_id)
+            or "Sin organización"
+        )
+        actor_name = str(row.get("name") or identity.get("name") or ("Sistema" if not actor_id else "Usuario"))
+        actor_email = row.get("email") or identity.get("email")
+        enriched.append({
+            "organization": organization_name,
+            "actor": actor_name,
+            "actor_email": actor_email,
+            **row,
+        })
+    page["items"] = enriched
+    return {"resource": resource, **page}
 
 
 @router.get("/plans")
