@@ -19,9 +19,10 @@ class RatingRequest(BaseModel):
 @router.get("")
 async def listar_suppliers(user_id: str):
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
 
     sb = get_supabase()
-    res = sb.table("proveedores").select("*").eq("user_id", user_id).order("score", desc=True).execute()
+    res = sb.table("proveedores").select("*").in_("user_id", ids_organizacion(user_id)).order("score", desc=True).execute()
 
     proveedores = []
     for p in res.data:
@@ -37,18 +38,20 @@ async def listar_suppliers(user_id: str):
 @router.post("/{proveedor_id}/bloquear")
 async def bloquear_supplier(proveedor_id: str, user_id: str):
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
 
     sb = get_supabase()
-    sb.table("proveedores").update({"bloqueado": True, "categoria_score": "bloqueado_auto"}).eq("id", proveedor_id).eq("user_id", user_id).execute()
+    sb.table("proveedores").update({"bloqueado": True, "categoria_score": "bloqueado_auto"}).eq("id", proveedor_id).in_("user_id", ids_organizacion(user_id)).execute()
     return {"success": True}
 
 
 @router.post("/{proveedor_id}/desbloquear")
 async def desbloquear_supplier(proveedor_id: str, user_id: str):
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
 
     sb = get_supabase()
-    sb.table("proveedores").update({"bloqueado": False}).eq("id", proveedor_id).eq("user_id", user_id).execute()
+    sb.table("proveedores").update({"bloqueado": False}).eq("id", proveedor_id).in_("user_id", ids_organizacion(user_id)).execute()
     return {"success": True}
 
 
@@ -78,10 +81,12 @@ async def guardar_rating(req: RatingRequest):
 @router.get("/{proveedor_id}/historial")
 async def historial_supplier(proveedor_id: str, user_id: str):
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
 
     sb = get_supabase()
+    ids = ids_organizacion(user_id)
 
-    proveedor = sb.table("proveedores").select("*").eq("id", proveedor_id).eq("user_id", user_id).single().execute()
+    proveedor = sb.table("proveedores").select("*").eq("id", proveedor_id).in_("user_id", ids).single().execute()
     if not proveedor.data:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
@@ -93,7 +98,7 @@ async def historial_supplier(proveedor_id: str, user_id: str):
     except Exception:
         ratings = []
 
-    ocs = sb.table("ordenes_compra").select("numero_oc, estado, precio_total, moneda, created_at, confirmada_at").eq("user_id", user_id).eq("proveedor_nombre", proveedor.data["nombre"]).order("created_at", desc=True).execute()
+    ocs = sb.table("ordenes_compra").select("numero_oc, estado, precio_total, moneda, created_at, confirmada_at").in_("user_id", ids).eq("proveedor_nombre", proveedor.data["nombre"]).order("created_at", desc=True).execute()
 
     from app.services.supplier_capability_intelligence import listar_capacidades
     capacidades = listar_capacidades(user_id, proveedor_id)

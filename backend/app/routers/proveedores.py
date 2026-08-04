@@ -197,8 +197,11 @@ async def ficha_proveedor(proveedor_id: str, user_id: str):
     from app.services.supabase import get_supabase
     from app.services.supplier_capability_intelligence import listar_capacidades
 
+    from app.services.organizacion import ids_organizacion
+
     sb = get_supabase()
-    proveedor = sb.table("proveedores").select("*").eq("id", proveedor_id).eq("user_id", user_id).maybe_single().execute().data
+    ids = ids_organizacion(user_id)
+    proveedor = sb.table("proveedores").select("*").eq("id", proveedor_id).in_("user_id", ids).maybe_single().execute().data
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
@@ -206,7 +209,7 @@ async def ficha_proveedor(proveedor_id: str, user_id: str):
     capacidades = listar_capacidades(user_id, proveedor_id)
     ocs = sb.table("ordenes_compra").select(
         "numero_oc, estado, precio_total, moneda, created_at, confirmada_at"
-    ).eq("user_id", user_id).eq("proveedor_nombre", proveedor["nombre"]).order("created_at", desc=True).execute().data or []
+    ).in_("user_id", ids).eq("proveedor_nombre", proveedor["nombre"]).order("created_at", desc=True).execute().data or []
 
     return {
         "proveedor": proveedor,
@@ -233,9 +236,10 @@ class EditarProveedorRequest(BaseModel):
 async def editar_proveedor(proveedor_id: str, req: EditarProveedorRequest):
     from app.services.supabase import get_supabase
     from app.services.proveedores_matching import normalizar_rut
+    from app.services.organizacion import ids_organizacion
 
     sb = get_supabase()
-    existente = sb.table("proveedores").select("id").eq("id", proveedor_id).eq("user_id", req.user_id).maybe_single().execute().data
+    existente = sb.table("proveedores").select("id").eq("id", proveedor_id).in_("user_id", ids_organizacion(req.user_id)).maybe_single().execute().data
     if not existente:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
@@ -265,9 +269,10 @@ async def confirmar_categorias(proveedor_id: str, req: ConfirmarCategoriasReques
     mano) — cada una queda como evento auditable con confianza máxima."""
     from app.services.supabase import get_supabase
     from app.services.supplier_capability_intelligence import registrar_evento
+    from app.services.organizacion import ids_organizacion
 
     sb = get_supabase()
-    proveedor = sb.table("proveedores").select("id").eq("id", proveedor_id).eq("user_id", req.user_id).maybe_single().execute().data
+    proveedor = sb.table("proveedores").select("id").eq("id", proveedor_id).in_("user_id", ids_organizacion(req.user_id)).maybe_single().execute().data
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
@@ -283,9 +288,10 @@ async def confirmar_categorias(proveedor_id: str, req: ConfirmarCategoriasReques
 async def quitar_categoria(proveedor_id: str, categoria: str, user_id: str):
     from app.services.supabase import get_supabase
     from app.services.supplier_capability_intelligence import rechazar_capacidad
+    from app.services.organizacion import ids_organizacion
 
     sb = get_supabase()
-    proveedor = sb.table("proveedores").select("id").eq("id", proveedor_id).eq("user_id", user_id).maybe_single().execute().data
+    proveedor = sb.table("proveedores").select("id").eq("id", proveedor_id).in_("user_id", ids_organizacion(user_id)).maybe_single().execute().data
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 

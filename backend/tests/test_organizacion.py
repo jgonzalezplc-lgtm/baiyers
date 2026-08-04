@@ -76,6 +76,32 @@ class ResolverOrganizacionTest(unittest.TestCase):
             from app.services.organizacion import resolver_organizacion
             self.assertIsNone(resolver_organizacion("u-huerfano"))
 
+    def test_ids_organizacion_incluye_a_todos_los_miembros(self):
+        fake = FakeSupabase({
+            "membresias_organizacion": [
+                [{
+                    "rol": "admin",
+                    "organizacion_id": "org-1",
+                    "organizaciones": {"id": "org-1", "nombre": "X", "owner_user_id": "u-owner"},
+                }],
+                [{"user_id": "u-owner"}, {"user_id": "u-otro"}, {"user_id": "u-tercero"}],
+            ],
+        })
+        with patch("app.services.organizacion._sb", return_value=fake):
+            from app.services.organizacion import ids_organizacion
+            ids = ids_organizacion("u-owner")
+        self.assertEqual(set(ids), {"u-owner", "u-otro", "u-tercero"})
+
+    def test_ids_organizacion_devuelve_solo_al_usuario_si_no_tiene_org(self):
+        """Contrato defensivo: un fallo del resolutor NUNCA amplía visibilidad.
+        Aunque no haya organización, la lista incluye al menos al propio usuario,
+        preservando el comportamiento pre-Fase B."""
+        fake = FakeSupabase({"membresias_organizacion": [[]]})
+        with patch("app.services.organizacion._sb", return_value=fake):
+            from app.services.organizacion import ids_organizacion
+            ids = ids_organizacion("u-huerfano")
+        self.assertEqual(ids, ["u-huerfano"])
+
     def test_miembro_normal_no_es_admin(self):
         fake = FakeSupabase({
             "membresias_organizacion": [

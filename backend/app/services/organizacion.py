@@ -90,6 +90,23 @@ def obtener_organizacion(auth_uid: str) -> dict:
     return _contexto_a_dict(resolver_organizacion(auth_uid))
 
 
+def ids_organizacion(auth_uid: str) -> list[str]:
+    """Lista de user_ids que comparten organización con `auth_uid` (incluye
+    al propio `auth_uid`). Es el punto de intercambio principal en Fase B:
+    los routers reemplazan `.eq("user_id", uid)` por `.in_("user_id", ids)`
+    y así los miembros de la misma organización ven los mismos datos.
+
+    Contrato importante: si el usuario no está en ninguna organización (caso
+    defensivo; nunca debería pasar tras el backfill), devuelve `[auth_uid]` —
+    nunca una lista vacía, nunca uno ajeno. Esto garantiza que un fallo del
+    resolutor NUNCA amplía visibilidad, solo la mantiene igual que antes.
+    """
+    ctx = resolver_organizacion(auth_uid)
+    if not ctx:
+        return [auth_uid]
+    return ctx.user_ids_miembros
+
+
 def _contexto_a_dict(ctx: Optional[ContextoOrganizacion]) -> dict:
     if not ctx:
         return {}
