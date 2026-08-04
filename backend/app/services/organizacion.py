@@ -90,6 +90,46 @@ def obtener_organizacion(auth_uid: str) -> dict:
     return _contexto_a_dict(resolver_organizacion(auth_uid))
 
 
+def nombres_de_usuarios(auth_uids: list[str]) -> dict[str, str]:
+    """Fase D — resuelve una lista de user_ids a nombres legibles para el
+    'hecho por X'. Prioriza nombre_usuario del metadata → empresa → email.
+    Nunca lanza: los ids no resueltos quedan como string vacío."""
+    if not auth_uids:
+        return {}
+    sb = _sb()
+    fuera = {}
+    unicos = {u for u in auth_uids if u}
+    for uid in unicos:
+        try:
+            resp = sb.auth.admin.get_user_by_id(uid)
+            u = resp.user if resp else None
+            if not u:
+                fuera[uid] = ""
+                continue
+            meta = u.user_metadata or {}
+            fuera[uid] = (meta.get("nombre_usuario") or meta.get("empresa") or (u.email or "")) or ""
+        except Exception:
+            fuera[uid] = ""
+    return fuera
+
+
+def listar_miembros(auth_uid: str) -> list[dict]:
+    """Fase D — miembros de la organización del `auth_uid` con nombre e info
+    de rol, para poblar el mapa de 'hecho por X' en el frontend."""
+    ctx = resolver_organizacion(auth_uid)
+    if not ctx:
+        return []
+    sb = _sb()
+    filas = sb.table("membresias_organizacion").select("user_id, rol").eq(
+        "organizacion_id", ctx.organizacion_id
+    ).execute().data or []
+    nombres = nombres_de_usuarios([f["user_id"] for f in filas])
+    return [
+        {"user_id": f["user_id"], "nombre": nombres.get(f["user_id"], "") or "", "rol": f["rol"]}
+        for f in filas
+    ]
+
+
 def ids_organizacion(auth_uid: str) -> list[str]:
     """Lista de user_ids que comparten organización con `auth_uid` (incluye
     al propio `auth_uid`). Es el punto de intercambio principal en Fase B:

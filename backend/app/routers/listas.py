@@ -31,6 +31,11 @@ def _ids_org(user_id: str) -> list[str]:
     from app.services.organizacion import ids_organizacion
     return ids_organizacion(user_id)
 
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
 MARCA_LISTA = "lista_cotizacion"
 
 # El JSON de la lista se actualiza con leer-modificar-escribir: dos requests
@@ -135,12 +140,14 @@ async def listar_listas(user_id: str):
                 "n_definitivos": len(data.get("definitivos", {})),
                 "aprobacion_estado": (data.get("aprobacion") or {}).get("estado"),
                 "es_cotizacion_simple": False,
+                # Fase D — para el "creada por X" del frontend.
+                "creado_por": p.get("user_id"),
             })
 
     # Cotizaciones sueltas (no envueltas todavía en ninguna lista)
     try:
         cots = sb.table("cotizaciones").select(
-            "id, nombre_identificado, estado, created_at"
+            "id, nombre_identificado, estado, created_at, user_id"
         ).in_("user_id", _ids_org(user_id)).order("created_at", desc=True).execute()
     except Exception:
         cots = None
@@ -157,6 +164,7 @@ async def listar_listas(user_id: str):
             "n_definitivos": 0,
             "aprobacion_estado": None,
             "es_cotizacion_simple": True,
+            "creado_por": c.get("user_id"),
         })
 
     listas.sort(key=lambda l: l.get("created_at") or "", reverse=True)
@@ -260,6 +268,8 @@ async def detalle_lista(lista_id: str, user_id: str):
         "nombre": proy_data["nombre"],
         "created_at": proy_data.get("created_at"),
         "monto_total": proy_data.get("monto_total") or 0,
+        # Fase D — para el "creada por X" del frontend.
+        "creado_por": proy_data.get("user_id"),
         "items": [
             {
                 **it,
@@ -559,6 +569,11 @@ async def elegir_definitivo(lista_id: str, req: DefinitivoRequest):
                 "url": req.url,
                 "fuente": req.fuente,
                 "precio_clp": req.precio_clp if req.precio_clp is not None else req.precio,
+                # Fase D — "hecho por X": queda registrado quién de la
+                # organización marcó este proveedor como definitivo, para
+                # mostrarlo en el comparador y en el resumen de la lista.
+                "seleccionado_por": req.user_id,
+                "seleccionado_at": _now_iso(),
             }
 
         monto_total = _monto_total(data)

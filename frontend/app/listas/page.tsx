@@ -8,6 +8,7 @@ import {
   PageHeader, Table, TableHead, TableRow, EmptyState, BtnPrimary, Badge, fmtCLP,
   SkeletonTableRow, CascadeWrapper,
 } from "@/components/ui";
+import { useMiembrosOrg } from "@/lib/useMiembrosOrg";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -22,6 +23,7 @@ interface ListaResumen {
   n_comparados: number;
   n_definitivos: number;
   aprobacion_estado: "pendiente" | "aprobado" | "rechazado" | null;
+  creado_por: string | null;
 }
 
 /** Estado de autorización, siempre visible como badge (nunca texto plano). */
@@ -36,6 +38,7 @@ export default function ListasPage() {
   const [listas, setListas] = useState<ListaResumen[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const { nombreDe, hayVariosMiembros } = useMiembrosOrg();
 
   useEffect(() => {
     createClient().auth.getUser().then(({ data }) => {
@@ -105,6 +108,9 @@ export default function ListasPage() {
                 {l.created_at && (
                   <div style={{ fontSize: 12.5, color: "var(--n-500)", marginTop: 1 }}>
                     {new Date(l.created_at).toLocaleDateString("es-CL", { day: "numeric", month: "short", year: "numeric" })}
+                    {hayVariosMiembros && nombreDe(l.creado_por) && (
+                      <> · por <strong style={{ color: "var(--n-700)", fontWeight: 500 }}>{nombreDe(l.creado_por)}</strong></>
+                    )}
                   </div>
                 )}
               </div>

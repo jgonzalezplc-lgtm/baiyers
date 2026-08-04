@@ -19,6 +19,13 @@ async def mi_organizacion(user_id: str):
     return ctx
 
 
+@router.get("/miembros")
+async def miembros_organizacion(user_id: str):
+    """Fase D — mapa user_id → nombre para el 'hecho por X' del frontend."""
+    from app.services.organizacion import listar_miembros
+    return listar_miembros(user_id)
+
+
 class InvitarRequest(BaseModel):
     user_id: str            # el invitador (debe ser admin)
     email: str

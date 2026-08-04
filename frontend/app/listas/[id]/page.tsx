@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { ArrowLeft, Check, Send, Wand2, Camera, ShoppingBag, Mail, ExternalLink, Network, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, Badge, BtnPrimary, BtnSecondary, SummaryPanel, Input, SkeletonBox, SkeletonText, CascadeWrapper } from "@/components/ui";
+import { useMiembrosOrg } from "@/lib/useMiembrosOrg";
 
 const InformeLista = dynamic(() => import("@/components/InformeLista"), { ssr: false });
 const OCModal = dynamic(() => import("@/components/OCModal"), { ssr: false });
@@ -34,6 +35,8 @@ export interface Definitivo {
   url: string | null;
   fuente: string | null;
   precio_clp: number | null;
+  seleccionado_por?: string | null;
+  seleccionado_at?: string | null;
 }
 
 export interface ItemLista {
@@ -77,6 +80,7 @@ export interface DetalleLista {
   aprobacion?: Aprobacion;
   justificaciones?: Record<string, string>;
   compras?: Record<string, Compra>;
+  creado_por?: string | null;
 }
 
 const FUENTE_LABEL: Record<string, string> = {
@@ -94,6 +98,7 @@ const fmtPrecio = (n: number, m: string) =>
 export default function ListaDetallePage() {
   const { id: idUrl } = useParams<{ id: string }>();
   const router = useRouter();
+  const { nombreDe, hayVariosMiembros } = useMiembrosOrg();
   const [userId, setUserId] = useState<string | null>(null);
   const [lista, setLista] = useState<DetalleLista | null>(null);
   const [loading, setLoading] = useState(true);
@@ -408,6 +413,9 @@ export default function ListaDetallePage() {
             </h1>
             <div style={{ fontSize: 13.5, color: "var(--n-600)" }}>
               {lista.items.length} ítems · {lista.items.filter(i => i.comparado).length} comparados · {definitivos.length} definitivos
+              {hayVariosMiembros && nombreDe(lista.creado_por) && (
+                <> · creada por <strong style={{ color: "var(--n-700)", fontWeight: 500 }}>{nombreDe(lista.creado_por)}</strong></>
+              )}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -547,6 +555,11 @@ export default function ListaDetallePage() {
                   {it.definitivo.precio_clp != null && (it.cantidad || 1) > 1 &&
                     ` · ${it.cantidad} × ${fmtCLP(it.definitivo.precio_clp)}`}
                 </Badge>
+              )}
+              {it.definitivo && hayVariosMiembros && nombreDe(it.definitivo.seleccionado_por) && (
+                <span style={{ fontSize: 11.5, color: "var(--n-500)" }}>
+                  seleccionado por <strong style={{ color: "var(--n-700)", fontWeight: 500 }}>{nombreDe(it.definitivo.seleccionado_por)}</strong>
+                </span>
               )}
               {/* Estado de compra por ítem — visible solo si ya está en curso o comprado */}
               {compra?.estado === "comprado" && (
