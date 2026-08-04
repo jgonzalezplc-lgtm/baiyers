@@ -394,7 +394,9 @@ async def seleccionar_proveedor_item(lista_id: str, req: SeleccionarProveedorIte
             if req.seleccionado:
                 proveedor_id = resolver_o_crear_proveedor(sb, req.user_id, nombre, banco["primary_email"])
                 contacto_id = resolver_o_crear_contacto(
-                    sb, req.user_id, proveedor_id, banco["primary_email"], origen="sugerido_baiyer"
+                    # `proveedor_contactos.origen` sólo admite manual/excel/gmail_agent.
+                    # El origen de negocio "sugerido" queda en la selección de la lista.
+                    sb, req.user_id, proveedor_id, banco["primary_email"], origen="manual"
                 )
                 sb.table("proveedores").update({
                     "sitio_web": banco.get("website"), "telefono": banco.get("phone")
