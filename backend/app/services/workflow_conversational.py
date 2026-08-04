@@ -78,21 +78,24 @@ def interpretar_descripcion(descripcion: str, contexto: str = "") -> dict:
 
     texto_simple = simple(texto)
     contexto_simple = simple(contexto)
-    declaracion_solo = any(phrase in texto_simple for phrase in (
+    frases_solo = (
         "yo hago todo", "todo lo hago yo", "me encargo de todo", "lo hago todo yo", "solo yo",
-    ))
+        "todo pasa por mi", "todo debe pasar por mi", "yo todo", "todo yo",
+    )
+    declaracion_solo = len(texto_simple.split()) <= 10 and any(phrase in texto_simple for phrase in frases_solo)
     if declaracion_solo:
         return {
             "resumen": "", "etapas": [], "reglas_autorizacion": [],
             "requiere_aclaracion": True,
-            "preguntas": ["¿Confirmas que ninguna otra persona revisa o autoriza tus compras, sin importar el monto?"],
+            "preguntas": ["¿Quieres decir que tú realizas todas las etapas, o que otras personas participan pero tú das la aprobación final?"],
         }
 
-    confirmacion = texto_simple in {"si", "si confirmo", "correcto", "exacto", "asi es", "confirmo"}
-    contexto_solo = any(phrase in contexto_simple for phrase in (
-        "yo hago todo", "todo lo hago yo", "me encargo de todo", "lo hago todo yo", "solo yo",
+    contexto_solo = any(phrase in contexto_simple for phrase in frases_solo)
+    confirma_todas = any(phrase in texto_simple for phrase in (
+        "todas las etapas", "las hago yo", "nadie mas participa", "nadie mas interviene",
+        "solo participo yo", "yo realizo todo", "yo hago el proceso completo", "de principio a fin",
     ))
-    if confirmacion and contexto_solo:
+    if contexto_solo and confirma_todas:
         return {
             "resumen": "Tú gestionas personalmente la compra completa y no requiere revisión ni autorización independiente.",
             "etapas": [{
@@ -101,6 +104,17 @@ def interpretar_descripcion(descripcion: str, contexto: str = "") -> dict:
                 "roles": ["cotizador", "revisor", "autorizador", "comprador"],
             }],
             "reglas_autorizacion": [], "requiere_aclaracion": False, "preguntas": [],
+        }
+
+    confirma_aprobacion_final = any(phrase in texto_simple for phrase in (
+        "aprobacion final", "autorizacion final", "yo doy la aprobacion", "yo doy la autorizacion",
+        "yo apruebo al final", "yo autorizo al final", "otros participan", "otros hacen el proceso",
+    ))
+    if contexto_solo and confirma_aprobacion_final:
+        return {
+            "resumen": "", "etapas": [], "reglas_autorizacion": [],
+            "requiere_aclaracion": True,
+            "preguntas": ["Entendido: tú das la aprobación final. ¿Quién prepara o compara las cotizaciones antes de enviártelas?"],
         }
 
     if not settings.gemini_api_key:
