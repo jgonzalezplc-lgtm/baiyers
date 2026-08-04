@@ -10,6 +10,8 @@ el usuario confirma y recién ahí se llama a POST /api/workflows (mismo flujo
 que onboarding: investigar → revisar → confirmar).
 """
 import json
+import re
+import unicodedata
 from typing import Optional
 
 TIPOS_ETAPA_VALIDOS = {
@@ -43,6 +45,10 @@ Responde SOLO JSON válido, sin markdown, con esta forma exacta:
 }
 
 Reglas:
+- Conserva únicamente etapas y actores que el usuario haya mencionado explícitamente. No completes
+  un ciclo "típico" de compras por tu cuenta.
+- Una respuesta breve como "yo hago todo" NO autoriza a inventar identificación, comparación,
+  autorización y OC. En ese caso pregunta si realmente no interviene ninguna otra persona.
 - Si el usuario no menciona tramos de monto, "reglas_autorizacion" debe ser un arreglo vacío.
 - Si falta información crítica para saber quién autoriza o en qué orden, pon
   requiere_aclaracion=true y haz máximo 3 preguntas concretas — no inventes responsables.
@@ -63,7 +69,41 @@ def interpretar_descripcion(descripcion: str, contexto: str = "") -> dict:
     }
 
     texto = (descripcion or "").strip()
-    if not texto or not settings.gemini_api_key:
+    if not texto:
+        return vacio_seguro
+
+    def simple(value: str) -> str:
+        normalized = unicodedata.normalize("NFD", value.lower())
+        return " ".join(re.sub(r"[^a-z0-9 ]", " ", "".join(c for c in normalized if unicodedata.category(c) != "Mn")).split())
+
+    texto_simple = simple(texto)
+    contexto_simple = simple(contexto)
+    declaracion_solo = any(phrase in texto_simple for phrase in (
+        "yo hago todo", "todo lo hago yo", "me encargo de todo", "lo hago todo yo", "solo yo",
+    ))
+    if declaracion_solo:
+        return {
+            "resumen": "", "etapas": [], "reglas_autorizacion": [],
+            "requiere_aclaracion": True,
+            "preguntas": ["¿Confirmas que ninguna otra persona revisa o autoriza tus compras, sin importar el monto?"],
+        }
+
+    confirmacion = texto_simple in {"si", "si confirmo", "correcto", "exacto", "asi es", "confirmo"}
+    contexto_solo = any(phrase in contexto_simple for phrase in (
+        "yo hago todo", "todo lo hago yo", "me encargo de todo", "lo hago todo yo", "solo yo",
+    ))
+    if confirmacion and contexto_solo:
+        return {
+            "resumen": "Tú gestionas personalmente la compra completa y no requiere revisión ni autorización independiente.",
+            "etapas": [{
+                "nombre": "Gestionar compra",
+                "tipo": "tarea_humana",
+                "roles": ["cotizador", "revisor", "autorizador", "comprador"],
+            }],
+            "reglas_autorizacion": [], "requiere_aclaracion": False, "preguntas": [],
+        }
+
+    if not settings.gemini_api_key:
         return vacio_seguro
 
     import google.generativeai as genai
@@ -75,7 +115,7 @@ def interpretar_descripcion(descripcion: str, contexto: str = "") -> dict:
         prompt += f"\n\nConversación previa (preguntas ya hechas y respuestas del usuario):\n{contexto}"
 
     try:
-        resp = model.generate_content(prompt, request_options={"timeout": 25})
+        resp = model.generate_content(prompt, request_options={"timeout": 12})
         text = resp.text.strip()
         if "```" in text:
             text = text.split("```")[1]

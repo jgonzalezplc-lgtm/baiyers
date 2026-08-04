@@ -84,7 +84,9 @@ export default function ConfiguracionAutorizacionesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ descripcion: texto, contexto: contextoAcumulado() }),
+        signal: AbortSignal.timeout(15000),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: Propuesta = await res.json();
       if (data.requiere_aclaracion) {
         const pregunta = data.preguntas.length
@@ -95,8 +97,11 @@ export default function ConfiguracionAutorizacionesPage() {
         setMensajes(prev => [...prev, { rol: "bot", texto: data.resumen || "Esto es lo que entendí:" }]);
         setPropuesta(data);
       }
-    } catch {
-      setMensajes(prev => [...prev, { rol: "bot", texto: "Tuve un problema interpretando eso. ¿Puedes intentarlo de nuevo?" }]);
+    } catch (error) {
+      const timeout = error instanceof DOMException && error.name === "TimeoutError";
+      setMensajes(prev => [...prev, { rol: "bot", texto: timeout
+        ? "Está tardando más de lo esperado. No guardé nada; prueba nuevamente o ármalo visualmente."
+        : "Tuve un problema interpretando eso. No guardé nada; puedes intentarlo de nuevo." }]);
     } finally {
       setCargando(false);
     }

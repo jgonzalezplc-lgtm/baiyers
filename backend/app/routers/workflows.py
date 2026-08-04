@@ -35,9 +35,12 @@ class InterpretarRequest(BaseModel):
 async def interpretar_workflow(req: InterpretarRequest):
     """Solo interpreta y propone — no guarda nada. El frontend confirma con
     el usuario y recién ahí llama a POST /api/workflows con el resultado."""
+    import asyncio
     from app.services.workflow_conversational import compilar_a_grafo, interpretar_descripcion
 
-    propuesta = interpretar_descripcion(req.descripcion, req.contexto or "")
+    # El SDK de Gemini es síncrono; se ejecuta fuera del event loop para no
+    # congelar el resto de Baiyer mientras responde el modelo.
+    propuesta = await asyncio.to_thread(interpretar_descripcion, req.descripcion, req.contexto or "")
     if propuesta["requiere_aclaracion"]:
         return {**propuesta, "nodos": [], "conexiones": []}
 
