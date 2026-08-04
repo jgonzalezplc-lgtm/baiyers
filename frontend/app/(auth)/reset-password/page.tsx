@@ -47,7 +47,16 @@ export default function ResetPasswordPage() {
     const { error } = await supabase.auth.updateUser({ password });
     setLoading(false);
     if (error) {
-      setError("Error al actualizar. El enlace puede haber expirado.");
+      const detalle = error.message.toLowerCase();
+      if (detalle.includes("different from the old password") || detalle.includes("same password")) {
+        setError("La nueva contraseña debe ser diferente de la contraseña anterior.");
+      } else if (detalle.includes("session") || detalle.includes("expired") || detalle.includes("token")) {
+        setError("La sesión de recuperación no es válida o expiró. Solicita un enlace nuevo.");
+      } else if (detalle.includes("password") || detalle.includes("weak")) {
+        setError(`La contraseña no cumple los requisitos de seguridad: ${error.message}`);
+      } else {
+        setError(`No se pudo actualizar la contraseña: ${error.message}`);
+      }
     } else {
       setListo(true);
       setTimeout(() => router.push("/dashboard"), 2000);
