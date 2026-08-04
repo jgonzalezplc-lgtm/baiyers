@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { BtnPrimary, Input } from "@/components/ui";
@@ -10,10 +10,30 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [listo, setListo] = useState(false);
+  const [recoveryReady, setRecoveryReady] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
+
+  useEffect(() => {
+    let activo = true;
+
+    supabase.auth.getSession().then(({ data, error: sessionError }) => {
+      if (!activo) return;
+      if (sessionError || !data.session) {
+        setError("Este enlace no tiene una sesión de recuperación válida. Solicita uno nuevo.");
+        return;
+      }
+      setRecoveryReady(true);
+    });
+
+    return () => { activo = false; };
+  }, [supabase]);
 
   const handleReset = async () => {
+    if (!recoveryReady) {
+      setError("La sesión de recuperación aún no está lista. Solicita un enlace nuevo.");
+      return;
+    }
     if (password.length < 6) {
       setError("La contrasena debe tener al menos 6 caracteres");
       return;
@@ -106,8 +126,8 @@ export default function ResetPasswordPage() {
               </div>
             </div>
 
-            <BtnPrimary onClick={handleReset} disabled={loading} className="w-full justify-center">
-              {loading ? "Actualizando..." : "Guardar nueva contrasena"}
+            <BtnPrimary onClick={handleReset} disabled={loading || !recoveryReady} className="w-full justify-center">
+              {loading ? "Actualizando..." : recoveryReady ? "Guardar nueva contrasena" : "Validando enlace..."}
             </BtnPrimary>
           </>
         )}
