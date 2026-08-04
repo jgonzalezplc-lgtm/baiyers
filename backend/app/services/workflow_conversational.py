@@ -21,6 +21,8 @@ TIPOS_ETAPA_VALIDOS = {
 
 ROLES_VALIDOS = {"cotizador", "revisor", "autorizador", "comprador"}
 
+EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
+
 PROMPT_INTERPRETAR = """Eres un analista de procesos de compras B2B. Un usuario te describe, en
 lenguaje informal, cómo funciona el proceso de compras de su empresa. Tu trabajo es traducirlo
 a una lista ordenada de ETAPAS — no inventes un diagrama completo, solo identifica las etapas,
@@ -148,9 +150,6 @@ def interpretar_descripcion(descripcion: str, contexto: str = "") -> dict:
     except Exception as e:
         print(f"[WorkflowConversational] error interpretando: {e}")
         return vacio_seguro
-
-    import re
-    EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
 
     etapas = [
         e for e in (data.get("etapas") or [])

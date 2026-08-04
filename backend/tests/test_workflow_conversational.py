@@ -1,6 +1,6 @@
 import unittest
 
-from app.services.workflow_conversational import compilar_a_grafo
+from app.services.workflow_conversational import compilar_a_grafo, interpretar_descripcion
 from app.services.workflow_engine import validar_grafo, siguiente_nodo
 
 
@@ -88,6 +88,28 @@ class CompilarGrafoTest(unittest.TestCase):
         nodos, conexiones = compilar_a_grafo(etapas, [{"hasta": 1000000, "desde": None, "descripcion": "jefe"}])
         self.assertEqual(validar_grafo(nodos, conexiones), [])
         self.assertEqual(siguiente_nodo(conexiones, "n0", "aprobado"), "fin")
+
+
+class InterpretarDescripcionSinRedTest(unittest.TestCase):
+    """Regresión: `simple()` (detección de "yo hago todo") corre ANTES de
+    llamar a Gemini y no debe depender de `re` importado dentro de la
+    función — un `import re` local ahí rompía el closure con
+    UnboundLocalError, tumbando /api/workflows/interpretar con 500 incluso
+    para el caso más simple, sin llegar a tocar la red."""
+
+    def test_declaracion_solo_no_lanza_ni_llama_a_gemini(self):
+        r = interpretar_descripcion("Yo hago todo")
+        self.assertTrue(r["requiere_aclaracion"])
+        self.assertEqual(r["etapas"], [])
+
+    def test_descripcion_normal_no_lanza_por_scope_de_re(self):
+        # No verificamos el contenido (requiere Gemini/API key); solo que
+        # la función no explota por un NameError de scoping antes de llegar
+        # a la llamada real al modelo.
+        try:
+            interpretar_descripcion("Yo cotizo, mi jefa revisa y autoriza todo.")
+        except UnboundLocalError as e:
+            self.fail(f"interpretar_descripcion no debe fallar por scope de 're': {e}")
 
 
 if __name__ == "__main__":
