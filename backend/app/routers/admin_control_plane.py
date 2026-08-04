@@ -30,6 +30,20 @@ class PlanUpdate(BaseModel):
     reason: str = Field(min_length=3, max_length=500)
 
 
+class OrganizationCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    owner_email: str = Field(min_length=5, max_length=254)
+
+
+class MemberCreate(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    role: str = "member"
+
+
+class AdminReason(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
 def _admin(authorization: Annotated[str | None, Header()] = None) -> dict:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Bearer token requerido")
@@ -46,6 +60,47 @@ def _admin(authorization: Annotated[str | None, Header()] = None) -> dict:
     if not rows:
         raise HTTPException(status_code=403, detail="Acceso administrativo no autorizado")
     return rows[0]
+
+
+def _require_operator(admin: dict) -> None:
+    if admin.get("rol") not in {"operator", "superadmin"}:
+        raise HTTPException(status_code=403, detail="Esta acción requiere rol operator o superadmin")
+
+
+def _require_superadmin(admin: dict) -> None:
+    if admin.get("rol") != "superadmin":
+        raise HTTPException(status_code=403, detail="Esta acción requiere rol superadmin")
+
+
+def _audit(sb: Any, admin: dict, action: str, *, organization_id: str | None = None,
+           user_id: str | None = None, reason: str | None = None, previous: Any = None,
+           new: Any = None) -> None:
+    sb.table("admin_audit_log").insert({
+        "actor_admin_id": admin.get("id"), "target_organization_id": organization_id,
+        "target_user_id": user_id, "action": action, "entity_type": "organization" if organization_id else "user",
+        "entity_id": organization_id or user_id, "reason": reason,
+        "previous_value": previous, "new_value": new,
+    }).execute()
+
+
+def _auth_user_by_email(sb: Any, email: str):
+    normalized = email.strip().lower()
+    users = sb.auth.admin.list_users()
+    return next((user for user in (users or []) if (user.email or "").lower() == normalized), None)
+
+
+def _operational_org_id(sb: Any, organization_id: str) -> str | None:
+    owners = sb.table("organization_memberships").select("user_id").eq(
+        "organization_id", organization_id
+    ).eq("rol", "owner").neq("estado", "removed").limit(1).execute().data or []
+    if not owners:
+        owners = sb.table("organization_memberships").select("user_id").eq(
+            "organization_id", organization_id
+        ).eq("es_principal", True).limit(1).execute().data or []
+    if not owners:
+        return None
+    rows = sb.table("organizaciones").select("id").eq("owner_user_id", owners[0]["user_id"]).limit(1).execute().data or []
+    return str(rows[0]["id"]) if rows else None
 
 
 @router.get("/dashboard")
@@ -66,6 +121,152 @@ def dashboard(_: Annotated[dict, Depends(_admin)], limit: int = Query(default=20
 @router.get("/organizations")
 def organizations(_: Annotated[dict, Depends(_admin)], limit: int = Query(default=100, ge=1, le=500), offset: int = Query(default=0, ge=0)):
     return get_supabase().table("capo_organization_overview").select("*").order("nombre").range(offset, offset + limit - 1).execute().data or []
+
+
+@router.get("/organizations/{organization_id}")
+def organization_detail(organization_id: str, _: Annotated[dict, Depends(_admin)]):
+    sb = get_supabase()
+    organizations = sb.table("capo_organization_overview").select("*").eq("id", organization_id).limit(1).execute().data or []
+    if not organizations:
+        raise HTTPException(status_code=404, detail="Organización no encontrada")
+    users = sb.table("capo_user_overview").select("*").eq("organization_id", organization_id).order("created_at").execute().data or []
+    return {"organization": organizations[0], "members": users}
+
+
+@router.post("/organizations")
+def create_organization(body: OrganizationCreate, admin: Annotated[dict, Depends(_admin)]):
+    _require_operator(admin)
+    sb = get_supabase()
+    email = body.owner_email.strip().lower()
+    user = _auth_user_by_email(sb, email)
+    invited = False
+    if not user:
+        try:
+            response = sb.auth.admin.invite_user_by_email(email, {"data": {"empresa": body.name}})
+            user = response.user
+            invited = True
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"No se pudo invitar al propietario: {exc}")
+    if not user:
+        raise HTTPException(status_code=500, detail="Supabase no devolvió el usuario propietario")
+    memberships = sb.table("organization_memberships").select("organization_id,estado").eq(
+        "user_id", user.id
+    ).eq("es_principal", True).neq("estado", "removed").limit(1).execute().data or []
+    if memberships:
+        org_id = str(memberships[0]["organization_id"])
+        org_rows = sb.table("organizations").select("id,tipo").eq("id", org_id).limit(1).execute().data or []
+        if org_rows and org_rows[0].get("tipo") != "individual":
+            raise HTTPException(status_code=409, detail="El propietario ya pertenece a una organización empresarial")
+        sb.table("organizations").update({"nombre": body.name, "tipo": "company", "estado": "active"}).eq("id", org_id).execute()
+        sb.table("organization_memberships").update({"rol": "owner", "estado": "active", "es_principal": True}).eq("organization_id", org_id).eq("user_id", user.id).execute()
+    else:
+        slug = f"org-{str(user.id)[:8]}"
+        created = sb.table("organizations").insert({"nombre": body.name, "slug": slug, "tipo": "company"}).execute().data or []
+        org_id = str(created[0]["id"])
+        sb.table("organization_memberships").insert({"organization_id": org_id, "user_id": user.id, "rol": "owner", "estado": "active", "es_principal": True}).execute()
+    operational = sb.table("organizaciones").select("id").eq("owner_user_id", user.id).limit(1).execute().data or []
+    if operational:
+        sb.table("organizaciones").update({"nombre": body.name}).eq("id", operational[0]["id"]).execute()
+    else:
+        legacy = sb.table("organizaciones").insert({"nombre": body.name, "owner_user_id": user.id}).execute().data[0]
+        sb.table("membresias_organizacion").insert({"organizacion_id": legacy["id"], "user_id": user.id, "rol": "admin"}).execute()
+    _audit(sb, admin, "organization.created", organization_id=org_id, user_id=user.id, new={"name": body.name, "owner_email": email})
+    return {"id": org_id, "owner_user_id": user.id, "invited": invited}
+
+
+@router.post("/organizations/{organization_id}/members")
+def add_organization_member(organization_id: str, body: MemberCreate, admin: Annotated[dict, Depends(_admin)]):
+    _require_operator(admin)
+    if body.role not in {"owner", "admin", "member", "billing"}:
+        raise HTTPException(status_code=400, detail="Rol inválido")
+    sb = get_supabase()
+    if not sb.table("organizations").select("id").eq("id", organization_id).limit(1).execute().data:
+        raise HTTPException(status_code=404, detail="Organización no encontrada")
+    email = body.email.strip().lower()
+    user = _auth_user_by_email(sb, email)
+    invited = False
+    if not user:
+        try:
+            response = sb.auth.admin.invite_user_by_email(email)
+            user = response.user
+            invited = True
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"No se pudo invitar al miembro: {exc}")
+    if not user:
+        raise HTTPException(status_code=500, detail="Supabase no devolvió el usuario")
+    sb.table("organization_memberships").update({"estado": "removed", "es_principal": False}).eq("user_id", user.id).neq("organization_id", organization_id).execute()
+    existing = sb.table("organization_memberships").select("id").eq("organization_id", organization_id).eq("user_id", user.id).limit(1).execute().data or []
+    values = {"rol": body.role, "estado": "active", "es_principal": True}
+    if existing:
+        sb.table("organization_memberships").update(values).eq("id", existing[0]["id"]).execute()
+    else:
+        sb.table("organization_memberships").insert({"organization_id": organization_id, "user_id": user.id, **values}).execute()
+    operational_id = _operational_org_id(sb, organization_id)
+    if operational_id:
+        sb.table("membresias_organizacion").delete().eq("user_id", user.id).execute()
+        sb.table("membresias_organizacion").insert({"organizacion_id": operational_id, "user_id": user.id, "rol": "admin" if body.role in {"owner", "admin"} else "miembro"}).execute()
+    _audit(sb, admin, "organization.member_added", organization_id=organization_id, user_id=user.id, new={"email": email, "role": body.role})
+    return {"user_id": user.id, "invited": invited}
+
+
+@router.delete("/organizations/{organization_id}/members/{user_id}")
+def remove_organization_member(organization_id: str, user_id: str, body: AdminReason, admin: Annotated[dict, Depends(_admin)]):
+    _require_operator(admin)
+    sb = get_supabase()
+    membership = sb.table("organization_memberships").select("id,rol").eq("organization_id", organization_id).eq("user_id", user_id).eq("estado", "active").limit(1).execute().data or []
+    if not membership:
+        raise HTTPException(status_code=404, detail="Membresía no encontrada")
+    if membership[0].get("rol") == "owner":
+        raise HTTPException(status_code=409, detail="Transfiere o elimina la organización antes de remover al propietario")
+    sb.table("organization_memberships").update({"estado": "removed", "es_principal": False}).eq("id", membership[0]["id"]).execute()
+    operational_id = _operational_org_id(sb, organization_id)
+    if operational_id:
+        sb.table("membresias_organizacion").delete().eq("organizacion_id", operational_id).eq("user_id", user_id).execute()
+    _audit(sb, admin, "organization.member_removed", organization_id=organization_id, user_id=user_id, reason=body.reason)
+    return {"success": True}
+
+
+@router.delete("/organizations/{organization_id}")
+def delete_organization(organization_id: str, body: AdminReason, admin: Annotated[dict, Depends(_admin)]):
+    _require_superadmin(admin)
+    sb = get_supabase()
+    rows = sb.table("organizations").select("id,nombre,estado").eq("id", organization_id).limit(1).execute().data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Organización no encontrada")
+    members = sb.table("organization_memberships").select("id,user_id,rol", count="exact").eq("organization_id", organization_id).neq("estado", "removed").execute()
+    active_members = members.data or []
+    non_owners = [row for row in active_members if row.get("rol") != "owner"]
+    if non_owners or len(active_members) > 1:
+        raise HTTPException(status_code=409, detail="No se puede eliminar: aún tiene miembros. Remuévelos primero")
+    owner_id = str(active_members[0]["user_id"]) if active_members else None
+    _audit(sb, admin, "organization.deleted", organization_id=organization_id, reason=body.reason, previous=rows[0])
+    if owner_id:
+        sb.table("organization_memberships").update({"estado": "removed", "es_principal": False}).eq("id", active_members[0]["id"]).execute()
+        personal = sb.table("organizations").insert({
+            "nombre": "Cuenta individual", "slug": f"personal-{owner_id}-{organization_id[:8]}", "tipo": "individual", "estado": "active", "plan": "free"
+        }).execute().data[0]
+        sb.table("organization_memberships").insert({
+            "organization_id": personal["id"], "user_id": owner_id, "rol": "owner", "estado": "active", "es_principal": True
+        }).execute()
+        sb.table("organizaciones").update({"nombre": "Cuenta individual"}).eq("owner_user_id", owner_id).execute()
+    sb.table("organizations").delete().eq("id", organization_id).execute()
+    return {"success": True}
+
+
+@router.post("/users/{user_id}/password-recovery")
+def trigger_password_recovery(user_id: str, admin: Annotated[dict, Depends(_admin)]):
+    _require_operator(admin)
+    sb = get_supabase()
+    try:
+        response = sb.auth.admin.get_user_by_id(user_id)
+        user = response.user
+        if not user or not user.email:
+            raise ValueError("Usuario sin correo")
+        sb.auth.reset_password_email(user.email, {"redirect_to": "https://www.baiyer.cl/reset-password"})
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"No se pudo enviar la recuperación: {exc}")
+    _audit(sb, admin, "user.password_recovery_requested", user_id=user_id)
+    return {"success": True}
 
 
 @router.get("/users")
