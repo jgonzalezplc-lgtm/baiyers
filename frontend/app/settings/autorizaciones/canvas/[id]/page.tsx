@@ -175,6 +175,28 @@ export default function CanvasWorkflowPage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userId, workflow_id: workflowId, rol_clave: rol }),
       });
+      // Fase C: invitación real. Si falla (email ya en otra org, admin gate,
+      // etc.) el responsable igual queda creado — mostramos el error al usuario
+      // pero no bloqueamos el flujo del workflow.
+      let mensajeInvitacion = "";
+      try {
+        const inv = await fetch(`${API_URL}/api/organizacion/invitar`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: userId, email: nuevoEmail.trim(), responsable_id: creado.id }),
+        });
+        const invData = await inv.json();
+        if (!inv.ok) {
+          mensajeInvitacion = `Responsable creado, pero no pudimos invitar: ${invData.detail || "error desconocido"}`;
+        } else if (invData.estado === "ya_miembro") {
+          mensajeInvitacion = `${nuevoEmail.trim()} ya es miembro de la organización.`;
+        } else {
+          mensajeInvitacion = `Invitación enviada a ${nuevoEmail.trim()}.`;
+        }
+      } catch (e) {
+        mensajeInvitacion = `Responsable creado, pero no pudimos enviar la invitación (${(e as Error).message}).`;
+      }
+      setToast(mensajeInvitacion);
+      setTimeout(() => setToast(""), 4500);
       const org: ResponsableInfo[] = await fetch(`${API_URL}/api/workflows/responsables/listar?user_id=${userId}`).then(r => r.json()).catch(() => []);
       setResponsablesOrg(org || []);
       await cargarWorkflow(userId);

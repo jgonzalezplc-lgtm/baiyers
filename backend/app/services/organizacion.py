@@ -107,6 +107,118 @@ def ids_organizacion(auth_uid: str) -> list[str]:
     return ctx.user_ids_miembros
 
 
+def invitar_a_organizacion(
+    invitador_auth_uid: str, email: str, rol: str = "miembro",
+    responsable_id: Optional[str] = None,
+) -> dict:
+    """Fase C: invita a un correo a la organización del invitador.
+
+    Requiere que el invitador sea admin. Usa el flujo nativo de Supabase Auth
+    para crear el usuario y enviar el correo de invitación (magic link con
+    token) — no reimplementamos nada de auth. Al aceptar el correo, la
+    persona setea su contraseña; ya queda como miembro real de la
+    organización porque acá insertamos la membresía en el mismo paso.
+
+    Si viene `responsable_id`, además vincula ese responsable (creado desde
+    el canvas del Workflow Builder) al nuevo `usuario_baiyer_id`, para que
+    la Fase 4 pueda dispararle notificaciones directas.
+
+    Levanta ValueError si:
+    - El invitador no es admin.
+    - El email ya pertenece a un usuario de OTRA organización (un usuario =
+      una organización, política del producto).
+    """
+    from app.config import settings
+
+    sb = _sb()
+    ctx = resolver_organizacion(invitador_auth_uid)
+    if not ctx:
+        raise ValueError("Invitador sin organización")
+    if not ctx.es_admin:
+        raise ValueError("Solo un admin de la organización puede invitar")
+
+    email = email.strip().lower()
+    if not email or "@" not in email:
+        raise ValueError("Email inválido")
+
+    # Chequeo defensivo: si el usuario ya existe en auth.users, verificar
+    # que no esté en otra organización (regla actual: 1 usuario = 1 org).
+    try:
+        existentes = sb.auth.admin.list_users()
+        ya_existe = next(
+            (u for u in (existentes or [])
+             if (u.email or "").lower() == email),
+            None,
+        )
+    except Exception:
+        ya_existe = None
+
+    if ya_existe:
+        # Si ya está en NUESTRA organización, no reinvitar — solo linkear
+        # el responsable si vino uno. Es idempotente.
+        ya_miembro = sb.table("membresias_organizacion").select(
+            "organizacion_id"
+        ).eq("user_id", ya_existe.id).maybe_single().execute().data
+        if ya_miembro and ya_miembro["organizacion_id"] == ctx.organizacion_id:
+            if responsable_id:
+                sb.table("responsables").update(
+                    {"usuario_baiyer_id": ya_existe.id}
+                ).eq("id", responsable_id).execute()
+            return {"user_id": ya_existe.id, "email": email, "estado": "ya_miembro"}
+        if ya_miembro:
+            raise ValueError("Ese correo ya pertenece a otra organización")
+
+    # Nombre legible del invitador — para que aparezca en el correo template
+    # como {{ .Data.invitado_por_nombre }} en vez del UUID crudo.
+    invitador_nombre = ""
+    try:
+        u = sb.auth.admin.get_user_by_id(invitador_auth_uid)
+        m = (u.user.user_metadata or {}) if u and u.user else {}
+        invitador_nombre = (
+            m.get("nombre_usuario") or m.get("empresa") or (u.user.email if u and u.user else "")
+        ) or ""
+    except Exception:
+        pass
+
+    redirect_to = f"{settings.frontend_url.rstrip('/')}/auth/aceptar-invitacion"
+    try:
+        resp = sb.auth.admin.invite_user_by_email(
+            email, {"redirect_to": redirect_to, "data": {
+                "organizacion_id": ctx.organizacion_id,
+                "organizacion_nombre": ctx.nombre,
+                "invitado_por": invitador_auth_uid,
+                "invitado_por_nombre": invitador_nombre,
+            }},
+        )
+        nuevo_user = resp.user
+    except Exception as e:
+        raise ValueError(f"No se pudo enviar la invitación: {e}")
+
+    if not nuevo_user:
+        raise ValueError("Supabase no devolvió el usuario invitado")
+
+    # Membresía idempotente (ON CONFLICT en la migración 030 vía UNIQUE(user_id)).
+    try:
+        sb.table("membresias_organizacion").insert({
+            "organizacion_id": ctx.organizacion_id,
+            "user_id": nuevo_user.id,
+            "rol": rol if rol in ("admin", "miembro") else "miembro",
+            "invitado_por": invitador_auth_uid,
+        }).execute()
+    except Exception:
+        pass  # ya existía — el flujo de invitación puede reintentar
+
+    if responsable_id:
+        try:
+            sb.table("responsables").update(
+                {"usuario_baiyer_id": nuevo_user.id}
+            ).eq("id", responsable_id).execute()
+        except Exception as e:
+            print(f"[Organizacion] no se pudo linkear responsable {responsable_id}: {e}")
+
+    return {"user_id": nuevo_user.id, "email": email, "estado": "invitado"}
+
+
 def _contexto_a_dict(ctx: Optional[ContextoOrganizacion]) -> dict:
     if not ctx:
         return {}
