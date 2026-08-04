@@ -121,6 +121,7 @@ export default function ListaDetallePage() {
   const [tasas, setTasas] = useState<Record<string, number>>({});
   const [guardandoDef, setGuardandoDef] = useState<string | null>(null);
   const [guardandoProveedor, setGuardandoProveedor] = useState<string | null>(null);
+  const [preparandoComparacion, setPreparandoComparacion] = useState(false);
   const [justificaciones, setJustificaciones] = useState<Record<string, string>>({});
   const [aprobadorEmail, setAprobadorEmail] = useState("");
   const [solicitando, setSolicitando] = useState(false);
@@ -229,6 +230,22 @@ export default function ListaDetallePage() {
     } catch (e) {
       setToast(e instanceof Error ? e.message : "No se pudo guardar la selección");
     } finally { setGuardandoProveedor(null); }
+  };
+
+  const irACompararProveedores = async () => {
+    if (!userId) return;
+    setPreparandoComparacion(true);
+    try {
+      const res = await fetch(`${API_URL}/api/listas/${id}/rfq/preparar`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "No se pudo preparar la comparación");
+      router.push(`/listas/${id}/rfq`);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "No se pudo preparar la comparación");
+    } finally { setPreparandoComparacion(false); }
   };
 
   const actualizarCantidad = async (item: ItemLista, cantidad: number) => {
@@ -424,6 +441,11 @@ export default function ListaDetallePage() {
   const definitivos = lista.items.filter(it => it.definitivo);
   const totalCLP = definitivos.reduce((a, it) => a + (it.definitivo?.precio_clp ?? 0) * (it.cantidad || 1), 0);
   const completa = definitivos.length === lista.items.length;
+  const proveedoresSeleccionados = new Set(
+    lista.items.flatMap(it => (it.proveedores_recomendados || [])
+      .filter(p => p.seleccionado)
+      .map(p => p.origen === "sugerido" ? p.email || p.id : p.id))
+  ).size;
 
   return (
     <>
@@ -434,6 +456,33 @@ export default function ListaDetallePage() {
           padding: "11px 16px", fontSize: 13.5, fontWeight: 500,
           borderRadius: "var(--r-md)", boxShadow: "var(--shadow-pop)",
         }}>{toast}</div>
+      )}
+
+      {!lista.aprobacion && proveedoresSeleccionados > 0 && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          width: "min(780px, calc(100vw - 40px))", zIndex: 300,
+        }}>
+          <div style={{
+            background: "var(--n-900)", borderRadius: "var(--r-xl)",
+            boxShadow: "var(--shadow-modal)", padding: "12px 18px",
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            gap: 10, flexWrap: "wrap",
+          }}>
+            <span style={{ fontSize: 13.5, fontWeight: 500, color: "var(--canvas)" }}>
+              {proveedoresSeleccionados} proveedor{proveedoresSeleccionados !== 1 ? "es" : ""} seleccionado{proveedoresSeleccionados !== 1 ? "s" : ""}
+            </span>
+            <button onClick={() => void irACompararProveedores()} disabled={preparandoComparacion} style={{
+              background: "var(--brand)", color: "#fff", border: "none",
+              borderRadius: "var(--r-md)", padding: "9px 16px",
+              fontSize: 13.5, fontWeight: 600, fontFamily: "var(--font-sans)",
+              cursor: preparandoComparacion ? "not-allowed" : "pointer",
+              opacity: preparandoComparacion ? .5 : 1,
+            }}>
+              {preparandoComparacion ? "Preparando…" : "Ir a comparar →"}
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Header */}
