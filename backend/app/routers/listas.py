@@ -242,6 +242,17 @@ def _comparador_de(sb, cotizacion_id: str) -> list[dict]:
     return filas
 
 
+def _resultados_visibles(item: dict, resultados: list[dict]) -> list[dict]:
+    """No revela búsquedas web históricas hasta que el usuario las compare.
+
+    Los resultados `manual` son RFQs a proveedores privados o sugeridos y sí
+    pertenecen al camino directo, aun cuando el ítem no haya pasado por web.
+    """
+    if item.get("comparado"):
+        return resultados
+    return [r for r in resultados if (r.get("fuente") or "").lower() == "manual"]
+
+
 @router.get("/{lista_id}")
 async def detalle_lista(lista_id: str, user_id: str):
     from app.services.supabase import get_supabase
@@ -261,6 +272,10 @@ async def detalle_lista(lista_id: str, user_id: str):
     comparadores = await asyncio.gather(*[
         asyncio.to_thread(_comparador_de, sb, it["cotizacion_id"]) for it in items
     ])
+    comparadores = [
+        _resultados_visibles(item, comparadores[i])
+        for i, item in enumerate(items)
+    ]
 
     definitivos = data.get("definitivos", {})
     matriz_privada = _matriz_proveedores_confianza(
