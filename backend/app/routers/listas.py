@@ -263,6 +263,39 @@ async def detalle_lista(lista_id: str, user_id: str):
     ])
 
     definitivos = data.get("definitivos", {})
+    matriz_privada = _matriz_proveedores_confianza(
+        sb, user_id, items, data.get("proveedores_confianza") or {}
+    )
+    privados_por_item: dict[str, list[dict]] = {it["cotizacion_id"]: [] for it in items}
+    for proveedor in matriz_privada["proveedores"]:
+        for candidato in proveedor["items"]:
+            privados_por_item[candidato["cotizacion_id"]].append({
+                "id": proveedor["proveedor_id"], "nombre": proveedor["nombre"],
+                "email": (proveedor.get("contacto") or {}).get("email"),
+                "sitio_web": None, "telefono": None, "origen": "proveedor",
+                "origen_label": "Proveedor de tu empresa", "match_label": "Match por historial",
+            })
+    from app.services.proveedores_sugeridos import sugeridos_para_categoria
+    categorias_por_item = {it["cotizacion_id"]: it.get("categoria") for it in matriz_privada["items"]}
+    selecciones_guardadas = {
+        (s.get("cotizacion_id"), s.get("clave")): s
+        for s in data.get("selecciones_proveedores", [])
+    }
+    selecciones_por_item: dict[str, list[dict]] = {}
+    for seleccion in data.get("selecciones_proveedores", []):
+        selecciones_por_item.setdefault(seleccion.get("cotizacion_id"), []).append(seleccion)
+    for i, item in enumerate(items):
+        for comparado in comparadores[i]:
+            seleccion = next((s for s in selecciones_por_item.get(item["cotizacion_id"], []) if
+                (s.get("email") and s["email"].lower() == (comparado.get("contacto") or "").lower()) or
+                (s.get("nombre") and s["nombre"] == comparado.get("proveedor"))), None)
+            comparado["origen"] = seleccion.get("origen") if seleccion else ("proveedor" if comparado.get("fuente") == "manual" else "buscado_web")
+    definitivos_salida = {}
+    for cid, definitivo in definitivos.items():
+        definitivo_salida = {**definitivo}
+        seleccion = next((s for s in selecciones_por_item.get(cid, []) if s.get("nombre") == definitivo.get("proveedor")), None)
+        definitivo_salida["origen"] = seleccion.get("origen") if seleccion else ("proveedor" if definitivo.get("fuente") == "manual" else "buscado_web")
+        definitivos_salida[cid] = definitivo_salida
     result = {
         "id": proy_data["id"],
         "nombre": proy_data["nombre"],
@@ -275,7 +308,12 @@ async def detalle_lista(lista_id: str, user_id: str):
                 **it,
                 "cantidad": float(it.get("cantidad") or 1),
                 "comparados": comparadores[i],
-                "definitivo": definitivos.get(it["cotizacion_id"]),
+                "definitivo": definitivos_salida.get(it["cotizacion_id"]),
+                "proveedores_recomendados": _recomendaciones_item(
+                    it, privados_por_item.get(it["cotizacion_id"], []),
+                    sugeridos_para_categoria(categorias_por_item.get(it["cotizacion_id"])),
+                    selecciones_guardadas,
+                ),
             }
             for i, it in enumerate(items)
         ],
@@ -287,6 +325,17 @@ async def detalle_lista(lista_id: str, user_id: str):
     if data.get("compras"):
         result["compras"] = data["compras"]
     return result
+
+
+def _recomendaciones_item(item: dict, privados: list[dict], sugeridos: list[dict], guardadas: dict) -> list[dict]:
+    """Orden solicitado: directorio privado primero, banco Baiyer después."""
+    cid = item["cotizacion_id"]
+    emails_privados = {(p.get("email") or "").lower() for p in privados if p.get("email")}
+    salida = privados + [p for p in sugeridos if p["email"].lower() not in emails_privados]
+    for proveedor in salida:
+        clave = proveedor["id"] if proveedor["origen"] == "proveedor" else proveedor["email"].lower()
+        proveedor["seleccionado"] = (cid, clave) in guardadas
+    return salida
 
 
 class MarcarComparadoRequest(BaseModel):
@@ -303,6 +352,92 @@ class SeleccionProveedorConfianza(BaseModel):
 class GuardarMatrizConfianzaRequest(BaseModel):
     user_id: str
     selecciones: list[SeleccionProveedorConfianza]
+
+
+class SeleccionarProveedorItemRequest(BaseModel):
+    user_id: str
+    cotizacion_id: str
+    origen: str
+    proveedor_id: Optional[str] = None
+    email: Optional[str] = None
+    seleccionado: bool = True
+
+
+@router.post("/{lista_id}/seleccionar-proveedor")
+async def seleccionar_proveedor_item(lista_id: str, req: SeleccionarProveedorItemRequest):
+    """Selecciona un proveedor privado o del banco global para un ítem.
+
+    Los sugeridos sólo pasan al directorio privado al ser elegidos; así el banco
+    global no contamina los datos ni el aprendizaje propio del usuario.
+    """
+    from app.services.supabase import get_supabase
+    from app.services.proveedores_matching import resolver_o_crear_contacto, resolver_o_crear_proveedor
+    from app.services.proveedores_sugeridos import buscar_sugerido
+    sb = get_supabase()
+    async with _lock_de(lista_id):
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", _ids_org(req.user_id)).maybe_single().execute().data
+        data = _parse_lista(proy or {})
+        if not data or req.cotizacion_id not in {it["cotizacion_id"] for it in data.get("items", [])}:
+            raise HTTPException(status_code=404, detail="Lista o ítem no encontrado")
+
+        proveedor_id = req.proveedor_id
+        contacto_id = None
+        clave = proveedor_id
+        nombre = None
+        email = req.email.lower().strip() if req.email else None
+        if req.origen == "sugerido":
+            banco = buscar_sugerido(email or "")
+            if not banco:
+                raise HTTPException(status_code=400, detail="Proveedor sugerido inválido")
+            nombre = banco["company_name"]
+            clave = banco["primary_email"].lower()
+            if req.seleccionado:
+                proveedor_id = resolver_o_crear_proveedor(sb, req.user_id, nombre, banco["primary_email"])
+                contacto_id = resolver_o_crear_contacto(
+                    sb, req.user_id, proveedor_id, banco["primary_email"], origen="sugerido_baiyer"
+                )
+                sb.table("proveedores").update({
+                    "sitio_web": banco.get("website"), "telefono": banco.get("phone")
+                }).eq("id", proveedor_id).execute()
+        elif proveedor_id:
+            proveedor = sb.table("proveedores").select("id,nombre,email").eq("id", proveedor_id).in_("user_id", _ids_org(req.user_id)).maybe_single().execute().data
+            if not proveedor:
+                raise HTTPException(status_code=400, detail="Proveedor privado inválido")
+            nombre, email = proveedor.get("nombre"), proveedor.get("email")
+            contactos = sb.table("proveedor_contactos").select("id,email").eq("proveedor_id", proveedor_id).eq("es_principal", True).limit(1).execute().data or []
+            if contactos:
+                contacto_id, email = contactos[0]["id"], contactos[0]["email"]
+        else:
+            raise HTTPException(status_code=400, detail="Selección inválida")
+
+        selecciones = data.setdefault("selecciones_proveedores", [])
+        if not selecciones:
+            for previa in (data.get("proveedores_confianza") or {}).get("selecciones", []):
+                for cid in previa.get("cotizacion_ids", []):
+                    selecciones.append({
+                        "cotizacion_id": cid, "clave": previa.get("proveedor_id"),
+                        "proveedor_id": previa.get("proveedor_id"),
+                        "contacto_id": previa.get("contacto_id"), "origen": "proveedor",
+                    })
+        selecciones[:] = [s for s in selecciones if not (s.get("cotizacion_id") == req.cotizacion_id and s.get("clave") == clave)]
+        if req.seleccionado:
+            selecciones.append({
+                "cotizacion_id": req.cotizacion_id, "clave": clave, "proveedor_id": proveedor_id,
+                "contacto_id": contacto_id, "nombre": nombre, "email": email, "origen": req.origen,
+            })
+
+        # Sincroniza con el borrador RFQ ya existente para reutilizar todo el
+        # flujo de correo y respuestas por proveedor.
+        agrupadas: dict[str, dict] = {}
+        for s in selecciones:
+            pid = s.get("proveedor_id")
+            if not pid:
+                continue
+            fila = agrupadas.setdefault(pid, {"proveedor_id": pid, "contacto_id": s.get("contacto_id"), "cotizacion_ids": []})
+            fila["cotizacion_ids"].append(s["cotizacion_id"])
+        data["proveedores_confianza"] = {"revisado": True, "selecciones": list(agrupadas.values())}
+        _guardar_lista(sb, lista_id, data)
+    return {"success": True, "seleccionado": req.seleccionado}
 
 
 def _matriz_proveedores_confianza(sb, user_id: str, items: list[dict], borrador: dict) -> dict:

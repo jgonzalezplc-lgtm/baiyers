@@ -25,6 +25,19 @@ export interface ComparadoLista {
   contacto: string | null;
   url: string;
   descripcion: string | null;
+  origen?: "sugerido" | "proveedor" | "buscado_web";
+}
+
+export interface ProveedorRecomendado {
+  id: string;
+  nombre: string;
+  email: string | null;
+  sitio_web?: string | null;
+  telefono?: string | null;
+  origen: "sugerido" | "proveedor";
+  origen_label: string;
+  match_label: string;
+  seleccionado: boolean;
 }
 
 export interface Definitivo {
@@ -37,6 +50,7 @@ export interface Definitivo {
   precio_clp: number | null;
   seleccionado_por?: string | null;
   seleccionado_at?: string | null;
+  origen?: "sugerido" | "proveedor" | "buscado_web";
 }
 
 export interface ItemLista {
@@ -46,6 +60,7 @@ export interface ItemLista {
   comparado: boolean;
   comparados: ComparadoLista[];
   definitivo: Definitivo | null;
+  proveedores_recomendados: ProveedorRecomendado[];
 }
 
 interface Aprobacion {
@@ -105,6 +120,7 @@ export default function ListaDetallePage() {
   const [toast, setToast] = useState("");
   const [tasas, setTasas] = useState<Record<string, number>>({});
   const [guardandoDef, setGuardandoDef] = useState<string | null>(null);
+  const [guardandoProveedor, setGuardandoProveedor] = useState<string | null>(null);
   const [justificaciones, setJustificaciones] = useState<Record<string, string>>({});
   const [aprobadorEmail, setAprobadorEmail] = useState("");
   const [solicitando, setSolicitando] = useState(false);
@@ -191,6 +207,28 @@ export default function ListaDetallePage() {
     } finally {
       setGuardandoDef(null);
     }
+  };
+
+  const alternarProveedor = async (item: ItemLista, proveedor: ProveedorRecomendado) => {
+    if (!userId) return;
+    const clave = `${item.cotizacion_id}:${proveedor.id}`;
+    setGuardandoProveedor(clave);
+    try {
+      const res = await fetch(`${API_URL}/api/listas/${id}/seleccionar-proveedor`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId, cotizacion_id: item.cotizacion_id,
+          origen: proveedor.origen, proveedor_id: proveedor.origen === "proveedor" ? proveedor.id : null,
+          email: proveedor.email, seleccionado: !proveedor.seleccionado,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "No se pudo guardar la selección");
+      await cargar(userId);
+      setToast(proveedor.seleccionado ? "Proveedor quitado" : "Proveedor agregado a la cotización");
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "No se pudo guardar la selección");
+    } finally { setGuardandoProveedor(null); }
   };
 
   const actualizarCantidad = async (item: ItemLista, cantidad: number) => {
@@ -615,9 +653,53 @@ export default function ListaDetallePage() {
             </div>
           </div>
 
+          {it.proveedores_recomendados?.length > 0 && (
+            <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--n-200)", background: "var(--surface)" }}>
+              {(["proveedor", "sugerido"] as const).map(origen => {
+                const proveedores = it.proveedores_recomendados.filter(p => p.origen === origen);
+                if (!proveedores.length) return null;
+                return <div key={origen} style={{ marginBottom: origen === "proveedor" ? 14 : 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 7, textTransform: "uppercase", letterSpacing: ".04em" }}>
+                    {origen === "proveedor" ? "Proveedores de tu empresa" : "Sugeridos por Baiyer"}
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {proveedores.map(proveedor => {
+                      const clave = `${it.cotizacion_id}:${proveedor.id}`;
+                      return <div key={proveedor.id} style={{
+                        display: "flex", alignItems: "center", gap: 10, padding: "9px 10px",
+                        border: `1px solid ${proveedor.seleccionado ? "var(--brand)" : "var(--n-200)"}`,
+                        borderRadius: "var(--r-md)", background: proveedor.seleccionado ? "var(--brand-50)" : "var(--canvas)",
+                        minWidth: 280, flex: "1 1 320px", maxWidth: 460,
+                      }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                            <strong style={{ fontSize: 13.5, color: "var(--n-900)" }}>{proveedor.nombre}</strong>
+                            <span style={{ fontSize: 10.5, color: "var(--brand)", border: "1px solid var(--brand)", borderRadius: "var(--r-sm)", padding: "1px 5px" }}>{proveedor.match_label}</span>
+                          </div>
+                          <div style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11.5, color: "var(--n-500)", marginTop: 3, overflow: "hidden" }}>
+                            <Mail size={12} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{proveedor.email || "Sin correo"}</span>
+                          </div>
+                        </div>
+                        <button onClick={() => alternarProveedor(it, proveedor)} disabled={guardandoProveedor === clave || !proveedor.email} style={{
+                          border: `1px solid ${proveedor.seleccionado ? "var(--brand)" : "var(--n-300)"}`,
+                          background: proveedor.seleccionado ? "var(--brand)" : "var(--surface)",
+                          color: proveedor.seleccionado ? "white" : "var(--brand)", borderRadius: "var(--r-md)",
+                          padding: "6px 9px", fontSize: 12, fontWeight: 600, cursor: proveedor.email ? "pointer" : "not-allowed",
+                        }}>{proveedor.seleccionado ? "Seleccionado" : "Agregar"}</button>
+                      </div>;
+                    })}
+                  </div>
+                </div>;
+              })}
+              <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--n-500)" }}>
+                “Posible match” se basa en la categoría del ítem; confirma disponibilidad y precio al cotizar.
+              </div>
+            </div>
+          )}
+
           {it.comparados.length === 0 ? (
             <div style={{ padding: "24px 16px", fontSize: 13.5, color: "var(--n-500)", textAlign: "center" }}>
-              Aún sin proveedores comparados para este ítem.
+              Aún no hay precios comparados. Selecciona proveedores arriba o usa “Buscar opciones”.
             </div>
           ) : (
             <div>

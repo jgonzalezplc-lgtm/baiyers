@@ -3,15 +3,16 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { BtnPrimary, BtnSecondary, Card, Input, SkeletonBox, SkeletonText, CascadeWrapper } from "@/components/ui";
+import { Badge, BtnPrimary, BtnSecondary, Card, Input, SkeletonBox, SkeletonText, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const fmtCLP = (n: number) => `$${Math.round(n).toLocaleString("es-CL")}`;
-type Definitivo = { proveedor?: string; precio_clp?: number | null; url?: string | null };
+type Definitivo = { proveedor?: string; precio_clp?: number | null; url?: string | null; origen?: "sugerido" | "proveedor" | "buscado_web" };
 type Item = { cotizacion_id: string; nombre: string; cantidad: number; definitivo: Definitivo | null };
 type Lista = { id: string; nombre: string; items: Item[]; justificaciones?: Record<string, string> };
 type ResponsableSugerido = { id: string; nombre: string; email: string };
 type Sugerencia = { nodo_nombre: string; modo_autorizacion: string; responsables: ResponsableSugerido[] };
+const ORIGEN_LABEL = { sugerido: "Sugerido", proveedor: "Proveedor", buscado_web: "Buscado por web" } as const;
 
 export default function AutorizarListaPage() {
   const { id } = useParams<{ id: string }>();
@@ -100,8 +101,12 @@ export default function AutorizarListaPage() {
         <Input label="Email del autorizador" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="jefe@empresa.cl" />
       )}
     </Card>
+    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", textTransform: "uppercase", letterSpacing: ".04em", margin: "18px 0 8px" }}>Seleccionados para autorización</div>
     {definitivos.map(item => <Card key={item.cotizacion_id} padding={18} style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 15, fontWeight: 700 }}>{item.nombre} <span style={{ color: "var(--n-500)", fontWeight: 400 }}>× {item.cantidad}</span></div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 15, fontWeight: 700 }}>{item.nombre} <span style={{ color: "var(--n-500)", fontWeight: 400 }}>× {item.cantidad}</span></div>
+        <Badge status={item.definitivo?.origen === "buscado_web" ? "cotizando" : "aprobada"}>{ORIGEN_LABEL[item.definitivo?.origen || "buscado_web"]}</Badge>
+      </div>
       <div style={{ margin: "8px 0", fontSize: 14 }}>{item.definitivo?.proveedor || "—"} · <a href={item.definitivo?.url || "#"} target="_blank" rel="noreferrer">Ver producto ↗</a> · <strong>{item.definitivo?.precio_clp != null ? fmtCLP(item.definitivo.precio_clp * item.cantidad) : "—"}</strong></div>
       <Input label="Justificación" value={justificaciones[item.cotizacion_id] || ""} onChange={e => setJustificaciones(j => ({ ...j, [item.cotizacion_id]: e.target.value }))} placeholder="Ej: mejor precio, entrega rápida, proveedor homologado…" />
     </Card>)}
