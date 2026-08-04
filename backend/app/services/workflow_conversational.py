@@ -67,6 +67,34 @@ Reglas:
   etapas (ej: "María revisa y autoriza"), repítela en cada etapa correspondiente."""
 
 
+def deduplicar_responsables(etapas: list[dict]) -> list[dict]:
+    """Lista plana de responsables únicos detectados en las etapas (por
+    email si tienen; si no, por nombre) — para que el frontend los muestre
+    en un solo panel con checkbox y no repita a la misma persona.
+
+    Si la misma persona aparece en varias etapas (ej: "María revisa y
+    autoriza"), se ACUMULAN sus roles de todas esas etapas — quedarse solo
+    con los de la primera etapa donde aparece deja a la persona sin
+    asignar en el resto de los roles que también le correspondían."""
+    detectados: list[dict] = []
+    indice_por_key: dict[str, int] = {}
+    for e in etapas:
+        for r in e.get("responsables") or []:
+            key = r["email"] or r["nombre"].lower()
+            if key in indice_por_key:
+                existente = detectados[indice_por_key[key]]
+                for rol in e["roles"]:
+                    if rol not in existente["roles"]:
+                        existente["roles"].append(rol)
+                continue
+            indice_por_key[key] = len(detectados)
+            detectados.append({
+                "nombre": r["nombre"], "email": r["email"],
+                "roles": list(e["roles"]),
+            })
+    return detectados
+
+
 def interpretar_descripcion(descripcion: str, contexto: str = "") -> dict:
     """Llama a Gemini para traducir texto libre a etapas. Nunca lanza: ante
     cualquier falla devuelve requiere_aclaracion=True pidiendo que lo intente
@@ -170,21 +198,7 @@ def interpretar_descripcion(descripcion: str, contexto: str = "") -> dict:
             responsables_limpios.append({"nombre": nombre, "email": email})
         e["responsables"] = responsables_limpios
 
-    # Lista plana de responsables únicos detectados en todo el workflow
-    # (por email si tienen; si no, por nombre) — para que el frontend los
-    # muestre en un solo panel con checkbox y no repita a la misma persona.
-    responsables_detectados: list[dict] = []
-    vistos: set[str] = set()
-    for e in etapas:
-        for r in e.get("responsables") or []:
-            key = r["email"] or r["nombre"].lower()
-            if key in vistos:
-                continue
-            vistos.add(key)
-            responsables_detectados.append({
-                "nombre": r["nombre"], "email": r["email"],
-                "roles": e["roles"],
-            })
+    responsables_detectados = deduplicar_responsables(etapas)
 
     return {
         "resumen": data.get("resumen") or "",

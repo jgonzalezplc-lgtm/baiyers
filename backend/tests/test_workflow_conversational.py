@@ -1,6 +1,6 @@
 import unittest
 
-from app.services.workflow_conversational import compilar_a_grafo, interpretar_descripcion
+from app.services.workflow_conversational import compilar_a_grafo, deduplicar_responsables, interpretar_descripcion
 from app.services.workflow_engine import validar_grafo, siguiente_nodo
 
 
@@ -88,6 +88,47 @@ class CompilarGrafoTest(unittest.TestCase):
         nodos, conexiones = compilar_a_grafo(etapas, [{"hasta": 1000000, "desde": None, "descripcion": "jefe"}])
         self.assertEqual(validar_grafo(nodos, conexiones), [])
         self.assertEqual(siguiente_nodo(conexiones, "n0", "aprobado"), "fin")
+
+
+class DeduplicarResponsablesTest(unittest.TestCase):
+    """Regresión: si la misma persona aparece en varias etapas (ej: revisa
+    Y autoriza), debe quedar con TODOS esos roles acumulados — quedarse
+    solo con los de la primera etapa la dejaba sin asignar en el resto."""
+
+    def test_misma_persona_en_dos_etapas_acumula_ambos_roles(self):
+        etapas = [
+            {"nombre": "Cotizar", "tipo": "tarea_humana", "roles": ["cotizador"], "responsables": []},
+            {"nombre": "Revisar", "tipo": "revision", "roles": ["revisor"],
+             "responsables": [{"nombre": "Joaquín", "email": "joaquin@usach.cl"}]},
+            {"nombre": "Autorizar", "tipo": "autorizacion", "roles": ["autorizador"],
+             "responsables": [{"nombre": "Joaquín", "email": "joaquin@usach.cl"}]},
+        ]
+        detectados = deduplicar_responsables(etapas)
+        self.assertEqual(len(detectados), 1)
+        self.assertEqual(set(detectados[0]["roles"]), {"revisor", "autorizador"})
+
+    def test_personas_distintas_no_se_mezclan(self):
+        etapas = [
+            {"nombre": "Revisar", "tipo": "revision", "roles": ["revisor"],
+             "responsables": [{"nombre": "Ignacio", "email": "hola@claria.cc"}]},
+            {"nombre": "Autorizar", "tipo": "autorizacion", "roles": ["autorizador"],
+             "responsables": [{"nombre": "Joaquín", "email": "joaquin@usach.cl"}]},
+        ]
+        detectados = deduplicar_responsables(etapas)
+        self.assertEqual(len(detectados), 2)
+        self.assertEqual(next(d for d in detectados if d["email"] == "hola@claria.cc")["roles"], ["revisor"])
+        self.assertEqual(next(d for d in detectados if d["email"] == "joaquin@usach.cl")["roles"], ["autorizador"])
+
+    def test_sin_email_dedupe_por_nombre(self):
+        etapas = [
+            {"nombre": "Revisar", "tipo": "revision", "roles": ["revisor"],
+             "responsables": [{"nombre": "María", "email": ""}]},
+            {"nombre": "Autorizar", "tipo": "autorizacion", "roles": ["autorizador"],
+             "responsables": [{"nombre": "María", "email": ""}]},
+        ]
+        detectados = deduplicar_responsables(etapas)
+        self.assertEqual(len(detectados), 1)
+        self.assertEqual(set(detectados[0]["roles"]), {"revisor", "autorizador"})
 
 
 class InterpretarDescripcionSinRedTest(unittest.TestCase):
