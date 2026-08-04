@@ -17,12 +17,14 @@ class MensajeRequest(BaseModel):
 def _cargar_contexto_usuario(user_id: str) -> dict:
     """Carga stats agregadas del usuario desde Supabase."""
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
+    ids = ids_organizacion(user_id)
 
     ctx: dict = {}
     try:
         # Gasto total en OCs
-        ocs = sb.table("ordenes_compra").select("monto_total, estado, proveedor_nombre, created_at").eq("user_id", user_id).order("created_at", desc=True).limit(50).execute()
+        ocs = sb.table("ordenes_compra").select("monto_total, estado, proveedor_nombre, created_at").in_("user_id", ids).order("created_at", desc=True).limit(50).execute()
         monto_total = sum(float(o.get("monto_total") or 0) for o in (ocs.data or []))
         ctx["total_ocs"] = len(ocs.data or [])
         ctx["gasto_total_clp"] = round(monto_total)
@@ -38,16 +40,16 @@ def _cargar_contexto_usuario(user_id: str) -> dict:
         )[:5]
 
         # Cotizaciones recientes
-        cots = sb.table("cotizaciones").select("nombre_identificado, descripcion, created_at").eq("user_id", user_id).order("created_at", desc=True).limit(50).execute()
+        cots = sb.table("cotizaciones").select("nombre_identificado, descripcion, created_at").in_("user_id", ids).order("created_at", desc=True).limit(50).execute()
         ctx["total_cotizaciones"] = len(cots.data or [])
         ctx["items_recientes"] = [c.get("nombre_identificado") or c.get("descripcion") for c in (cots.data or [])[:10]]
 
         # Proveedores con score
-        suppliers = sb.table("proveedores").select("nombre, score, categoria_score").eq("user_id", user_id).order("score", desc=True).limit(10).execute()
+        suppliers = sb.table("proveedores").select("nombre, score, categoria_score").in_("user_id", ids).order("score", desc=True).limit(10).execute()
         ctx["proveedores_red"] = [{"nombre": p["nombre"], "score": p.get("score"), "categoria": p.get("categoria_score")} for p in (suppliers.data or [])]
 
         # Facturas pendientes
-        facturas = sb.table("facturas").select("monto, estado, proveedor_nombre").eq("user_id", user_id).eq("estado", "pendiente").execute()
+        facturas = sb.table("facturas").select("monto, estado, proveedor_nombre").in_("user_id", ids).eq("estado", "pendiente").execute()
         ctx["facturas_pendientes"] = len(facturas.data or [])
         ctx["monto_facturas_pendientes"] = round(sum(float(f.get("monto") or 0) for f in (facturas.data or [])))
 

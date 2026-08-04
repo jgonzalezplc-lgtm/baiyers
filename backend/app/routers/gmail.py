@@ -594,7 +594,8 @@ async def _sincronizar_usuario(user_id: str) -> dict:
     service, _ = get_gmail_service(integration["access_token"], integration["refresh_token"])
     mi_email = (integration["email"] or "").lower()
 
-    activas = sb.table("gmail_conversations").select("*").eq("user_id", user_id).in_(
+    from app.services.organizacion import ids_organizacion
+    activas = sb.table("gmail_conversations").select("*").in_("user_id", ids_organizacion(user_id)).in_(
         "estado", ["sent", "waiting_for_supplier", "supplier_replied", "partially_answered"]
     ).execute().data or []
 
@@ -849,10 +850,12 @@ async def sincronizar_todos_los_usuarios() -> dict:
 @router.get("/conversaciones")
 async def listar_conversaciones(user_id: str):
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
-    convs = sb.table("gmail_conversations").select("*").eq("user_id", user_id).order("last_message_at", desc=True).execute().data or []
+    ids = ids_organizacion(user_id)
+    convs = sb.table("gmail_conversations").select("*").in_("user_id", ids).order("last_message_at", desc=True).execute().data or []
 
-    propuestas = sb.table("item_field_updates").select("source_id").eq("user_id", user_id).eq("estado", "propuesta").execute().data or []
+    propuestas = sb.table("item_field_updates").select("source_id").in_("user_id", ids).eq("estado", "propuesta").execute().data or []
     ids_mensajes_con_propuesta = [p["source_id"] for p in propuestas if p.get("source_id")]
     conv_por_mensaje: dict[str, str] = {}
     if ids_mensajes_con_propuesta:
@@ -873,8 +876,9 @@ async def listar_conversaciones(user_id: str):
 @router.get("/conversaciones/{conversation_id}")
 async def detalle_conversacion(conversation_id: str, user_id: str):
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
-    conv = sb.table("gmail_conversations").select("*").eq("id", conversation_id).eq("user_id", user_id).maybe_single().execute().data
+    conv = sb.table("gmail_conversations").select("*").eq("id", conversation_id).in_("user_id", ids_organizacion(user_id)).maybe_single().execute().data
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
     conv["gmail_url"] = f"https://mail.google.com/mail/u/0/#all/{conv['gmail_thread_id']}"
@@ -900,9 +904,10 @@ async def aplicar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest):
     columna real de `resultados`, la escribe. Acción explícita de un humano —
     el agente nunca llega a este estado por sí solo."""
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
 
-    p = sb.table("item_field_updates").select("*").eq("id", propuesta_id).eq("user_id", req.user_id).maybe_single().execute().data
+    p = sb.table("item_field_updates").select("*").eq("id", propuesta_id).in_("user_id", ids_organizacion(req.user_id)).maybe_single().execute().data
     if not p:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
     if p["estado"] != "propuesta":
@@ -935,8 +940,9 @@ async def aplicar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest):
 @router.post("/propuestas/{propuesta_id}/rechazar")
 async def rechazar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest):
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
-    p = sb.table("item_field_updates").select("id,estado").eq("id", propuesta_id).eq("user_id", req.user_id).maybe_single().execute().data
+    p = sb.table("item_field_updates").select("id,estado").eq("id", propuesta_id).in_("user_id", ids_organizacion(req.user_id)).maybe_single().execute().data
     if not p:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
     sb.table("item_field_updates").update({

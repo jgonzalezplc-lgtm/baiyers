@@ -56,8 +56,9 @@ async def crear_workflow(req: WorkflowRequest):
 @router.get("/workflows")
 async def listar_workflows(user_id: str):
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
-    res = sb.table("approval_workflows").select("*").eq("user_id", user_id).eq("activo", True).execute()
+    res = sb.table("approval_workflows").select("*").in_("user_id", ids_organizacion(user_id)).eq("activo", True).execute()
     return res.data or []
 
 
@@ -115,8 +116,9 @@ async def solicitar_aprobacion(req: SolicitudRequest):
 @router.get("/solicitudes")
 async def listar_solicitudes(user_id: str, estado: Optional[str] = None):
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
-    q = sb.table("approval_requests").select("*").eq("user_id", user_id)
+    q = sb.table("approval_requests").select("*").in_("user_id", ids_organizacion(user_id))
     if estado:
         q = q.eq("estado", estado)
     res = q.order("created_at", desc=True).limit(100).execute()

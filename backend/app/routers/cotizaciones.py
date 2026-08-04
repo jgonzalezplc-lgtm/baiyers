@@ -27,12 +27,14 @@ router = APIRouter(prefix="/api", tags=["cotizaciones"])
 @router.get("/dashboard/stats")
 async def dashboard_stats(user_id: str):
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
+    ids = ids_organizacion(user_id)
 
     now = datetime.now(timezone.utc)
     mes_inicio = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
 
-    cots = sb.table("cotizaciones").select("id").eq("user_id", user_id).gte("created_at", mes_inicio).execute()
+    cots = sb.table("cotizaciones").select("id").in_("user_id", ids).gte("created_at", mes_inicio).execute()
     n_cotizaciones = len(cots.data or [])
 
     cot_ids = [c["id"] for c in (cots.data or [])]
@@ -56,7 +58,7 @@ async def dashboard_stats(user_id: str):
         ocs = (
             sb.table("ordenes_compra")
             .select("id, precio_total")
-            .eq("user_id", user_id)
+            .in_("user_id", ids)
             .gte("created_at", mes_inicio)
             .execute()
         )
@@ -78,14 +80,16 @@ async def dashboard_stats(user_id: str):
 @router.get("/cotizaciones")
 async def listar_cotizaciones(user_id: str, limit: int = 100):
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
+    ids = ids_organizacion(user_id)
 
     # confianza_ia puede no existir si no se corrió la migración aún
     try:
         cots = (
             sb.table("cotizaciones")
             .select("id, nombre_identificado, marca, categoria, estado, confianza_ia, created_at")
-            .eq("user_id", user_id)
+            .in_("user_id", ids)
             .order("created_at", desc=True)
             .limit(limit)
             .execute()
@@ -94,7 +98,7 @@ async def listar_cotizaciones(user_id: str, limit: int = 100):
         cots = (
             sb.table("cotizaciones")
             .select("id, nombre_identificado, marca, categoria, estado, created_at")
-            .eq("user_id", user_id)
+            .in_("user_id", ids)
             .order("created_at", desc=True)
             .limit(limit)
             .execute()
@@ -269,9 +273,10 @@ async def agregar_proveedor_directorio(cotizacion_id: str, req: AgregarProveedor
     esta cotización, para poder cotizarle igual que a uno encontrado por el
     buscador. No pasa por scraping — usa el email de contacto ya guardado."""
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
 
-    prov = sb.table("proveedores").select("*").eq("id", req.proveedor_id).eq("user_id", req.user_id).maybe_single().execute().data
+    prov = sb.table("proveedores").select("*").eq("id", req.proveedor_id).in_("user_id", ids_organizacion(req.user_id)).maybe_single().execute().data
     if not prov:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 

@@ -13,14 +13,16 @@ async def get_eventos(user_id: str, fecha_inicio: str, fecha_fin: str,
     """Agrega eventos de todas las tablas para el rango de fechas dado.
     Filtros opcionales (v2): tipo (csv de tipos) y proveedor (substring)."""
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
+    ids = ids_organizacion(user_id)
     eventos = []
 
     # ── Cotizaciones ──────────────────────────────────────────────────────────
     try:
         cots = (sb.table("cotizaciones")
                 .select("id, nombre_identificado, descripcion, created_at")
-                .eq("user_id", user_id)
+                .in_("user_id", ids)
                 .gte("created_at", fecha_inicio)
                 .lte("created_at", fecha_fin + "T23:59:59")
                 .execute())
@@ -42,7 +44,7 @@ async def get_eventos(user_id: str, fecha_inicio: str, fecha_fin: str,
     try:
         ocs = (sb.table("ordenes_compra")
                .select("id, numero_oc, proveedor_nombre, created_at, confirmada_at, fecha_entrega_estimada, fecha_entrega_efectiva")
-               .eq("user_id", user_id)
+               .in_("user_id", ids)
                .execute())
         for oc in ocs.data:
             oc_id = oc["id"]
@@ -70,7 +72,7 @@ async def get_eventos(user_id: str, fecha_inicio: str, fecha_fin: str,
 
     # ── Recurrencias ──────────────────────────────────────────────────────────
     try:
-        recs = sb.table("recurrencias").select("id, nombre, frecuencia, proxima_ejecucion").eq("user_id", user_id).eq("activa", True).execute()
+        recs = sb.table("recurrencias").select("id, nombre, frecuencia, proxima_ejecucion").in_("user_id", ids).eq("activa", True).execute()
         for r in recs.data:
             if r.get("proxima_ejecucion") and fecha_inicio <= r["proxima_ejecucion"][:10] <= fecha_fin:
                 eventos.append({"id": f"rec-{r['id']}", "titulo": f"Recurrente: {r.get('nombre', '')}", "fecha_inicio": r["proxima_ejecucion"], "fecha_fin": r["proxima_ejecucion"], "tipo": "recurrencia", "color": "#f97316", "datos": {"recurrencia_id": r["id"], "nombre": r.get("nombre"), "frecuencia": r.get("frecuencia")}})
@@ -79,7 +81,7 @@ async def get_eventos(user_id: str, fecha_inicio: str, fecha_fin: str,
 
     # ── Facturas ──────────────────────────────────────────────────────────────
     try:
-        facts = sb.table("facturas").select("id, proveedor_nombre, monto_total, moneda, fecha_factura, fecha_vencimiento, estado").eq("user_id", user_id).execute()
+        facts = sb.table("facturas").select("id, proveedor_nombre, monto_total, moneda, fecha_factura, fecha_vencimiento, estado").in_("user_id", ids).execute()
         for f in facts.data:
             monto = int(f.get("monto_total") or 0)
             prov = f.get("proveedor_nombre", "")

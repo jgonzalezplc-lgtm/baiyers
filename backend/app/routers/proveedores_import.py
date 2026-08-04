@@ -128,7 +128,8 @@ Filas:
             # Busca por RUT → email/dominio → nombre normalizado antes de crear
             # uno nuevo, para no duplicar proveedores ya cargados manualmente
             # o por una importación anterior.
-            existentes_antes = sb.table("proveedores").select("id").eq("user_id", user_id).eq("nombre", nombre[:200]).execute().data
+            from app.services.organizacion import ids_organizacion
+            existentes_antes = sb.table("proveedores").select("id").in_("user_id", ids_organizacion(user_id)).eq("nombre", nombre[:200]).execute().data
             proveedor_id = resolver_o_crear_proveedor(sb, user_id, nombre, email, p.get("rut"))
             es_nuevo = not existentes_antes or existentes_antes[0]["id"] != proveedor_id
 

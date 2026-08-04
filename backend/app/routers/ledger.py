@@ -22,6 +22,12 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _ids_org(user_id: str) -> list[str]:
+    """Wrapper local para import perezoso (Fase B del multi-usuario)."""
+    from app.services.organizacion import ids_organizacion
+    return ids_organizacion(user_id)
+
+
 # ─── API pública del servicio (usada por otros routers) ───────────────────────
 
 def registrar_movimiento(
@@ -61,7 +67,7 @@ def registrar_movimiento(
         if not existente:
             r = (
                 sb.table("procurement_ledger").select("*")
-                .eq("user_id", user_id).eq("item_name", item_name)
+                .in_("user_id", _ids_org(user_id)).eq("item_name", item_name)
                 .eq("proveedor_nombre", proveedor_nombre)
                 .neq("estado", "facturado")
                 .order("created_at", desc=True).limit(1).execute()
@@ -129,7 +135,7 @@ async def buscar_ledger(
     """Búsqueda con filtros sobre el ledger."""
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    q = sb.table("procurement_ledger").select("*").eq("user_id", user_id)
+    q = sb.table("procurement_ledger").select("*").in_("user_id", _ids_org(user_id))
     if item:
         q = q.ilike("item_name", f"%{item}%")
     if proveedor:
@@ -156,7 +162,7 @@ async def sugerencias_item(user_id: str, item: str):
             "proveedor_nombre, supplier_id, precio_unitario, moneda, estado, "
             "fecha_oc, fecha_entrega_esperada, fecha_entrega_real, created_at"
         )
-        .eq("user_id", user_id).ilike("item_name", f"%{item}%")
+        .in_("user_id", _ids_org(user_id)).ilike("item_name", f"%{item}%")
         .order("created_at", desc=True).limit(20).execute()
     )
     rows = res.data or []
@@ -181,7 +187,7 @@ async def sugerencias_item(user_id: str, item: str):
 async def detalle_ledger(ledger_id: str, user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    res = sb.table("procurement_ledger").select("*").eq("id", ledger_id).eq("user_id", user_id).single().execute()
+    res = sb.table("procurement_ledger").select("*").eq("id", ledger_id).in_("user_id", _ids_org(user_id)).single().execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Entrada no encontrada")
     return res.data
@@ -198,7 +204,7 @@ class ActualizarLedgerRequest(BaseModel):
 async def actualizar_ledger(ledger_id: str, user_id: str, req: ActualizarLedgerRequest):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    row = sb.table("procurement_ledger").select("*").eq("id", ledger_id).eq("user_id", user_id).single().execute()
+    row = sb.table("procurement_ledger").select("*").eq("id", ledger_id).in_("user_id", _ids_org(user_id)).single().execute()
     if not row.data:
         raise HTTPException(status_code=404, detail="Entrada no encontrada")
     update: dict = {"updated_at": _now()}

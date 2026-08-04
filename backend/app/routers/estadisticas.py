@@ -5,6 +5,12 @@ import io
 router = APIRouter(prefix="/api/estadisticas", tags=["estadisticas"])
 
 
+def _ids_org(user_id: str) -> list[str]:
+    """Wrapper local para import perezoso (Fase B del multi-usuario)."""
+    from app.services.organizacion import ids_organizacion
+    return ids_organizacion(user_id)
+
+
 @router.get("/resumen")
 async def resumen(user_id: str):
     from app.services.supabase import get_supabase
@@ -17,24 +23,24 @@ async def resumen(user_id: str):
     mes_anterior_inicio = date(hoy.year if hoy.month > 1 else hoy.year - 1, (hoy.month - 2) % 12 + 1, 1).isoformat()
 
     # OCs este mes
-    ocs_mes = sb.table("ordenes_compra").select("precio_total").eq("user_id", user_id).gte("created_at", mes_inicio).execute()
+    ocs_mes = sb.table("ordenes_compra").select("precio_total").in_("user_id", _ids_org(user_id)).gte("created_at", mes_inicio).execute()
     total_ocs_mes = sum(float(o.get("precio_total") or 0) for o in ocs_mes.data)
     cant_ocs_mes = len(ocs_mes.data)
 
     # OCs mes anterior
-    ocs_ant = sb.table("ordenes_compra").select("precio_total").eq("user_id", user_id).gte("created_at", mes_anterior_inicio).lte("created_at", mes_anterior_fin).execute()
+    ocs_ant = sb.table("ordenes_compra").select("precio_total").in_("user_id", _ids_org(user_id)).gte("created_at", mes_anterior_inicio).lte("created_at", mes_anterior_fin).execute()
     total_ocs_ant = sum(float(o.get("precio_total") or 0) for o in ocs_ant.data)
 
     # Facturas pendientes
-    facturas_pend = sb.table("facturas").select("monto_total").eq("user_id", user_id).neq("estado", "pagada").execute()
+    facturas_pend = sb.table("facturas").select("monto_total").in_("user_id", _ids_org(user_id)).neq("estado", "pagada").execute()
     total_pendiente = sum(float(f.get("monto_total") or 0) for f in facturas_pend.data)
 
     # Facturas pagadas este mes
-    facturas_pag = sb.table("facturas").select("monto_total").eq("user_id", user_id).eq("estado", "pagada").gte("fecha_pago", mes_inicio).execute()
+    facturas_pag = sb.table("facturas").select("monto_total").in_("user_id", _ids_org(user_id)).eq("estado", "pagada").gte("fecha_pago", mes_inicio).execute()
     total_pagado = sum(float(f.get("monto_total") or 0) for f in facturas_pag.data)
 
     # Proyección próximo mes (recurrencias activas)
-    recs = sb.table("recurrencias").select("monto_maximo").eq("user_id", user_id).eq("activa", True).execute()
+    recs = sb.table("recurrencias").select("monto_maximo").in_("user_id", _ids_org(user_id)).eq("activa", True).execute()
     proyeccion = sum(float(r.get("monto_maximo") or 0) for r in recs.data)
 
     # Variación %
@@ -73,7 +79,7 @@ async def gastos_mensuales(user_id: str):
         ultimo_dia = calendar.monthrange(año, mes)[1]
         fin = f"{año}-{mes:02d}-{ultimo_dia}"
 
-        ocs = sb.table("ordenes_compra").select("precio_total").eq("user_id", user_id).gte("created_at", inicio).lte("created_at", fin + "T23:59:59").execute()
+        ocs = sb.table("ordenes_compra").select("precio_total").in_("user_id", _ids_org(user_id)).gte("created_at", inicio).lte("created_at", fin + "T23:59:59").execute()
         total = sum(float(o.get("precio_total") or 0) for o in ocs.data)
 
         resultado.append({
@@ -91,7 +97,7 @@ async def por_categoria(user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    ocs = sb.table("ordenes_compra").select("nombre_item, precio_total").eq("user_id", user_id).execute()
+    ocs = sb.table("ordenes_compra").select("nombre_item, precio_total").in_("user_id", _ids_org(user_id)).execute()
 
     categorias: dict = {}
     for oc in ocs.data:
@@ -113,7 +119,7 @@ async def top_proveedores(user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    ocs = sb.table("ordenes_compra").select("proveedor_nombre, precio_total").eq("user_id", user_id).execute()
+    ocs = sb.table("ordenes_compra").select("proveedor_nombre, precio_total").in_("user_id", _ids_org(user_id)).execute()
 
     provs: dict = {}
     for oc in ocs.data:
@@ -137,7 +143,7 @@ async def liquidez(user_id: str):
     hoy = date.today()
     limite = (hoy + timedelta(days=90)).isoformat()
 
-    facturas = sb.table("facturas").select("proveedor_nombre, monto_total, fecha_vencimiento").eq("user_id", user_id).neq("estado", "pagada").lte("fecha_vencimiento", limite).gte("fecha_vencimiento", hoy.isoformat()).execute()
+    facturas = sb.table("facturas").select("proveedor_nombre, monto_total, fecha_vencimiento").in_("user_id", _ids_org(user_id)).neq("estado", "pagada").lte("fecha_vencimiento", limite).gte("fecha_vencimiento", hoy.isoformat()).execute()
 
     # Agrupar por semana
     semanas: dict = {}
@@ -176,7 +182,7 @@ async def proveedores_historico(user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    provs = sb.table("proveedores").select("*").eq("user_id", user_id).order("score", desc=True).execute()
+    provs = sb.table("proveedores").select("*").in_("user_id", _ids_org(user_id)).order("score", desc=True).execute()
 
     result = []
     for p in provs.data:
@@ -223,7 +229,7 @@ async def exportar_excel(user_id: str):
         cell = ws1.cell(row=1, column=col, value=h)
         cell.font = Font(bold=True)
 
-    ocs = sb.table("ordenes_compra").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    ocs = sb.table("ordenes_compra").select("*").in_("user_id", _ids_org(user_id)).order("created_at", desc=True).execute()
     for row_i, oc in enumerate(ocs.data, 2):
         ws1.append([
             oc.get("numero_oc"), oc.get("proveedor_nombre"), oc.get("nombre_item"),
@@ -237,7 +243,7 @@ async def exportar_excel(user_id: str):
     for col, h in enumerate(headers2, 1):
         ws2.cell(row=1, column=col, value=h).font = Font(bold=True)
 
-    provs = sb.table("proveedores").select("*").eq("user_id", user_id).order("score", desc=True).execute()
+    provs = sb.table("proveedores").select("*").in_("user_id", _ids_org(user_id)).order("score", desc=True).execute()
     for p in provs.data:
         tasa = round((p.get("total_respuestas") or 0) / max(p.get("total_solicitudes") or 1, 1) * 100)
         ws2.append([p.get("nombre"), p.get("email"), p.get("score"), p.get("categoria_score"), p.get("total_solicitudes"), p.get("total_oc_enviadas"), p.get("total_oc_confirmadas"), tasa])
@@ -248,7 +254,7 @@ async def exportar_excel(user_id: str):
     for col, h in enumerate(headers3, 1):
         ws3.cell(row=1, column=col, value=h).font = Font(bold=True)
 
-    facts = sb.table("facturas").select("*").eq("user_id", user_id).order("fecha_factura", desc=True).execute()
+    facts = sb.table("facturas").select("*").in_("user_id", _ids_org(user_id)).order("fecha_factura", desc=True).execute()
     for f in facts.data:
         ws3.append([f.get("proveedor_nombre"), f.get("numero_factura"), str(f.get("fecha_factura") or ""), str(f.get("fecha_vencimiento") or ""), f.get("monto_neto"), f.get("iva"), f.get("monto_total"), f.get("moneda"), f.get("estado")])
 

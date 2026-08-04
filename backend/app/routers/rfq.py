@@ -15,6 +15,12 @@ from app.routers.listas import _lock_de, _parse_lista
 router = APIRouter(prefix="/api/listas", tags=["rfq"])
 
 
+def _ids_org(user_id: str) -> list[str]:
+    """Wrapper local para import perezoso (Fase B del multi-usuario)."""
+    from app.services.organizacion import ids_organizacion
+    return ids_organizacion(user_id)
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -66,7 +72,7 @@ async def preparar_rfq(lista_id: str, req: PrepararRFQRequest):
     from app.services.supabase import get_supabase
     sb = get_supabase()
     async with _lock_de(lista_id):
-        proyecto = sb.table("proyectos").select("*").eq("id", lista_id).eq("user_id", req.user_id).maybe_single().execute().data
+        proyecto = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", _ids_org(req.user_id)).maybe_single().execute().data
         data = _parse_lista(proyecto or {})
         if not data:
             raise HTTPException(status_code=404, detail="Lista no encontrada")
@@ -83,14 +89,14 @@ async def preparar_rfq(lista_id: str, req: PrepararRFQRequest):
         preparados = []
         for seleccion in selecciones:
             proveedor_id = seleccion["proveedor_id"]
-            proveedor = sb.table("proveedores").select("*").eq("id", proveedor_id).eq("user_id", req.user_id).eq("bloqueado", False).maybe_single().execute().data
+            proveedor = sb.table("proveedores").select("*").eq("id", proveedor_id).in_("user_id", _ids_org(req.user_id)).eq("bloqueado", False).maybe_single().execute().data
             if not proveedor:
                 continue
             contacto = None
             if seleccion.get("contacto_id"):
-                contacto = sb.table("proveedor_contactos").select("*").eq("id", seleccion["contacto_id"]).eq("proveedor_id", proveedor_id).eq("user_id", req.user_id).maybe_single().execute().data
+                contacto = sb.table("proveedor_contactos").select("*").eq("id", seleccion["contacto_id"]).eq("proveedor_id", proveedor_id).in_("user_id", _ids_org(req.user_id)).maybe_single().execute().data
             if not contacto:
-                principales = sb.table("proveedor_contactos").select("*").eq("proveedor_id", proveedor_id).eq("user_id", req.user_id).eq("es_principal", True).limit(1).execute().data or []
+                principales = sb.table("proveedor_contactos").select("*").eq("proveedor_id", proveedor_id).in_("user_id", _ids_org(req.user_id)).eq("es_principal", True).limit(1).execute().data or []
                 contacto = principales[0] if principales else None
             email = (contacto or {}).get("email") or proveedor.get("email")
             if not email:
@@ -114,7 +120,7 @@ async def preparar_rfq(lista_id: str, req: PrepararRFQRequest):
                 continue
 
             clave = f"lista:{lista_id}:proveedor:{proveedor_id}:v1"
-            existente = sb.table("rfq_batches").select("*").eq("user_id", req.user_id).eq("clave_idempotencia", clave).maybe_single().execute().data
+            existente = sb.table("rfq_batches").select("*").in_("user_id", _ids_org(req.user_id)).eq("clave_idempotencia", clave).maybe_single().execute().data
             if existente and existente.get("estado") in ("sending", "sent", "delivery_uncertain"):
                 preparados.append(existente)
                 continue
@@ -150,7 +156,7 @@ async def preparar_rfq(lista_id: str, req: PrepararRFQRequest):
 
 
 def _listar_batches(sb, lista_id: str, user_id: str) -> list[dict]:
-    batches = sb.table("rfq_batches").select("*").eq("lista_proyecto_id", lista_id).eq("user_id", user_id).order("created_at").execute().data or []
+    batches = sb.table("rfq_batches").select("*").eq("lista_proyecto_id", lista_id).in_("user_id", _ids_org(user_id)).order("created_at").execute().data or []
     if not batches:
         return []
     proveedor_ids = [b["proveedor_id"] for b in batches]
@@ -185,7 +191,7 @@ class EditarRFQRequest(BaseModel):
 async def editar_rfq(lista_id: str, batch_id: str, req: EditarRFQRequest):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    batch = sb.table("rfq_batches").select("id,estado").eq("id", batch_id).eq("lista_proyecto_id", lista_id).eq("user_id", req.user_id).maybe_single().execute().data
+    batch = sb.table("rfq_batches").select("id,estado").eq("id", batch_id).eq("lista_proyecto_id", lista_id).in_("user_id", _ids_org(req.user_id)).maybe_single().execute().data
     if not batch:
         raise HTTPException(status_code=404, detail="Borrador no encontrado")
     if batch["estado"] not in ("draft", "ready_to_send", "failed"):
@@ -211,7 +217,7 @@ async def enviar_rfq(lista_id: str, batch_id: str, req: EnviarRFQRequest):
     from app.services.supabase import get_supabase
     from app.services.supplier_capability_intelligence import registrar_evento
     sb = get_supabase()
-    batch = sb.table("rfq_batches").select("*").eq("id", batch_id).eq("lista_proyecto_id", lista_id).eq("user_id", req.user_id).maybe_single().execute().data
+    batch = sb.table("rfq_batches").select("*").eq("id", batch_id).eq("lista_proyecto_id", lista_id).in_("user_id", _ids_org(req.user_id)).maybe_single().execute().data
     if not batch:
         raise HTTPException(status_code=404, detail="RFQ no encontrada")
     if batch["estado"] == "sent":
@@ -219,6 +225,7 @@ async def enviar_rfq(lista_id: str, batch_id: str, req: EnviarRFQRequest):
     if batch["estado"] in ("sending", "delivery_uncertain"):
         raise HTTPException(status_code=409, detail="El estado del envío requiere revisión para evitar duplicados")
 
+    # user_integrations es personal — cada usuario conecta su propio Gmail; no se comparte a la organización.
     integration = sb.table("user_integrations").select("*").eq("user_id", req.user_id).eq("provider", "gmail").maybe_single().execute().data
     if not integration or not integration.get("refresh_token"):
         raise HTTPException(status_code=400, detail="Gmail no está conectado")
@@ -234,7 +241,7 @@ async def enviar_rfq(lista_id: str, batch_id: str, req: EnviarRFQRequest):
 
     now = _now()
     try:
-        proveedor = sb.table("proveedores").select("nombre").eq("id", batch["proveedor_id"]).eq("user_id", req.user_id).maybe_single().execute().data or {}
+        proveedor = sb.table("proveedores").select("nombre").eq("id", batch["proveedor_id"]).in_("user_id", _ids_org(req.user_id)).maybe_single().execute().data or {}
         conv = sb.table("gmail_conversations").upsert({
             "user_id": req.user_id, "gmail_thread_id": msg.get("threadId"),
             "proveedor_id": batch["proveedor_id"], "contacto_id": batch.get("contacto_id"),

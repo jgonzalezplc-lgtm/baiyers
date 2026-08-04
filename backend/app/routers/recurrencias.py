@@ -6,6 +6,12 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/api/recurrencias", tags=["recurrencias"])
 
 
+def _ids_org(user_id: str) -> list[str]:
+    """Wrapper local para import perezoso (Fase B del multi-usuario)."""
+    from app.services.organizacion import ids_organizacion
+    return ids_organizacion(user_id)
+
+
 class RecurrenciaRequest(BaseModel):
     user_id: str
     nombre: str
@@ -24,7 +30,7 @@ class RecurrenciaRequest(BaseModel):
 async def listar_recurrencias(user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    res = sb.table("recurrencias").select("*, proveedores(nombre)").eq("user_id", user_id).order("created_at", desc=True).execute()
+    res = sb.table("recurrencias").select("*, proveedores(nombre)").in_("user_id", _ids_org(user_id)).order("created_at", desc=True).execute()
     return res.data
 
 
@@ -81,7 +87,7 @@ async def actualizar_recurrencia(recurrencia_id: str, req: RecurrenciaRequest):
     from app.services.recurrencia_service import calcular_proxima_ejecucion
     sb = get_supabase()
 
-    existe = sb.table("recurrencias").select("id").eq("id", recurrencia_id).eq("user_id", req.user_id).single().execute()
+    existe = sb.table("recurrencias").select("id").eq("id", recurrencia_id).in_("user_id", _ids_org(req.user_id)).single().execute()
     if not existe.data:
         raise HTTPException(status_code=404, detail="Recurrencia no encontrada")
 
@@ -106,7 +112,7 @@ async def actualizar_recurrencia(recurrencia_id: str, req: RecurrenciaRequest):
 async def eliminar_recurrencia(recurrencia_id: str, user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    sb.table("recurrencias").delete().eq("id", recurrencia_id).eq("user_id", user_id).execute()
+    sb.table("recurrencias").delete().eq("id", recurrencia_id).in_("user_id", _ids_org(user_id)).execute()
     return {"success": True}
 
 
@@ -114,7 +120,7 @@ async def eliminar_recurrencia(recurrencia_id: str, user_id: str):
 async def toggle_recurrencia(recurrencia_id: str, user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    actual = sb.table("recurrencias").select("activa").eq("id", recurrencia_id).eq("user_id", user_id).single().execute()
+    actual = sb.table("recurrencias").select("activa").eq("id", recurrencia_id).in_("user_id", _ids_org(user_id)).single().execute()
     if not actual.data:
         raise HTTPException(status_code=404, detail="Recurrencia no encontrada")
     nueva = not actual.data["activa"]
@@ -128,7 +134,7 @@ async def ejecutar_ahora(recurrencia_id: str, user_id: str):
     from app.services.recurrencia_service import ejecutar_recurrencia
     sb = get_supabase()
 
-    existe = sb.table("recurrencias").select("id").eq("id", recurrencia_id).eq("user_id", user_id).single().execute()
+    existe = sb.table("recurrencias").select("id").eq("id", recurrencia_id).in_("user_id", _ids_org(user_id)).single().execute()
     if not existe.data:
         raise HTTPException(status_code=404, detail="Recurrencia no encontrada")
 

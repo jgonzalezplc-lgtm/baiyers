@@ -10,6 +10,12 @@ router = APIRouter(prefix="/api/proyectos", tags=["proyectos"])
 _progreso: dict[str, dict] = {}
 
 
+def _ids_org(user_id: str) -> list[str]:
+    """Wrapper local para import perezoso (Fase B del multi-usuario)."""
+    from app.services.organizacion import ids_organizacion
+    return ids_organizacion(user_id)
+
+
 class ProyectoRequest(BaseModel):
     user_id: str
     nombre: str
@@ -40,7 +46,7 @@ class ProveedorItemRequest(BaseModel):
 async def listar_proyectos(user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    res = sb.table("proyectos").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    res = sb.table("proyectos").select("*").in_("user_id", _ids_org(user_id)).order("created_at", desc=True).execute()
     return res.data
 
 
@@ -69,7 +75,7 @@ async def crear_proyecto(req: ProyectoRequest):
 async def detalle_proyecto(proyecto_id: str, user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    proy = sb.table("proyectos").select("*").eq("id", proyecto_id).eq("user_id", user_id).single().execute()
+    proy = sb.table("proyectos").select("*").eq("id", proyecto_id).in_("user_id", _ids_org(user_id)).single().execute()
     if not proy.data:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
     items = sb.table("items_proyecto").select("*, proveedores(nombre, email, score, categoria_score)").eq("proyecto_id", proyecto_id).order("orden").execute()
@@ -83,7 +89,7 @@ async def agregar_items(proyecto_id: str, user_id: str, items: list[ItemProyecto
     from app.services.supabase import get_supabase
     sb = get_supabase()
     # Verificar ownership
-    proy = sb.table("proyectos").select("id").eq("id", proyecto_id).eq("user_id", user_id).single().execute()
+    proy = sb.table("proyectos").select("id").eq("id", proyecto_id).in_("user_id", _ids_org(user_id)).single().execute()
     if not proy.data:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
@@ -186,7 +192,7 @@ async def cotizar_proyecto(proyecto_id: str, user_id: str, background_tasks: Bac
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    proy = sb.table("proyectos").select("id").eq("id", proyecto_id).eq("user_id", user_id).single().execute()
+    proy = sb.table("proyectos").select("id").eq("id", proyecto_id).in_("user_id", _ids_org(user_id)).single().execute()
     if not proy.data:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
@@ -251,7 +257,7 @@ async def gantt(proyecto_id: str, user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    proy = sb.table("proyectos").select("fecha_inicio, nombre").eq("id", proyecto_id).eq("user_id", user_id).single().execute()
+    proy = sb.table("proyectos").select("fecha_inicio, nombre").eq("id", proyecto_id).in_("user_id", _ids_org(user_id)).single().execute()
     if not proy.data:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
@@ -303,7 +309,7 @@ async def gantt_escenarios(proyecto_id: str, user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    proy = sb.table("proyectos").select("fecha_inicio, nombre").eq("id", proyecto_id).eq("user_id", user_id).single().execute()
+    proy = sb.table("proyectos").select("fecha_inicio, nombre").eq("id", proyecto_id).in_("user_id", _ids_org(user_id)).single().execute()
     if not proy.data:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
@@ -391,7 +397,7 @@ async def liquidez(proyecto_id: str, user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    proy = sb.table("proyectos").select("fecha_inicio, monto_total").eq("id", proyecto_id).eq("user_id", user_id).single().execute()
+    proy = sb.table("proyectos").select("fecha_inicio, monto_total").eq("id", proyecto_id).in_("user_id", _ids_org(user_id)).single().execute()
     if not proy.data:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 

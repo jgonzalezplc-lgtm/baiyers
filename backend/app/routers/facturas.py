@@ -25,10 +25,11 @@ class PagarRequest(BaseModel):
 @router.get("")
 async def listar_facturas(user_id: str, estado: Optional[str] = None, mes: Optional[str] = None):
     from app.services.supabase import get_supabase
+    from app.services.organizacion import ids_organizacion
     from datetime import date
 
     sb = get_supabase()
-    query = sb.table("facturas").select("*").eq("user_id", user_id)
+    query = sb.table("facturas").select("*").in_("user_id", ids_organizacion(user_id))
 
     if estado and estado != "todas":
         if estado == "vencidas":
@@ -61,7 +62,8 @@ async def crear_factura_manual(req: FacturaManualRequest):
 
     # Buscar proveedor_id
     proveedor_id = None
-    prov_res = sb.table("proveedores").select("id").eq("user_id", req.user_id).ilike("nombre", f"%{req.proveedor_nombre[:50]}%").limit(1).execute()
+    from app.services.organizacion import ids_organizacion
+    prov_res = sb.table("proveedores").select("id").in_("user_id", ids_organizacion(req.user_id)).ilike("nombre", f"%{req.proveedor_nombre[:50]}%").limit(1).execute()
     if prov_res.data:
         proveedor_id = prov_res.data[0]["id"]
 
@@ -89,8 +91,9 @@ async def marcar_pagada(factura_id: str, user_id: str, req: PagarRequest):
     from app.services.supabase import get_supabase
     from datetime import date
 
+    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
-    existe = sb.table("facturas").select("id").eq("id", factura_id).eq("user_id", user_id).single().execute()
+    existe = sb.table("facturas").select("id").eq("id", factura_id).in_("user_id", ids_organizacion(user_id)).single().execute()
     if not existe.data:
         raise HTTPException(status_code=404, detail="Factura no encontrada")
 
@@ -117,7 +120,8 @@ async def resumen_facturas(user_id: str):
     hoy = date.today().isoformat()
     mes_inicio = hoy[:7] + "-01"
 
-    res = sb.table("facturas").select("monto_total, estado, fecha_vencimiento, moneda").eq("user_id", user_id).execute()
+    from app.services.organizacion import ids_organizacion
+    res = sb.table("facturas").select("monto_total, estado, fecha_vencimiento, moneda").in_("user_id", ids_organizacion(user_id)).execute()
 
     total_pendiente = 0.0
     total_pagado_mes = 0.0

@@ -124,10 +124,11 @@ Sé concreto en los razonamientos: cita números, no generalidades."""
 
 def _historial_confianza(sb, user_id: str, proveedores: list[str]) -> dict[str, int]:
     """n_compras previas por proveedor desde el ledger. Nunca lanza."""
+    from app.services.organizacion import ids_organizacion
     try:
         res = (
             sb.table("procurement_ledger").select("proveedor_nombre")
-            .eq("user_id", user_id).in_("proveedor_nombre", proveedores).execute()
+            .in_("user_id", ids_organizacion(user_id)).in_("proveedor_nombre", proveedores).execute()
         )
         conteo: dict[str, int] = {}
         for r in (res.data or []):

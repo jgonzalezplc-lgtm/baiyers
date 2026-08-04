@@ -28,6 +28,12 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _ids_org(user_id: str) -> list[str]:
+    """Wrapper local para import perezoso (Fase B del multi-usuario)."""
+    from app.services.organizacion import ids_organizacion
+    return ids_organizacion(user_id)
+
+
 def _timeline(sb, purchase_event_id: str, tipo: str, descripcion: str = "",
               quote_supplier_id: Optional[str] = None, quote_item_id: Optional[str] = None,
               metadata: Optional[dict] = None) -> None:
@@ -156,7 +162,7 @@ async def listar_eventos(user_id: str, limit: int = 100):
     evs = (
         sb.table("purchase_events")
         .select("id, nombre, descripcion, estado, cotizacion_id, created_at, updated_at")
-        .eq("user_id", user_id)
+        .in_("user_id", _ids_org(user_id))
         .order("created_at", desc=True)
         .limit(limit)
         .execute()
@@ -201,7 +207,7 @@ async def detalle_evento(evento_id: str, user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    ev = sb.table("purchase_events").select("*").eq("id", evento_id).eq("user_id", user_id).single().execute()
+    ev = sb.table("purchase_events").select("*").eq("id", evento_id).in_("user_id", _ids_org(user_id)).single().execute()
     if not ev.data:
         raise HTTPException(status_code=404, detail="Evento no encontrado")
 
@@ -398,10 +404,10 @@ def _upsert_supplier(sb, user_id: str, qs: dict, monto: float) -> Optional[str]:
     existente = None
     try:
         if email:
-            r = sb.table("suppliers").select("*").eq("user_id", user_id).eq("email", email).limit(1).execute()
+            r = sb.table("suppliers").select("*").in_("user_id", _ids_org(user_id)).eq("email", email).limit(1).execute()
             existente = (r.data or [None])[0]
         if not existente:
-            r = sb.table("suppliers").select("*").eq("user_id", user_id).eq("nombre", nombre).limit(1).execute()
+            r = sb.table("suppliers").select("*").in_("user_id", _ids_org(user_id)).eq("nombre", nombre).limit(1).execute()
             existente = (r.data or [None])[0]
     except Exception:
         existente = None
@@ -547,7 +553,7 @@ async def calendario_procurement(user_id: str):
     try:
         provs = (
             sb.table("suppliers").select("id, nombre, frecuencia, proxima_compra_at")
-            .eq("user_id", user_id).eq("recurrente", True).execute()
+            .in_("user_id", _ids_org(user_id)).eq("recurrente", True).execute()
         )
         for p in (provs.data or []):
             if p.get("proxima_compra_at"):
@@ -564,7 +570,7 @@ async def calendario_procurement(user_id: str):
     # Eventos de compra activos (con OC emitida sin despacho)
     evs = (
         sb.table("purchase_events").select("id, nombre, estado, created_at")
-        .eq("user_id", user_id).in_("estado", ["en_cotizacion", "oc_emitida"]).execute()
+        .in_("user_id", _ids_org(user_id)).in_("estado", ["en_cotizacion", "oc_emitida"]).execute()
     )
     for e in (evs.data or []):
         hitos.append({
