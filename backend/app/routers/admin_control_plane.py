@@ -217,7 +217,27 @@ def remove_organization_member(organization_id: str, user_id: str, body: AdminRe
     if not membership:
         raise HTTPException(status_code=404, detail="Membresía no encontrada")
     if membership[0].get("rol") == "owner":
-        raise HTTPException(status_code=409, detail="Transfiere o elimina la organización antes de remover al propietario")
+        others = sb.table("organization_memberships").select("id,user_id,rol").eq(
+            "organization_id", organization_id
+        ).eq("estado", "active").neq("user_id", user_id).execute().data or []
+        if others:
+            raise HTTPException(status_code=409, detail="Transfiere la propiedad a otro miembro antes de remover al propietario")
+        organization = sb.table("organizations").select("id,nombre").eq("id", organization_id).limit(1).execute().data or []
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organización no encontrada")
+        _audit(sb, admin, "organization.owner_detached", organization_id=organization_id, user_id=user_id, reason=body.reason, previous=organization[0])
+        sb.table("organization_memberships").update({"estado": "removed", "es_principal": False}).eq("id", membership[0]["id"]).execute()
+        personal = sb.table("organizations").insert({
+            "nombre": "Cuenta individual", "slug": f"personal-{user_id}-{organization_id[:8]}",
+            "tipo": "individual", "estado": "active", "plan": "free"
+        }).execute().data[0]
+        sb.table("organization_memberships").insert({
+            "organization_id": personal["id"], "user_id": user_id, "rol": "owner",
+            "estado": "active", "es_principal": True
+        }).execute()
+        sb.table("organizaciones").update({"nombre": "Cuenta individual"}).eq("owner_user_id", user_id).execute()
+        sb.table("organizations").delete().eq("id", organization_id).execute()
+        return {"success": True, "organization_deleted": True, "personal_organization_id": personal["id"]}
     sb.table("organization_memberships").update({"estado": "removed", "es_principal": False}).eq("id", membership[0]["id"]).execute()
     operational_id = _operational_org_id(sb, organization_id)
     if operational_id:
