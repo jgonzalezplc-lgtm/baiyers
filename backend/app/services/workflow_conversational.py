@@ -33,7 +33,11 @@ Responde SOLO JSON válido, sin markdown, con esta forma exacta:
     {
       "nombre": "nombre corto de la etapa (ej: 'Preparar comparación')",
       "tipo": "una de: tarea_humana, revision, autorizacion, homologacion, emision_oc, compra_sin_oc, espera_documento, accion_automatica",
-      "roles": ["uno o más de: cotizador, revisor, autorizador, comprador"]
+      "roles": ["uno o más de: cotizador, revisor, autorizador, comprador"],
+      "responsables": [
+        {"nombre": "solo si el usuario dio el nombre real de la persona (ej: 'María Pérez')",
+         "email": "solo si el usuario escribió literalmente un email en el texto (ej: 'maria@empresa.cl')"}
+      ]
     }
   ],
   "reglas_autorizacion": [
@@ -53,7 +57,12 @@ Reglas:
 - Si falta información crítica para saber quién autoriza o en qué orden, pon
   requiere_aclaracion=true y haz máximo 3 preguntas concretas — no inventes responsables.
 - Toda etapa de tipo autorizacion/revision/tarea_humana/homologacion necesita al menos 1 rol.
-- No repitas al usuario lo que ya te dijo; solo pregunta lo que falta."""
+- No repitas al usuario lo que ya te dijo; solo pregunta lo que falta.
+- Sobre `responsables`: JAMÁS inventes nombres ni emails. Si el usuario dice "mi jefe" o "el
+  equipo de finanzas" sin nombre concreto, deja `responsables: []` para esa etapa. Solo llena
+  `nombre` si el usuario escribió un nombre real de persona; solo llena `email` si aparece
+  literalmente en el texto con formato usuario@dominio. Si nombra a la misma persona en varias
+  etapas (ej: "María revisa y autoriza"), repítela en cada etapa correspondiente."""
 
 
 def interpretar_descripcion(descripcion: str, contexto: str = "") -> dict:
@@ -140,12 +149,43 @@ def interpretar_descripcion(descripcion: str, contexto: str = "") -> dict:
         print(f"[WorkflowConversational] error interpretando: {e}")
         return vacio_seguro
 
+    import re
+    EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
+
     etapas = [
         e for e in (data.get("etapas") or [])
         if e.get("tipo") in TIPOS_ETAPA_VALIDOS and e.get("nombre")
     ]
     for e in etapas:
         e["roles"] = [r for r in (e.get("roles") or []) if r in ROLES_VALIDOS] or ["cotizador"]
+        # Validar responsables detectados: descartar los que no tienen ni
+        # nombre ni email válido — Gemini a veces devuelve objetos vacíos.
+        responsables_limpios = []
+        for r in (e.get("responsables") or []):
+            nombre = (r.get("nombre") or "").strip()
+            email = (r.get("email") or "").strip().lower()
+            if email and not EMAIL_RE.match(email):
+                email = ""
+            if not nombre and not email:
+                continue
+            responsables_limpios.append({"nombre": nombre, "email": email})
+        e["responsables"] = responsables_limpios
+
+    # Lista plana de responsables únicos detectados en todo el workflow
+    # (por email si tienen; si no, por nombre) — para que el frontend los
+    # muestre en un solo panel con checkbox y no repita a la misma persona.
+    responsables_detectados: list[dict] = []
+    vistos: set[str] = set()
+    for e in etapas:
+        for r in e.get("responsables") or []:
+            key = r["email"] or r["nombre"].lower()
+            if key in vistos:
+                continue
+            vistos.add(key)
+            responsables_detectados.append({
+                "nombre": r["nombre"], "email": r["email"],
+                "roles": e["roles"],
+            })
 
     return {
         "resumen": data.get("resumen") or "",
@@ -153,6 +193,7 @@ def interpretar_descripcion(descripcion: str, contexto: str = "") -> dict:
         "reglas_autorizacion": data.get("reglas_autorizacion") or [],
         "requiere_aclaracion": bool(data.get("requiere_aclaracion")) and not etapas,
         "preguntas": (data.get("preguntas") or [])[:3],
+        "responsables_detectados": responsables_detectados,
     }
 
 

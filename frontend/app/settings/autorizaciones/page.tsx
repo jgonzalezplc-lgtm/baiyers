@@ -24,6 +24,12 @@ interface ReglaAutorizacion {
   descripcion: string;
 }
 
+interface ResponsableDetectado {
+  nombre: string;
+  email: string;
+  roles: string[];
+}
+
 interface Propuesta {
   resumen: string;
   etapas: Etapa[];
@@ -32,6 +38,7 @@ interface Propuesta {
   preguntas: string[];
   nodos: Record<string, unknown>[];
   conexiones: Record<string, unknown>[];
+  responsables_detectados: ResponsableDetectado[];
 }
 
 const TIPO_LABEL: Record<string, string> = {
@@ -59,6 +66,10 @@ export default function ConfiguracionAutorizacionesPage() {
   const [errores, setErrores] = useState<{ codigo: string; mensaje: string }[]>([]);
   const [activando, setActivando] = useState(false);
   const [creandoEnBlanco, setCreandoEnBlanco] = useState(false);
+  // Emails de responsables detectados que el usuario deja marcados para
+  // invitar al confirmar. Un email vacío nunca entra acá (los responsables
+  // sin email se crean sin invitar).
+  const [aInvitar, setAInvitar] = useState<Set<string>>(new Set());
   const finRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -96,6 +107,9 @@ export default function ConfiguracionAutorizacionesPage() {
       } else {
         setMensajes(prev => [...prev, { rol: "bot", texto: data.resumen || "Esto es lo que entendí:" }]);
         setPropuesta(data);
+        // Por defecto se marcan todos los responsables con email — el
+        // usuario puede desmarcar los que no quiera invitar todavía.
+        setAInvitar(new Set((data.responsables_detectados || []).filter(r => r.email).map(r => r.email)));
       }
     } catch (error) {
       const timeout = error instanceof DOMException && error.name === "TimeoutError";
@@ -116,6 +130,15 @@ export default function ConfiguracionAutorizacionesPage() {
     if (!propuesta || !userId) return;
     setCargando(true);
     try {
+      // Responsables listos para el backend: se marca `invitar` solo para
+      // los que tienen email Y el usuario dejó el checkbox activo.
+      const responsables = (propuesta.responsables_detectados || []).map(r => ({
+        nombre: r.nombre,
+        email: r.email || null,
+        roles: r.roles,
+        invitar: !!r.email && aInvitar.has(r.email),
+      }));
+
       const creado = await fetch(`${API_URL}/api/workflows`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -125,6 +148,7 @@ export default function ConfiguracionAutorizacionesPage() {
           nodos: propuesta.nodos,
           conexiones: propuesta.conexiones,
           origen: "conversacional",
+          responsables,
         }),
       }).then(r => r.json());
 
@@ -132,7 +156,17 @@ export default function ConfiguracionAutorizacionesPage() {
       setErrores(validacion.errores || []);
       setWorkflowGuardado({ id: creado.id, estado: creado.estado });
       setPropuesta(null);
-      setMensajes(prev => [...prev, { rol: "bot", texto: validacion.valido ? "Quedó guardado como borrador y validado correctamente." : "Quedó guardado como borrador, pero hay algunos detalles que revisar antes de activarlo." }]);
+
+      const enviadas = (creado.invitaciones || []).filter((i: { estado: string }) => i.estado === "invitado");
+      const yaMiembro = (creado.invitaciones || []).filter((i: { estado: string }) => i.estado === "ya_miembro");
+      const errorInv = (creado.invitaciones || []).filter((i: { estado: string }) => i.estado === "error");
+      let extra = "";
+      if (enviadas.length) extra += ` Enviamos ${enviadas.length} invitación${enviadas.length === 1 ? "" : "es"} por correo.`;
+      if (yaMiembro.length) extra += ` ${yaMiembro.length} ya era miembro.`;
+      if (errorInv.length) extra += ` ${errorInv.length} invitación${errorInv.length === 1 ? "" : "es"} fallaron — revisa la lista de responsables.`;
+      setMensajes(prev => [...prev, { rol: "bot", texto: (validacion.valido
+        ? "Quedó guardado como borrador y validado correctamente."
+        : "Quedó guardado como borrador, pero hay algunos detalles que revisar antes de activarlo.") + extra }]);
     } catch {
       setMensajes(prev => [...prev, { rol: "bot", texto: "No pude guardar el workflow. Intenta de nuevo." }]);
     } finally {
@@ -232,6 +266,47 @@ export default function ConfiguracionAutorizacionesPage() {
                       {r.hasta != null ? `Hasta ${fmtCLP(r.hasta)}` : `Desde ${fmtCLP(r.desde ?? 0)}`}: {r.descripcion}
                     </div>
                   ))}
+                </div>
+              )}
+              {(propuesta.responsables_detectados || []).length > 0 && (
+                <div style={{ marginTop: 4, paddingTop: 10, borderTop: "1px dashed var(--n-200)" }}>
+                  <div style={{ fontSize: 12.5, color: "var(--n-500)", marginBottom: 6 }}>
+                    Personas detectadas · destildá para no invitar
+                  </div>
+                  {(propuesta.responsables_detectados || []).map((r, i) => {
+                    const puedeInvitar = !!r.email;
+                    const activo = puedeInvitar && aInvitar.has(r.email);
+                    return (
+                      <label key={`${r.email || r.nombre}-${i}`} style={{
+                        display: "flex", alignItems: "center", gap: 8, padding: "5px 0",
+                        fontSize: 13, color: "var(--n-800)",
+                        cursor: puedeInvitar ? "pointer" : "default", opacity: puedeInvitar ? 1 : 0.65,
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={activo}
+                          disabled={!puedeInvitar}
+                          onChange={e => {
+                            if (!puedeInvitar) return;
+                            setAInvitar(prev => {
+                              const s = new Set(prev);
+                              if (e.target.checked) s.add(r.email); else s.delete(r.email);
+                              return s;
+                            });
+                          }}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <div><strong style={{ color: "var(--n-900)" }}>{r.nombre || "(sin nombre)"}</strong>
+                            {r.email && <span style={{ color: "var(--n-500)" }}> · {r.email}</span>}
+                          </div>
+                          <div style={{ fontSize: 11.5, color: "var(--n-500)" }}>
+                            {r.roles.join(", ")}
+                            {!r.email && " · sin email, no se puede invitar"}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
               )}
             </div>

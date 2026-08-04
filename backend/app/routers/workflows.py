@@ -17,6 +17,17 @@ class RolIn(BaseModel):
     descripcion: Optional[str] = None
 
 
+class ResponsableSemilla(BaseModel):
+    """Responsable pre-detectado desde el chat conversacional. El frontend
+    lo manda con roles + email para que el backend cree el responsable,
+    lo asigne a los roles indicados y (si tiene email + no es miembro
+    todavía) dispare la invitación real."""
+    nombre: str
+    email: Optional[str] = None
+    roles: list[str] = Field(default_factory=list)
+    invitar: bool = True
+
+
 class CrearWorkflowRequest(BaseModel):
     user_id: str
     nombre: str
@@ -24,6 +35,7 @@ class CrearWorkflowRequest(BaseModel):
     conexiones: list[dict] = Field(default_factory=list)
     origen: str = "visual"
     roles: Optional[list[RolIn]] = None
+    responsables: list[ResponsableSemilla] = Field(default_factory=list)
 
 
 class InterpretarRequest(BaseModel):
@@ -50,11 +62,46 @@ async def interpretar_workflow(req: InterpretarRequest):
 
 @router.post("")
 async def crear_workflow(req: CrearWorkflowRequest):
-    from app.services.workflow_service import crear_borrador
+    from app.services.workflow_service import (
+        crear_borrador, crear_responsable, asignar_rol,
+    )
     if req.origen not in ("conversacional", "visual", "mixto"):
         raise HTTPException(status_code=400, detail="origen inválido")
     roles = [r.model_dump() for r in req.roles] if req.roles else None
-    return crear_borrador(req.user_id, req.nombre, req.nodos, req.conexiones, req.origen, roles)
+    workflow = crear_borrador(req.user_id, req.nombre, req.nodos, req.conexiones, req.origen, roles)
+
+    # Responsables semilla del chat conversacional: crear, asignar a roles y
+    # (si corresponde) disparar la invitación. Cada resultado se reporta al
+    # frontend en 'invitaciones' — no falla el POST si una invitación
+    # individual falla, para no perder el workflow ya creado.
+    invitaciones = []
+    if req.responsables:
+        from app.services.organizacion import invitar_a_organizacion
+        for r in req.responsables:
+            nombre = (r.nombre or "").strip()
+            email = (r.email or "").strip().lower() or None
+            if not nombre and not email:
+                continue
+            try:
+                nuevo = crear_responsable(req.user_id, nombre or email or "Sin nombre", email=email)
+            except Exception as e:
+                invitaciones.append({"nombre": nombre, "email": email, "estado": "error", "detalle": f"crear responsable: {e}"})
+                continue
+            for rol_clave in (r.roles or []):
+                try:
+                    asignar_rol(req.user_id, nuevo["id"], workflow["id"], rol_clave)
+                except Exception as e:
+                    print(f"[workflows] asignar_rol falló {rol_clave}: {e}")
+            if not email or not r.invitar:
+                invitaciones.append({"nombre": nombre, "email": email, "estado": "responsable_creado_sin_invitar"})
+                continue
+            try:
+                res = invitar_a_organizacion(req.user_id, email, "miembro", nuevo["id"])
+                invitaciones.append({"nombre": nombre, "email": email, "estado": res.get("estado", "invitado")})
+            except ValueError as e:
+                invitaciones.append({"nombre": nombre, "email": email, "estado": "error", "detalle": str(e)})
+
+    return {**workflow, "invitaciones": invitaciones}
 
 
 @router.get("")

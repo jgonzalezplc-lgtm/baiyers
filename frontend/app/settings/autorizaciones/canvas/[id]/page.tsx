@@ -607,8 +607,16 @@ export default function CanvasWorkflowPage() {
 
               {nodoSel.tipo !== "inicio" && nodoSel.tipo !== "fin" && (
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 6 }}>
-                    Salidas (out) {nodoSel.tipo !== "decision" && nodoSel.tipo !== "autorizacion" && <span style={{ fontWeight: 400, color: "var(--n-500)" }}>· opcional</span>}
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 4 }}>
+                    {nodoSel.tipo === "decision" || nodoSel.tipo === "autorizacion"
+                      ? "Ramas de decisión"
+                      : <>Ramas de decisión <span style={{ fontWeight: 400, color: "var(--n-500)" }}>· opcional</span></>}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "var(--n-500)", marginBottom: 6, lineHeight: 1.4 }}>
+                    Solo si esta etapa se ramifica en varios caminos alternativos (ej: aprobado / rechazado).
+                    Cada rama necesita una flecha de salida hacia otro nodo. Si el flujo simplemente
+                    continúa al siguiente paso, <strong>dejalo vacío</strong>. No uses este campo
+                    para describir qué datos produce la etapa (para eso está &quot;Qué debe hacer&quot;).
                   </div>
                   <Input
                     value={(nodoSel.resultados || []).join(", ")}
@@ -622,7 +630,7 @@ export default function CanvasWorkflowPage() {
                   )}
                   {!["decision", "autorizacion"].includes(nodoSel.tipo) && (nodoSel.resultados || []).length > 0 && (
                     <div style={{ fontSize: 10.5, color: "var(--n-500)", marginTop: 4, lineHeight: 1.4 }}>
-                      Esta etapa todavía no tiene ejecución real conectada (solo el paso de autorización la tiene) — las salidas quedan como documentación del proceso y validan el grafo.
+                      Esta etapa todavía no tiene ejecución real conectada (solo el paso de autorización la tiene) — las ramas quedan como documentación del proceso y validan el grafo.
                     </div>
                   )}
                 </div>
