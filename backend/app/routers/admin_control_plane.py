@@ -452,6 +452,32 @@ def project_detail(project_id: str, _: Annotated[dict, Depends(_admin)]):
         })
     user_map, _ = _identity_maps(sb)
     identity = user_map.get(str(project.get("user_id")), {})
+    conversations_query = sb.table("gmail_conversations").select(
+        "id,proveedor_nombre,proveedor_email,subject,estado,last_message_at,created_at,lista_proyecto_id,cotizacion_id"
+    )
+    conversations = conversations_query.eq("lista_proyecto_id", project_id).order("last_message_at", desc=True).execute().data or []
+    if quote_ids:
+        by_quote = sb.table("gmail_conversations").select(
+            "id,proveedor_nombre,proveedor_email,subject,estado,last_message_at,created_at,lista_proyecto_id,cotizacion_id"
+        ).in_("cotizacion_id", quote_ids).order("last_message_at", desc=True).execute().data or []
+        seen = {str(row.get("id")) for row in conversations}
+        conversations.extend(row for row in by_quote if str(row.get("id")) not in seen)
+    conversation_ids = [row["id"] for row in conversations if row.get("id")]
+    message_counts: dict[str, int] = {}
+    latest_previews: dict[str, str] = {}
+    if conversation_ids:
+        messages = sb.table("gmail_messages").select(
+            "conversation_id,body_text,received_at,created_at"
+        ).in_("conversation_id", conversation_ids).order("received_at", desc=True).execute().data or []
+        for message in messages:
+            conversation_id = str(message.get("conversation_id"))
+            message_counts[conversation_id] = message_counts.get(conversation_id, 0) + 1
+            if conversation_id not in latest_previews:
+                latest_previews[conversation_id] = str(message.get("body_text") or "")[:240]
+    for conversation in conversations:
+        conversation_id = str(conversation.get("id"))
+        conversation["message_count"] = message_counts.get(conversation_id, 0)
+        conversation["latest_preview"] = latest_previews.get(conversation_id, "")
     return {
         "id": project_id,
         "name": project.get("nombre") or "Proyecto sin nombre",
@@ -464,6 +490,7 @@ def project_detail(project_id: str, _: Annotated[dict, Depends(_admin)]):
         "actor_email": identity.get("email"),
         "summary": str(payload.get("resumen") or "") if isinstance(payload, dict) else str(project.get("descripcion") or ""),
         "items": detailed_items,
+        "email_conversations": conversations,
     }
 
 
