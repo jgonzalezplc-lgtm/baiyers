@@ -77,8 +77,11 @@ export default function LoginPage() {
     if (!email) { setError("Ingresa tu email primero"); return; }
     setLoading(true);
     setError("");
+    // Evita que una sesión abierta de otra cuenta sea reutilizada por error
+    // mientras se procesa el enlace de recuperación.
+    await supabase.auth.signOut({ scope: "local" });
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent("/reset-password")}`,
+      redirectTo: `${window.location.origin}/auth/callback?flow=recovery&next=${encodeURIComponent("/reset-password")}`,
     });
     setLoading(false);
     if (error) {

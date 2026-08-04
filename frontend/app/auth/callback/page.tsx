@@ -19,6 +19,7 @@ function CallbackInner() {
 
     const code = params.get("code");
     const next = params.get("next") || "/onboarding";
+    const isRecovery = params.get("flow") === "recovery";
     const supabase = createClient();
 
     const irA = (destino: string) => window.location.replace(destino);
@@ -26,7 +27,18 @@ function CallbackInner() {
     if (!code) { irA("/login?error=oauth"); return; }
 
     supabase.auth.exchangeCodeForSession(code).then(async ({ error }) => {
-      if (!error) { irA(next); return; }
+      if (!error) {
+        if (isRecovery) sessionStorage.setItem("baiyer_password_recovery", "verified");
+        irA(next);
+        return;
+      }
+      // En recuperación nunca aceptamos como fallback una sesión anterior:
+      // podría corresponder a un usuario distinto del destinatario del correo.
+      if (isRecovery) {
+        await supabase.auth.signOut({ scope: "local" });
+        irA("/login?error=recovery");
+        return;
+      }
       // Si "falló" pero la sesión igual quedó creada (código ya consumido), entrar.
       const { data } = await supabase.auth.getSession();
       irA(data.session ? next : "/login?error=oauth");

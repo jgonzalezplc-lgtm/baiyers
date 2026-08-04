@@ -17,9 +17,14 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     let activo = true;
 
-    supabase.auth.getSession().then(({ data, error: sessionError }) => {
+    if (sessionStorage.getItem("baiyer_password_recovery") !== "verified") {
+      setError("Esta pantalla no fue abierta desde un enlace de recuperación válido. Solicita uno nuevo.");
+      return () => { activo = false; };
+    }
+
+    supabase.auth.getUser().then(({ data, error: sessionError }) => {
       if (!activo) return;
-      if (sessionError || !data.session) {
+      if (sessionError || !data.user) {
         setError("Este enlace no tiene una sesión de recuperación válida. Solicita uno nuevo.");
         return;
       }
@@ -58,8 +63,10 @@ export default function ResetPasswordPage() {
         setError(`No se pudo actualizar la contraseña: ${error.message}`);
       }
     } else {
+      sessionStorage.removeItem("baiyer_password_recovery");
+      await supabase.auth.signOut({ scope: "local" });
       setListo(true);
-      setTimeout(() => router.push("/dashboard"), 2000);
+      setTimeout(() => router.push("/login"), 2000);
     }
   };
 
@@ -92,7 +99,7 @@ export default function ResetPasswordPage() {
             color: "var(--text-success)",
             lineHeight: 1.6,
           }}>
-            Contrasena actualizada. Redirigiendo al dashboard...
+            Contrasena actualizada. Redirigiendo al inicio de sesión...
           </div>
         ) : (
           <>
