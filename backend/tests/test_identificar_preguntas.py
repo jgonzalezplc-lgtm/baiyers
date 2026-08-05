@@ -6,6 +6,7 @@ from app.routers.identificar import (
     _modelos_identificacion,
     _normalizar_preguntas,
     _normalizar_revision_generada,
+    _preguntas_itemizado_faltantes,
 )
 
 
@@ -65,6 +66,16 @@ class PreguntasCubicacionTest(unittest.TestCase):
         self.assertEqual(revision["items"][0]["cantidad_compra"], 18)
         self.assertIn("42,5 kg", revision["items"][0]["calculo"])
         self.assertEqual(revision["supuestos"], ["radier de 10 cm"])
+
+    def test_itemizado_pregunta_cada_cantidad_y_unidad_faltante(self):
+        preguntas = _preguntas_itemizado_faltantes({"lista_items": [
+            {"nombre_tecnico": "Cable", "partida": "Tableros", "cantidad": None, "unidad": None},
+            {"nombre_tecnico": "Generador", "partida": "Grupo generador", "cantidad": 1, "unidad": ""},
+        ]})
+        self.assertEqual([p["id"] for p in preguntas], [
+            "item_0_cantidad", "item_0_unidad", "item_1_unidad",
+        ])
+        self.assertIn("Tableros", preguntas[0]["texto"])
 
 
 if __name__ == "__main__":

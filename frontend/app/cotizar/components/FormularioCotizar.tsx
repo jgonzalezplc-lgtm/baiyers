@@ -1,9 +1,11 @@
 "use client";
 import { useState, useRef, DragEvent, ChangeEvent } from "react";
-import { ImagePlus, ArrowUp, X } from "lucide-react";
+import { Paperclip, ArrowUp, X, FileText } from "lucide-react";
+
+export interface AdjuntoCotizacion { base64: string; mime: string; nombre: string; tipo: "imagen" | "documento"; preview?: string }
 
 interface Props {
-  onSubmit: (descripcion: string, imagenBase64: string | null, imagenMime: string) => void;
+  onSubmit: (descripcion: string, adjunto: AdjuntoCotizacion | null) => void;
   loading: boolean;
   initialDescripcion?: string;
 }
@@ -16,18 +18,20 @@ const EJEMPLOS = [
 
 export default function FormularioCotizar({ onSubmit, loading, initialDescripcion = "" }: Props) {
   const [descripcion, setDescripcion] = useState(initialDescripcion);
-  const [imagen, setImagen] = useState<{ base64: string; mime: string; preview: string } | null>(null);
+  const [adjunto, setAdjunto] = useState<AdjuntoCotizacion | null>(null);
   const [dragging, setDragging] = useState(false);
   const [focus, setFocus] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const procesarArchivo = (file: File) => {
-    if (!file.type.startsWith("image/")) return;
+    const ext = file.name.toLowerCase().split(".").pop();
+    if (!file.type.startsWith("image/") && !["pdf", "xlsx", "xlsm", "xls", "docx"].includes(ext ?? "")) return;
+    if (file.size > 15 * 1024 * 1024) return;
     const reader = new FileReader();
     reader.onload = (e) => {
       const result = e.target?.result as string;
       const base64 = result.split(",")[1];
-      setImagen({ base64, mime: file.type, preview: result });
+      setAdjunto({ base64, mime: file.type || "application/octet-stream", nombre: file.name, tipo: file.type.startsWith("image/") ? "imagen" : "documento", preview: file.type.startsWith("image/") ? result : undefined });
     };
     reader.readAsDataURL(file);
   };
@@ -45,11 +49,11 @@ export default function FormularioCotizar({ onSubmit, loading, initialDescripcio
   };
 
   const handleSubmit = () => {
-    if (!descripcion.trim() && !imagen) return;
-    onSubmit(descripcion, imagen?.base64 ?? null, imagen?.mime ?? "image/jpeg");
+    if (!descripcion.trim() && !adjunto) return;
+    onSubmit(descripcion, adjunto);
   };
 
-  const canSubmit = !!(descripcion.trim() || imagen) && !loading;
+  const canSubmit = !!(descripcion.trim() || adjunto) && !loading;
 
   return (
     <div style={{ width: "100%" }}>
@@ -68,16 +72,16 @@ export default function FormularioCotizar({ onSubmit, loading, initialDescripcio
         }}
       >
         {/* Preview de imagen adjunta */}
-        {imagen && (
+        {adjunto && (
           <div style={{ position: "relative", display: "inline-block", marginBottom: 12 }}>
-            <img
-              src={imagen.preview}
+            {adjunto.tipo === "imagen" ? <img
+              src={adjunto.preview}
               alt="Imagen adjunta"
               style={{ maxHeight: 120, maxWidth: "100%", borderRadius: "var(--r-md)", border: "1px solid var(--n-200)", display: "block" }}
-            />
+            /> : <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "10px 40px 10px 12px", border: "1px solid var(--n-200)" }}><FileText size={20} /><span style={{ fontSize: 13 }}>{adjunto.nombre}</span></div>}
             <button
-              onClick={() => { setImagen(null); if (inputRef.current) inputRef.current.value = ""; }}
-              aria-label="Quitar imagen"
+              onClick={() => { setAdjunto(null); if (inputRef.current) inputRef.current.value = ""; }}
+              aria-label="Quitar archivo"
               style={{
                 position: "absolute", top: 6, right: 6,
                 width: 24, height: 24, borderRadius: "50%",
@@ -121,7 +125,7 @@ export default function FormularioCotizar({ onSubmit, loading, initialDescripcio
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
           <button
             onClick={() => inputRef.current?.click()}
-            title="Adjuntar una foto"
+            title="Adjuntar imagen, PDF, Excel o Word"
             style={{
               display: "inline-flex", alignItems: "center", gap: 7,
               background: "transparent", border: "1px solid var(--n-300)",
@@ -130,8 +134,8 @@ export default function FormularioCotizar({ onSubmit, loading, initialDescripcio
               fontSize: 13.5, fontFamily: "var(--font-sans)",
             }}
           >
-            <ImagePlus size={16} strokeWidth={1.75} />
-            Foto
+            <Paperclip size={16} strokeWidth={1.75} />
+            Adjuntar
           </button>
 
           <button
@@ -153,14 +157,14 @@ export default function FormularioCotizar({ onSubmit, loading, initialDescripcio
           </button>
         </div>
 
-        <input ref={inputRef} type="file" accept="image/*" onChange={onFileChange} style={{ display: "none" }} />
+        <input ref={inputRef} type="file" accept="image/*,.pdf,.xlsx,.xlsm,.xls,.docx" onChange={onFileChange} style={{ display: "none" }} />
       </div>
 
       {/* Hint */}
       <p style={{ textAlign: "center", fontSize: 13, color: "var(--n-500)", margin: "12px 0 0" }}>
         {loading
           ? "Entendiendo tu compra…"
-          : "Escribe uno o varios ítems, con cantidades si quieres, la IA los separa y arma la lista."}
+          : "Escribe ítems o adjunta un itemizado (imagen, PDF, Excel o Word; máx. 15 MB)."}
       </p>
 
       {/* Ejemplos clicables */}

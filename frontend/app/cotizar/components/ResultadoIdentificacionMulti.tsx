@@ -16,6 +16,8 @@ export interface ItemIdentificado {
   numero_parte: string | null;
   categoria: string;
   cantidad?: number;
+  unidad?: string;
+  partida?: string | null;
   terminos_busqueda_es: string[];
   terminos_busqueda_en: string[];
   confianza: "alto" | "medio" | "bajo";
@@ -28,7 +30,7 @@ export interface ItemIdentificado {
 
 interface Props {
   items: ItemIdentificado[];
-  onConfirmar: (categoriasPorItem: string[][], nombreLista: string, cantidades: number[], itemsFinales: ItemIdentificado[]) => void;
+  onConfirmar: (categoriasPorItem: string[][], nombreLista: string, cantidades: number[], unidades: string[], itemsFinales: ItemIdentificado[]) => void;
   onCorregir: () => void;
   guardando: boolean;
   nombreListaInicial?: string;
@@ -43,6 +45,7 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
     items.map(it => new Set([CATEGORIAS.some(c => c.key === it.categoria) ? it.categoria : "otro"]))
   );
   const [cants, setCants] = useState<number[]>(() => items.map(it => it.cantidad ?? 1));
+  const [unidades, setUnidades] = useState<string[]>(() => items.map(it => it.unidad ?? ""));
   const [terminos, setTerminos] = useState<string[][]>(() =>
     items.map(it => [...it.terminos_busqueda_es, ...it.terminos_busqueda_en])
   );
@@ -97,7 +100,7 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
     if (!nombre) return;
     const nuevo: ItemIdentificado = {
       nombre_tecnico: nombre, marca: null, numero_parte: null,
-      categoria: "otro", cantidad: 1,
+      categoria: "otro", cantidad: 1, unidad: "unidad", partida: null,
       terminos_busqueda_es: [nombre.toLowerCase()],
       terminos_busqueda_en: [], confianza: "medio",
     };
@@ -106,6 +109,7 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
     setIncluidos(prev => [...prev, true]);
     setCats(prev => [...prev, new Set(["otro"])]);
     setCants(prev => [...prev, 1]);
+    setUnidades(prev => [...prev, "unidad"]);
     setTerminos(prev => [...prev, [nombre.toLowerCase()]]);
     setAbiertos(prev => new Set(prev).add(newIdx));
     setNuevoNombre("");
@@ -194,7 +198,7 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
                   background: "var(--n-100)",
                   fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums",
                 }}>
-                  ×{cants[i]}
+                  {cants[i]} {unidades[i] || "sin unidad"}
                 </span>
               </button>
 
@@ -202,7 +206,8 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
               <div className={`acc-panel${abierto ? " open" : ""}`}>
                 <div className="acc-inner">
                   <div style={{ padding: "4px 16px 18px", background: "var(--surface-2)" }}>
-                    {/* Cantidad + quitar */}
+                    {it.partida && <div className="label" style={{ marginBottom: 10 }}>{it.partida}</div>}
+                    {/* Cantidad, unidad + quitar */}
                     <div style={{ display: "flex", gap: 14, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontSize: 13, color: "var(--n-600)" }}>Cantidad</span>
@@ -218,6 +223,15 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
                             color: "var(--n-900)", fontFamily: "var(--font-mono)",
                             fontVariantNumeric: "tabular-nums", outline: "none", textAlign: "right",
                           }}
+                        />
+                      </span>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 13, color: "var(--n-600)" }}>Unidad</span>
+                        <input
+                          type="text" value={unidades[i]}
+                          onChange={e => setUnidades(prev => prev.map((u, j) => j === i ? e.target.value : u))}
+                          placeholder="kg, m, un…"
+                          style={{ width: 100, background: "var(--surface)", border: "1px solid var(--n-300)", padding: "6px 8px", fontSize: 13, color: "var(--n-900)" }}
                         />
                       </span>
                       {it.marca && <span style={{ fontSize: 13, color: "var(--n-600)" }}>Marca: <strong style={{ color: "var(--n-900)" }}>{it.marca}</strong></span>}
@@ -442,10 +456,11 @@ export default function ResultadoIdentificacionMulti({ items, onConfirmar, onCor
               idx.map(i => Array.from(cats[i])),
               nombreLista.trim(),
               idx.map(i => cants[i]),
+              idx.map(i => unidades[i].trim()),
               itemsConTerminos,
             );
           }}
-          disabled={guardando}
+          disabled={guardando || incluidos.some((incluido, i) => incluido && (!(cants[i] > 0) || !unidades[i].trim()))}
           className="btn-swiss-primary"
         >
           {guardando ? "Creando lista…" : `Crear lista y cotizar ${totalIncluidos} ítems →`}

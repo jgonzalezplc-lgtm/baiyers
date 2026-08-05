@@ -84,6 +84,8 @@ class ItemListaIn(BaseModel):
     cotizacion_id: str
     nombre: str
     cantidad: float = 1
+    unidad: str = "unidad"
+    partida: Optional[str] = None
 
 
 class CrearListaRequest(BaseModel):
@@ -99,7 +101,7 @@ async def crear_lista(req: CrearListaRequest):
 
     data = {
         "tipo": MARCA_LISTA,
-        "items": [{"cotizacion_id": it.cotizacion_id, "nombre": it.nombre, "cantidad": it.cantidad or 1, "comparado": False} for it in req.items],
+        "items": [{"cotizacion_id": it.cotizacion_id, "nombre": it.nombre, "cantidad": it.cantidad, "unidad": it.unidad, "partida": it.partida, "comparado": False} for it in req.items],
         "definitivos": {},
     }
     row = {
@@ -713,6 +715,7 @@ async def elegir_definitivo(lista_id: str, req: DefinitivoRequest, ctx: AuthCont
         if req.quitar:
             definitivos.pop(req.cotizacion_id, None)
         else:
+            item_lista = next((it for it in data.get("items", []) if it.get("cotizacion_id") == req.cotizacion_id), {})
             definitivos[req.cotizacion_id] = {
                 "resultado_id": req.resultado_id,
                 "proveedor": req.proveedor,
@@ -721,6 +724,10 @@ async def elegir_definitivo(lista_id: str, req: DefinitivoRequest, ctx: AuthCont
                 "url": req.url,
                 "fuente": req.fuente,
                 "precio_clp": req.precio_clp if req.precio_clp is not None else req.precio,
+                # Contrato histórico: el precio de una oferta siempre es unitario
+                # respecto de la unidad de medida solicitada, nunca el total de línea.
+                "precio_unitario": req.precio,
+                "unidad_medida": item_lista.get("unidad") or "unidad",
                 # Fase D — "hecho por X": queda registrado quién de la
                 # organización marcó este proveedor como definitivo, para
                 # mostrarlo en el comparador y en el resumen de la lista.

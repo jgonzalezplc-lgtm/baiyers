@@ -49,6 +49,8 @@ export interface Definitivo {
   url: string | null;
   fuente: string | null;
   precio_clp: number | null;
+  precio_unitario?: number | null;
+  unidad_medida?: string;
   seleccionado_por?: string | null;
   seleccionado_at?: string | null;
   origen?: "sugerido" | "proveedor" | "buscado_web";
@@ -58,6 +60,8 @@ export interface ItemLista {
   cotizacion_id: string;
   nombre: string;
   cantidad: number;
+  unidad: string;
+  partida?: string | null;
   comparado: boolean;
   comparados: ComparadoLista[];
   definitivo: Definitivo | null;
@@ -620,6 +624,7 @@ export default function ListaDetallePage() {
             background: rechazado ? "var(--st-rechazada-bg)" : "var(--canvas)",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              {it.partida && <span className="label">{it.partida}</span>}
               <span style={{
                 fontSize: 15, fontWeight: 600,
                 color: rechazado ? "var(--st-rechazada-fg)" : "var(--n-900)",
@@ -642,12 +647,13 @@ export default function ListaDetallePage() {
                     fontVariantNumeric: "tabular-nums", outline: "none", textAlign: "right",
                   }}
                 />
+                <span style={{ fontSize: 12.5, color: "var(--n-600)" }}>{it.unidad || "unidad"}</span>
               </span>
               {it.definitivo && (
                 <Badge status="aprobada">
                   {it.definitivo.proveedor}
                   {it.definitivo.precio_clp != null && (it.cantidad || 1) > 1 &&
-                    ` · ${it.cantidad} × ${fmtCLP(it.definitivo.precio_clp)}`}
+                    ` · ${it.cantidad} ${it.unidad || "unidad"} × ${fmtCLP(it.definitivo.precio_clp)}/${it.unidad || "unidad"}`}
                 </Badge>
               )}
               {it.definitivo && hayVariosMiembros && nombreDe(it.definitivo.seleccionado_por) && (
@@ -879,7 +885,7 @@ export default function ListaDetallePage() {
                   textDecoration: rechazado ? "line-through" : undefined,
                 }}>
                   {it.nombre}
-                  <span style={{ color: "var(--n-500)", fontWeight: 400, marginLeft: 6, textDecoration: "none", display: "inline-block" }}>× {cant}</span>
+                  <span style={{ color: "var(--n-500)", fontWeight: 400, marginLeft: 6, textDecoration: "none", display: "inline-block" }}>× {cant} {it.unidad || "unidad"}</span>
                 </div>
                 <div style={{ minWidth: 0 }}>
                   {d.url ? (

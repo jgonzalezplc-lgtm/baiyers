@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import FormularioCotizar from "./components/FormularioCotizar";
+import FormularioCotizar, { type AdjuntoCotizacion } from "./components/FormularioCotizar";
 import ResultadoIdentificacion from "./components/ResultadoIdentificacion";
 import ResultadoIdentificacionMulti, { type ItemIdentificado } from "./components/ResultadoIdentificacionMulti";
 
@@ -33,8 +33,9 @@ interface ResultadoIA {
     marca: string | null;
     numero_parte: string | null;
     categoria: string;
-    cantidad?: number;
-    unidad?: string;
+    cantidad?: number | null;
+    unidad?: string | null;
+    partida?: string | null;
     cantidad_neta?: number;
     unidad_compra?: string;
     cantidad_comercial?: number;
@@ -72,6 +73,7 @@ export default function CotizarPage() {
   const [industriaEmpresa, setIndustriaEmpresa] = useState<string | null>(null);
   const [nombreUsuario, setNombreUsuario] = useState<string | null>(null);
   const [lastDescripcion, setLastDescripcion] = useState("");
+  const [lastAdjunto, setLastAdjunto] = useState<AdjuntoCotizacion | null>(null);
   const [respuestasCubicacion, setRespuestasCubicacion] = useState<Record<string, string | number | boolean>>({});
   const [preguntasCubicacion, setPreguntasCubicacion] = useState<PreguntaCubicacion[]>([]);
   const [mensajeCubicacion, setMensajeCubicacion] = useState("");
@@ -88,12 +90,13 @@ export default function CotizarPage() {
     });
   }, []);
 
-  const identificarUno = async (descripcion: string, imagenBase64: string | null = null, imagenMime = "image/jpeg", respuestas: Record<string, string | number | boolean> = {}): Promise<ResultadoIA> => {
+  const identificarUno = async (descripcion: string, adjunto: AdjuntoCotizacion | null = null, respuestas: Record<string, string | number | boolean> = {}): Promise<ResultadoIA> => {
     const body: Record<string, unknown> = { modo_cubicacion_conversacional: true, respuestas_cubicacion: respuestas };
     if (userId) body.user_id = userId;
     if (descripcion) body.descripcion = descripcion;
     if (industriaEmpresa) body.industria_empresa = industriaEmpresa;
-    if (imagenBase64) { body.imagen_base64 = imagenBase64; body.imagen_mime = imagenMime; }
+    if (adjunto?.tipo === "imagen") { body.imagen_base64 = adjunto.base64; body.imagen_mime = adjunto.mime; }
+    if (adjunto?.tipo === "documento") { body.archivo_base64 = adjunto.base64; body.archivo_mime = adjunto.mime; body.archivo_nombre = adjunto.nombre; }
     const res = await fetch(`${API_URL}/api/identificar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -103,17 +106,18 @@ export default function CotizarPage() {
     return res.json();
   };
 
-  const handleIdentificar = async (descripcion: string, imagenBase64: string | null, imagenMime: string) => {
+  const handleIdentificar = async (descripcion: string, adjunto: AdjuntoCotizacion | null) => {
     setError("");
     setEtapa("procesando");
     setLastDescripcion(descripcion);
+    setLastAdjunto(adjunto);
     setRespuestasCubicacion({});
     setRevisionCubicacion(null);
     setResultadosMulti(null);
     try {
       // Una sola llamada al LLM: entiende la intención de compra completa y
       // separa los ítems solo ("3 martillos y un taladro" → 2 ítems, cantidades 3 y 1)
-      const data = await identificarUno(descripcion, imagenBase64, imagenMime);
+      const data = await identificarUno(descripcion, adjunto);
       if (data.estado_flujo === "requiere_datos") {
         setMensajeCubicacion(data.mensaje ?? "Necesito algunos datos para calcular las cantidades.");
         setPreguntasCubicacion(data.preguntas ?? []);
@@ -145,6 +149,8 @@ export default function CotizarPage() {
           numero_parte: li.numero_parte ?? null,
           categoria: li.categoria,
           cantidad: li.cantidad ?? 1,
+          unidad: li.unidad ?? "",
+          partida: li.partida ?? null,
           terminos_busqueda_es: li.terminos_busqueda_es ?? [],
           terminos_busqueda_en: li.terminos_busqueda_en ?? [],
           confianza: data.confianza,
@@ -167,8 +173,7 @@ export default function CotizarPage() {
     try {
       const data = await identificarUno(
         lastDescripcion,
-        null,
-        "image/jpeg",
+        lastAdjunto,
         respuestasCubicacion,
       );
       if (data.estado_flujo === "requiere_datos") {
@@ -187,7 +192,7 @@ export default function CotizarPage() {
   };
 
   // Confirmación multi-ítem: crea N cotizaciones + la lista, y parte por el 1er ítem
-  const handleConfirmarMulti = async (categoriasPorItem: string[][], nombreLista: string, cantidades: number[], itemsFinales: ItemIdentificado[]) => {
+  const handleConfirmarMulti = async (categoriasPorItem: string[][], nombreLista: string, cantidades: number[], unidades: string[], itemsFinales: ItemIdentificado[]) => {
     if (!userId) {
       setError("Debes iniciar sesión para crear una lista de cotización.");
       return;
@@ -225,6 +230,8 @@ export default function CotizarPage() {
             nombre: it.nombre_tecnico,
             // cantidad: la editada en la confirmación (parte de la detectada por la IA)
             cantidad: cantidades[i] ?? it.cantidad ?? 1,
+            unidad: unidades[i],
+            partida: it.partida ?? null,
           })),
         }),
       });
@@ -291,7 +298,7 @@ export default function CotizarPage() {
         body: JSON.stringify({
           user_id: userId,
           nombre: nombreLista || resultado.nombre_tecnico,
-          items: [{ cotizacion_id: cotizacion.id, nombre: resultado.nombre_tecnico, cantidad: 1 }],
+          items: [{ cotizacion_id: cotizacion.id, nombre: resultado.nombre_tecnico, cantidad: resultado.lista_items?.[0]?.cantidad ?? 1, unidad: resultado.lista_items?.[0]?.unidad ?? "unidad" }],
         }),
       });
       if (resLista.ok) {
