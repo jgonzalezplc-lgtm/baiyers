@@ -6,7 +6,7 @@ La lógica de RLS/backfill se prueba manualmente contra producción cuando se
 aplica la migración 030.
 """
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 class FakeExec:
@@ -118,6 +118,55 @@ class ResolverOrganizacionTest(unittest.TestCase):
             ctx = resolver_organizacion("u-invitado")
         self.assertEqual(ctx.rol, "miembro")
         self.assertFalse(ctx.es_admin)
+
+
+class SincronizarMembresiaCapoTest(unittest.TestCase):
+    """El puente hacia el modelo de CAPO (`organizations`, migración 028)
+    solo sincronizaba en el sentido CAPO → Baiyer. Esto prueba el sentido
+    que faltaba: invitar desde Baiyer (Fase C) también debe reflejarse en
+    `organization_memberships` cuando el dueño de la organización ya tiene
+    fila en CAPO — y no debe lanzar si todavía no la tiene."""
+
+    def test_sin_fila_capo_no_hace_nada_ni_lanza(self):
+        from app.services.organizacion import _sincronizar_membresia_capo
+        sb = MagicMock()
+        sb.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
+        _sincronizar_membresia_capo(sb, "org-1", "u-owner", "u-invitado", "miembro")
+        # Solo se consultó organizations por slug — nunca se llegó a escribir.
+        sb.table.assert_any_call("organizations")
+        insert_calls = [c for c in sb.table.return_value.insert.call_args_list]
+        self.assertEqual(insert_calls, [])
+
+    def test_con_fila_capo_crea_membresia_nueva(self):
+        from app.services.organizacion import _sincronizar_membresia_capo
+
+        def table_side_effect(nombre):
+            m = MagicMock()
+            if nombre == "organizations":
+                m.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [{"id": "org-capo-1"}]
+            elif nombre == "organization_memberships":
+                # primero el UPDATE de "sacar de otras orgs", luego el SELECT
+                # "existente" (vacío → debe insertar).
+                m.select.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
+            return m
+
+        sb = MagicMock()
+        sb.table.side_effect = table_side_effect
+        _sincronizar_membresia_capo(sb, "org-1", "u-owner", "u-invitado", "admin")
+
+        memberships_mock = [c for c in sb.table.call_args_list if c.args == ("organization_memberships",)]
+        self.assertTrue(len(memberships_mock) >= 1)
+
+    def test_fallo_interno_no_lanza(self):
+        """Nunca debe tumbar la invitación real, que ya quedó confirmada
+        antes de llamar a esta función."""
+        from app.services.organizacion import _sincronizar_membresia_capo
+        sb = MagicMock()
+        sb.table.side_effect = Exception("boom")
+        try:
+            _sincronizar_membresia_capo(sb, "org-1", "u-owner", "u-invitado", "miembro")
+        except Exception:
+            self.fail("_sincronizar_membresia_capo no debe propagar excepciones")
 
 
 if __name__ == "__main__":

@@ -256,7 +256,47 @@ def invitar_a_organizacion(
         except Exception as e:
             print(f"[Organizacion] no se pudo linkear responsable {responsable_id}: {e}")
 
+    _sincronizar_membresia_capo(sb, ctx.organizacion_id, ctx.owner_user_id, nuevo_user.id, rol)
+
     return {"user_id": nuevo_user.id, "email": email, "estado": "invitado"}
+
+
+def _sincronizar_membresia_capo(sb, organizacion_id: str, owner_user_id: str, invitado_user_id: str, rol: str) -> None:
+    """Espejo hacia `organizations`/`organization_memberships` (el modelo de
+    CAPO, migración 028) — el puente hoy solo funciona en la dirección
+    CAPO → Baiyer (`admin_control_plane._operational_org_id`). Sin este
+    espejo, invitar a alguien desde Baiyer (Fase C) deja a esa persona bien
+    en `organizaciones` pero con su organización individual huérfana en
+    `organizations`, y CAPO nunca se entera de que ahora es miembro de otra.
+
+    Nunca lanza: un fallo acá no debe tumbar la invitación real, que ya
+    quedó confirmada en `membresias_organizacion` antes de llegar aquí.
+    """
+    try:
+        org_capo = sb.table("organizations").select("id").eq(
+            "slug", f"user-{owner_user_id}"
+        ).limit(1).execute().data
+        if not org_capo:
+            return  # el dueño todavía no tiene fila en CAPO — nada que sincronizar
+        organization_id_capo = org_capo[0]["id"]
+
+        sb.table("organization_memberships").update(
+            {"estado": "removed", "es_principal": False}
+        ).eq("user_id", invitado_user_id).neq("organization_id", organization_id_capo).execute()
+
+        rol_capo = "admin" if rol == "admin" else "member"
+        existente = sb.table("organization_memberships").select("id").eq(
+            "organization_id", organization_id_capo
+        ).eq("user_id", invitado_user_id).limit(1).execute().data
+        valores = {"rol": rol_capo, "estado": "active", "es_principal": True}
+        if existente:
+            sb.table("organization_memberships").update(valores).eq("id", existente[0]["id"]).execute()
+        else:
+            sb.table("organization_memberships").insert({
+                "organization_id": organization_id_capo, "user_id": invitado_user_id, **valores,
+            }).execute()
+    except Exception as e:
+        print(f"[Organizacion] no se pudo sincronizar membresía hacia CAPO: {e}")
 
 
 def _contexto_a_dict(ctx: Optional[ContextoOrganizacion]) -> dict:
