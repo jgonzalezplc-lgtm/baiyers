@@ -7,6 +7,7 @@
  */
 import { useState } from "react";
 import { pdf, Document, Page, Text, View, Link as PdfLink, StyleSheet } from "@react-pdf/renderer";
+import { authFetch } from "@/lib/authFetch";
 import type { DetalleLista } from "@/app/listas/[id]/page";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -210,7 +211,7 @@ export default function InformeLista({ listaId, userId, nombreLista }: { listaId
     setError("");
     try {
       const [res, tasas] = await Promise.all([
-        fetch(`${API_URL}/api/listas/${listaId}/informe?user_id=${userId}`),
+        authFetch(`${API_URL}/api/listas/${listaId}/informe`),
         fetch("https://open.er-api.com/v6/latest/USD")
           .then(r => r.json()).then(d => (d.rates ?? {}) as Record<string, number>)
           .catch(() => ({ CLP: 950, EUR: 0.92, CNY: 7.25, GBP: 0.79 } as Record<string, number>)),

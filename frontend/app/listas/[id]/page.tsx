@@ -187,11 +187,10 @@ export default function ListaDetallePage() {
     const moneda = c.precio_cotizado != null ? "CLP" : c.moneda;
     setGuardandoDef(item.cotizacion_id);
     try {
-      await fetch(`${API_URL}/api/listas/${id}/definitivo`, {
+      await authFetch(`${API_URL}/api/listas/${id}/definitivo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: userId,
           cotizacion_id: item.cotizacion_id,
           resultado_id: c.resultado_id,
           proveedor: c.proveedor,
@@ -216,10 +215,10 @@ export default function ListaDetallePage() {
     const clave = `${item.cotizacion_id}:${proveedor.id}`;
     setGuardandoProveedor(clave);
     try {
-      const res = await fetch(`${API_URL}/api/listas/${id}/seleccionar-proveedor`, {
+      const res = await authFetch(`${API_URL}/api/listas/${id}/seleccionar-proveedor`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: userId, cotizacion_id: item.cotizacion_id,
+          cotizacion_id: item.cotizacion_id,
           origen: proveedor.origen, proveedor_id: proveedor.origen === "proveedor" ? proveedor.id : null,
           email: proveedor.email, seleccionado: !proveedor.seleccionado,
         }),
@@ -272,10 +271,10 @@ export default function ListaDetallePage() {
     if (!userId) return;
     setGuardandoDef(item.cotizacion_id);
     try {
-      await fetch(`${API_URL}/api/listas/${id}/definitivo`, {
+      await authFetch(`${API_URL}/api/listas/${id}/definitivo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, cotizacion_id: item.cotizacion_id, quitar: true }),
+        body: JSON.stringify({ cotizacion_id: item.cotizacion_id, quitar: true }),
       });
       await cargar(userId);
     } catch { /* silent */ } finally { setGuardandoDef(null); }
@@ -305,11 +304,10 @@ export default function ListaDetallePage() {
     if (!userId || !lista || !aprobadorEmail.trim()) return;
     setSolicitando(true);
     try {
-      const res = await fetch(`${API_URL}/api/listas/${id}/solicitar-aprobacion`, {
+      const res = await authFetch(`${API_URL}/api/listas/${id}/solicitar-aprobacion`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: userId,
           aprobador_email: aprobadorEmail.trim(),
           justificaciones,
           nombre_solicitante: userMeta.nombre_usuario ?? "",
@@ -339,10 +337,10 @@ export default function ListaDetallePage() {
   const reiniciarAprobacion = async () => {
     if (!userId) return;
     try {
-      await fetch(`${API_URL}/api/listas/${id}/reenviar-aprobacion`, {
+      await authFetch(`${API_URL}/api/listas/${id}/reenviar-aprobacion`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId }),
+        body: JSON.stringify({}),
       });
       setToast("Lista desbloqueada, puedes modificarla y re-solicitar");
       setTimeout(() => setToast(""), 3500);
@@ -361,10 +359,10 @@ export default function ListaDetallePage() {
   ) => {
     if (!userId) return;
     try {
-      await fetch(`${API_URL}/api/listas/${id}/compra`, {
+      await authFetch(`${API_URL}/api/listas/${id}/compra`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, cotizacion_id: cotizacionId, estado, ...extra }),
+        body: JSON.stringify({ cotizacion_id: cotizacionId, estado, ...extra }),
       });
       await cargar(userId);
     } catch { /* silent */ }
@@ -381,11 +379,10 @@ export default function ListaDetallePage() {
         r.onerror = rej;
         r.readAsDataURL(file);
       });
-      const resp = await fetch(`${API_URL}/api/listas/${id}/boleta-scan`, {
+      const resp = await authFetch(`${API_URL}/api/listas/${id}/boleta-scan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: userId,
           imagen_base64: base64,
           imagen_mime: file.type || "image/jpeg",
           auto_marcar: true,

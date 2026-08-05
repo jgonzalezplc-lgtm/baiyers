@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Check, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import { Badge, BtnPrimary, BtnSecondary, Card, CategoryChip, EmptyState, PageHeader, SkeletonBox, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -22,7 +23,7 @@ export default function BusquedaComplementariaPage() {
 
   const cargar = useCallback(async (uid: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/listas/${id}/busqueda-complementaria?user_id=${uid}`);
+      const res = await authFetch(`${API_URL}/api/listas/${id}/busqueda-complementaria`);
       const data = await res.json(); if (!res.ok) throw new Error(data.detail);
       setFaltantes(data.requieren_proveedores || []); setCubiertos(data.ya_cubiertos || []);
     } catch (e) { setMensaje(e instanceof Error ? e.message : "No pudimos cargar la cobertura"); }

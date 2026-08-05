@@ -29,7 +29,7 @@ export default function ProveedoresConfianzaPage() {
   const cargar = useCallback(async (uid: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/listas/${id}/proveedores-confianza?user_id=${uid}`);
+      const res = await authFetch(`${API_URL}/api/listas/${id}/proveedores-confianza`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail);
       setMatriz(data);
@@ -61,7 +61,7 @@ export default function ProveedoresConfianzaPage() {
       cotizacion_ids: p.items.filter(it => seleccion.has(`${p.proveedor_id}:${it.cotizacion_id}`)).map(it => it.cotizacion_id),
     })).filter(s => s.cotizacion_ids.length);
     try {
-      const res = await fetch(`${API_URL}/api/listas/${id}/proveedores-confianza`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId, selecciones }) });
+      const res = await authFetch(`${API_URL}/api/listas/${id}/proveedores-confianza`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ selecciones }) });
       const data = await res.json(); if (!res.ok) throw new Error(data.detail);
       setMensaje("Matriz guardada. Queda lista para preparar los correos en la Fase 5.");
       return true;

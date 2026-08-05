@@ -139,7 +139,7 @@ export default async function DashboardPage({
   try {
     const [statsRes, cotRes, gmailRes, workflowsRes] = await Promise.all([
       fetchConTimeout(`${API_URL}/api/dashboard/stats`, 5000, true),
-      fetchConTimeout(`${API_URL}/api/listas?user_id=${user.id}`),
+      fetchConTimeout(`${API_URL}/api/listas`, 5000, true),
       fetchConTimeout(`${API_URL}/api/gmail/status`, 5000, true),
       fetchConTimeout(`${API_URL}/api/workflows/estado/resumen?user_id=${user.id}`),
     ]);

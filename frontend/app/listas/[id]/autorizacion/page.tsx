@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import { Badge, BtnPrimary, BtnSecondary, Card, Input, SkeletonBox, SkeletonText, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -49,7 +50,7 @@ export default function AutorizarListaPage() {
     if (!lista || !userId || !puedeEnviar) return;
     setEnviando(true); setError("");
     try {
-      const r = await fetch(`${API_URL}/api/listas/${id}/solicitar-aprobacion`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId, aprobador_email: email.trim() || null, justificaciones, nombre_solicitante: meta.nombre_usuario || "", empresa: meta.empresa || "" }) });
+      const r = await authFetch(`${API_URL}/api/listas/${id}/solicitar-aprobacion`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ aprobador_email: email.trim() || null, justificaciones, nombre_solicitante: meta.nombre_usuario || "", empresa: meta.empresa || "" }) });
       const d = await r.json(); if (!r.ok) throw new Error(d.detail || "No se pudo crear la solicitud");
       // El backend ya envió el correo por la cuenta Gmail conectada del
       // usuario (misma integración que se usa para cotizar a proveedores);

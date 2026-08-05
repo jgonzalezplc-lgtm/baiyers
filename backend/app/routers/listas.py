@@ -20,8 +20,10 @@ import asyncio
 import json
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/listas", tags=["listas"])
 
@@ -112,7 +114,7 @@ async def crear_lista(req: CrearListaRequest):
 
 
 @router.get("")
-async def listar_listas(user_id: str):
+async def listar_listas(ctx: AuthContext = Depends(get_auth_context)):
     """Todas las cotizaciones del usuario, unificadas: cada una es una "lista"
     de 1 o más ítems. Las cotizaciones sueltas (creadas antes de unificar el
     flujo, o vía integraciones externas) se muestran como listas de 1 ítem
@@ -120,8 +122,9 @@ async def listar_listas(user_id: str):
     (ver `_resolver_o_envolver`)."""
     from app.services.supabase import get_supabase
     sb = get_supabase()
+    ids = ctx.user_ids_organizacion
 
-    res = sb.table("proyectos").select("*").in_("user_id", _ids_org(user_id)).order("created_at", desc=True).execute()
+    res = sb.table("proyectos").select("*").in_("user_id", ids).order("created_at", desc=True).execute()
     listas = []
     cotizacion_ids_en_listas: set[str] = set()
     for p in res.data or []:
@@ -148,7 +151,7 @@ async def listar_listas(user_id: str):
     try:
         cots = sb.table("cotizaciones").select(
             "id, nombre_identificado, estado, created_at, user_id"
-        ).in_("user_id", _ids_org(user_id)).order("created_at", desc=True).execute()
+        ).in_("user_id", ids).order("created_at", desc=True).execute()
     except Exception:
         cots = None
     for c in (cots.data or []) if cots else []:
@@ -365,12 +368,10 @@ class SeleccionProveedorConfianza(BaseModel):
 
 
 class GuardarMatrizConfianzaRequest(BaseModel):
-    user_id: str
     selecciones: list[SeleccionProveedorConfianza]
 
 
 class SeleccionarProveedorItemRequest(BaseModel):
-    user_id: str
     cotizacion_id: str
     origen: str
     proveedor_id: Optional[str] = None
@@ -379,7 +380,7 @@ class SeleccionarProveedorItemRequest(BaseModel):
 
 
 @router.post("/{lista_id}/seleccionar-proveedor")
-async def seleccionar_proveedor_item(lista_id: str, req: SeleccionarProveedorItemRequest):
+async def seleccionar_proveedor_item(lista_id: str, req: SeleccionarProveedorItemRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Selecciona un proveedor privado o del banco global para un ítem.
 
     Los sugeridos sólo pasan al directorio privado al ser elegidos; así el banco
@@ -390,7 +391,7 @@ async def seleccionar_proveedor_item(lista_id: str, req: SeleccionarProveedorIte
     from app.services.proveedores_sugeridos import buscar_sugerido
     sb = get_supabase()
     async with _lock_de(lista_id):
-        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", _ids_org(req.user_id)).maybe_single().execute().data
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
         data = _parse_lista(proy or {})
         if not data or req.cotizacion_id not in {it["cotizacion_id"] for it in data.get("items", [])}:
             raise HTTPException(status_code=404, detail="Lista o ítem no encontrado")
@@ -407,17 +408,17 @@ async def seleccionar_proveedor_item(lista_id: str, req: SeleccionarProveedorIte
             nombre = banco["company_name"]
             clave = banco["primary_email"].lower()
             if req.seleccionado:
-                proveedor_id = resolver_o_crear_proveedor(sb, req.user_id, nombre, banco["primary_email"])
+                proveedor_id = resolver_o_crear_proveedor(sb, ctx.actor_user_id, nombre, banco["primary_email"])
                 contacto_id = resolver_o_crear_contacto(
                     # `proveedor_contactos.origen` sólo admite manual/excel/gmail_agent.
                     # El origen de negocio "sugerido" queda en la selección de la lista.
-                    sb, req.user_id, proveedor_id, banco["primary_email"], origen="manual"
+                    sb, ctx.actor_user_id, proveedor_id, banco["primary_email"], origen="manual"
                 )
                 sb.table("proveedores").update({
                     "sitio_web": banco.get("website"), "telefono": banco.get("phone")
                 }).eq("id", proveedor_id).execute()
         elif proveedor_id:
-            proveedor = sb.table("proveedores").select("id,nombre,email").eq("id", proveedor_id).in_("user_id", _ids_org(req.user_id)).maybe_single().execute().data
+            proveedor = sb.table("proveedores").select("id,nombre,email").eq("id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
             if not proveedor:
                 raise HTTPException(status_code=400, detail="Proveedor privado inválido")
             nombre, email = proveedor.get("nombre"), proveedor.get("email")
@@ -568,32 +569,32 @@ def _matriz_proveedores_confianza(sb, user_id: str, items: list[dict], borrador:
 
 
 @router.get("/{lista_id}/proveedores-confianza")
-async def matriz_proveedores_confianza(lista_id: str, user_id: str):
+async def matriz_proveedores_confianza(lista_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", _ids_org(user_id)).maybe_single().execute().data
+    proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
     data = _parse_lista(proy or {})
     if not data:
         raise HTTPException(status_code=404, detail="Lista no encontrada")
-    return _matriz_proveedores_confianza(sb, user_id, data.get("items", []), data.get("proveedores_confianza") or {})
+    return _matriz_proveedores_confianza(sb, ctx.actor_user_id, data.get("items", []), data.get("proveedores_confianza") or {})
 
 
 @router.put("/{lista_id}/proveedores-confianza")
-async def guardar_matriz_proveedores_confianza(lista_id: str, req: GuardarMatrizConfianzaRequest):
+async def guardar_matriz_proveedores_confianza(lista_id: str, req: GuardarMatrizConfianzaRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
     async with _lock_de(lista_id):
-        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", _ids_org(req.user_id)).maybe_single().execute().data
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
         data = _parse_lista(proy or {})
         if not data:
             raise HTTPException(status_code=404, detail="Lista no encontrada")
         ids_validos = {it["cotizacion_id"] for it in data.get("items", [])}
         proveedores_validos = {
-            p["id"] for p in (sb.table("proveedores").select("id").in_("user_id", _ids_org(req.user_id)).eq("bloqueado", False).execute().data or [])
+            p["id"] for p in (sb.table("proveedores").select("id").in_("user_id", ctx.user_ids_organizacion).eq("bloqueado", False).execute().data or [])
         }
         contactos_validos = {
             (c["id"], c["proveedor_id"])
-            for c in (sb.table("proveedor_contactos").select("id,proveedor_id").in_("user_id", _ids_org(req.user_id)).execute().data or [])
+            for c in (sb.table("proveedor_contactos").select("id,proveedor_id").in_("user_id", ctx.user_ids_organizacion).execute().data or [])
         }
         selecciones = []
         for s in req.selecciones:
@@ -609,12 +610,12 @@ async def guardar_matriz_proveedores_confianza(lista_id: str, req: GuardarMatriz
 
 
 @router.get("/{lista_id}/busqueda-complementaria")
-async def estado_busqueda_complementaria(lista_id: str, user_id: str):
+async def estado_busqueda_complementaria(lista_id: str, ctx: AuthContext = Depends(get_auth_context)):
     """Separa ítems sin cobertura de los ya asignados/cotizados. No dispara
     búsquedas: los cubiertos sólo se buscan si el usuario lo pide."""
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", _ids_org(user_id)).maybe_single().execute().data
+    proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
     data = _parse_lista(proy or {})
     if not data:
         raise HTTPException(status_code=404, detail="Lista no encontrada")
@@ -631,7 +632,7 @@ async def estado_busqueda_complementaria(lista_id: str, user_id: str):
                 cobertura[cid].append({"proveedor_id": s["proveedor_id"], "nombre": proveedores.get(s["proveedor_id"], "Proveedor")})
     enviados: set[str] = set()
     try:
-        batches = sb.table("rfq_batches").select("id").eq("lista_proyecto_id", lista_id).in_("user_id", _ids_org(user_id)).eq("estado", "sent").execute().data or []
+        batches = sb.table("rfq_batches").select("id").eq("lista_proyecto_id", lista_id).in_("user_id", ctx.user_ids_organizacion).eq("estado", "sent").execute().data or []
         if batches:
             enviados = {x["cotizacion_id"] for x in (sb.table("rfq_batch_items").select("cotizacion_id").in_("rfq_batch_id", [b["id"] for b in batches]).execute().data or [])}
     except Exception:
@@ -683,7 +684,6 @@ async def marcar_comparado(lista_id: str, req: MarcarComparadoRequest):
 
 
 class DefinitivoRequest(BaseModel):
-    user_id: str
     cotizacion_id: str
     resultado_id: Optional[str] = None
     proveedor: Optional[str] = None
@@ -697,12 +697,12 @@ class DefinitivoRequest(BaseModel):
 
 
 @router.post("/{lista_id}/definitivo")
-async def elegir_definitivo(lista_id: str, req: DefinitivoRequest):
+async def elegir_definitivo(lista_id: str, req: DefinitivoRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
     async with _lock_de(lista_id):
-        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", _ids_org(req.user_id)).single().execute()
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
         if not proy.data:
             raise HTTPException(status_code=404, detail="Lista no encontrada")
         data = _parse_lista(proy.data)
@@ -724,7 +724,7 @@ async def elegir_definitivo(lista_id: str, req: DefinitivoRequest):
                 # Fase D — "hecho por X": queda registrado quién de la
                 # organización marcó este proveedor como definitivo, para
                 # mostrarlo en el comparador y en el resumen de la lista.
-                "seleccionado_por": req.user_id,
+                "seleccionado_por": ctx.actor_user_id,
                 "seleccionado_at": _now_iso(),
             }
 
@@ -735,7 +735,7 @@ async def elegir_definitivo(lista_id: str, req: DefinitivoRequest):
     if not req.quitar and req.resultado_id:
         try:
             from app.services.supplier_capability_intelligence import registrar_evento_para_resultado
-            registrar_evento_para_resultado(req.user_id, req.resultado_id, "supplier_selected", {"lista_id": lista_id})
+            registrar_evento_para_resultado(ctx.actor_user_id, req.resultado_id, "supplier_selected", {"lista_id": lista_id})
         except Exception as e:
             print(f"[Listas] evidencia definitivo: {e}")
 
@@ -777,7 +777,6 @@ async def actualizar_cantidad(lista_id: str, req: CantidadRequest):
 
 
 class SolicitarAprobacionRequest(BaseModel):
-    user_id: str
     aprobador_email: Optional[str] = None
     justificaciones: dict = {}  # {cotizacion_id: "texto justificación"}
     nombre_solicitante: str = ""
@@ -841,13 +840,13 @@ async def _crear_y_enviar_solicitudes(sb, user_id: str, lista_id: str, lista_nom
 
 
 @router.post("/{lista_id}/solicitar-aprobacion")
-async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest):
+async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     from app.services.workflow_execution import iniciar_autorizacion_workflow
     sb = get_supabase()
 
     async with _lock_de(lista_id):
-        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", _ids_org(req.user_id)).single().execute()
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
         if not proy.data:
             raise HTTPException(status_code=404, detail="Lista no encontrada")
         data = _parse_lista(proy.data)
@@ -901,10 +900,10 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest):
         # secuencial) y puede depender del monto (tramos). Si no hay ciclo
         # activo o nadie fue asignado todavía, cae íntegro al flujo legado de
         # un solo `aprobador_email` escrito a mano.
-        resolucion = iniciar_autorizacion_workflow(req.user_id, lista_id, monto_total)
+        resolucion = iniciar_autorizacion_workflow(ctx.actor_user_id, lista_id, monto_total)
 
         if resolucion:
-            enviadas = await _crear_y_enviar_solicitudes(sb, req.user_id, lista_id, proy.data["nombre"], resumen, resolucion)
+            enviadas = await _crear_y_enviar_solicitudes(sb, ctx.actor_user_id, lista_id, proy.data["nombre"], resumen, resolucion)
             data["aprobacion"] = {
                 "estado": "pendiente",
                 "modo": "workflow",
@@ -930,7 +929,7 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest):
 
         from app.routers.aprobaciones import _crear_solicitud_aprobacion
         from app.routers.aprobaciones import SolicitudRequest
-        sol = _crear_solicitud_aprobacion(req.user_id, SolicitudRequest(
+        sol = _crear_solicitud_aprobacion(ctx.actor_user_id, SolicitudRequest(
             referencia=f"lista:{lista_id}",
             resumen=resumen,
             aprobador_email=req.aprobador_email,
@@ -943,7 +942,7 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest):
         # seguimiento de respuestas (eso es solo para precios de proveedor).
         from app.services.gmail_service import get_gmail_service, send_email
         # user_integrations es personal — cada usuario conecta su propio Gmail.
-        integ = sb.table("user_integrations").select("*").eq("user_id", req.user_id).eq("provider", "gmail").limit(1).execute()
+        integ = sb.table("user_integrations").select("*").eq("user_id", ctx.actor_user_id).eq("provider", "gmail").limit(1).execute()
         integration = (integ.data or [None])[0]
         if not integration:
             raise HTTPException(status_code=400, detail="Gmail no conectado. Conéctalo en Configuración para poder enviar la solicitud de autorización.")
@@ -954,7 +953,7 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest):
                 sb.table("user_integrations").update({
                     "access_token": creds.token,
                     "token_expiry": creds.expiry.isoformat() if creds.expiry else None,
-                }).eq("user_id", req.user_id).eq("provider", "gmail").execute()
+                }).eq("user_id", ctx.actor_user_id).eq("provider", "gmail").execute()
 
             item_lines = "\n".join(
                 f"- {it['nombre']} ×{it.get('cantidad', 1)}: {it.get('proveedor') or '—'}"
@@ -992,17 +991,17 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest):
 
 
 class ReenviarAprobacionRequest(BaseModel):
-    user_id: str
+    pass
 
 
 @router.post("/{lista_id}/reenviar-aprobacion")
-async def reenviar_aprobacion(lista_id: str, req: ReenviarAprobacionRequest):
+async def reenviar_aprobacion(lista_id: str, req: ReenviarAprobacionRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Resetea una lista rechazada para poder re-solicitar aprobación."""
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
     async with _lock_de(lista_id):
-        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", _ids_org(req.user_id)).single().execute()
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
         if not proy.data:
             raise HTTPException(status_code=404, detail="Lista no encontrada")
         data = _parse_lista(proy.data)
@@ -1026,7 +1025,6 @@ async def reenviar_aprobacion(lista_id: str, req: ReenviarAprobacionRequest):
 # El estado por ítem vive en data["compras"][cotizacion_id].
 
 class CompraRequest(BaseModel):
-    user_id: str
     cotizacion_id: str
     estado: str  # "enviada_oc" | "comprado" | "pendiente"
     oc_id: Optional[str] = None
@@ -1037,7 +1035,7 @@ class CompraRequest(BaseModel):
 
 
 @router.post("/{lista_id}/compra")
-async def actualizar_compra(lista_id: str, req: CompraRequest):
+async def actualizar_compra(lista_id: str, req: CompraRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Registra el avance de la compra de un ítem: OC enviada, comprado
     online, o desmarcar (volver a pendiente)."""
     from datetime import datetime, timezone
@@ -1048,7 +1046,7 @@ async def actualizar_compra(lista_id: str, req: CompraRequest):
         raise HTTPException(status_code=400, detail="estado inválido")
 
     async with _lock_de(lista_id):
-        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", _ids_org(req.user_id)).single().execute()
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
         if not proy.data:
             raise HTTPException(status_code=404, detail="Lista no encontrada")
         data = _parse_lista(proy.data)
@@ -1077,7 +1075,7 @@ async def actualizar_compra(lista_id: str, req: CompraRequest):
             try:
                 from app.services.supplier_capability_intelligence import registrar_evento_para_resultado
                 registrar_evento_para_resultado(
-                    req.user_id, definitivo["resultado_id"], "purchase_completed",
+                    ctx.actor_user_id, definitivo["resultado_id"], "purchase_completed",
                     {"lista_id": lista_id, "precio_real": req.precio_real, "origen": "lista_compra"},
                 )
             except Exception as e:
@@ -1116,14 +1114,13 @@ def _matchear_item(nombre_ocr: str, items_lista: list[dict]) -> Optional[str]:
 
 
 class BoletaScanRequest(BaseModel):
-    user_id: str
     imagen_base64: str
     imagen_mime: str = "image/jpeg"
     auto_marcar: bool = True  # marcar directo los ítems que la IA reconoció
 
 
 @router.post("/{lista_id}/boleta-scan")
-async def escanear_boleta(lista_id: str, req: BoletaScanRequest):
+async def escanear_boleta(lista_id: str, req: BoletaScanRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Recibe una foto de boleta/factura, la parsea con Gemini vision y (si
     `auto_marcar`) marca los ítems reconocidos como comprados con su precio
     real. Guarda la boleta en Supabase Storage (bucket `boletas`)."""
@@ -1139,7 +1136,7 @@ async def escanear_boleta(lista_id: str, req: BoletaScanRequest):
 
     # 1. Cargar la lista y armar el contexto de ítems para el prompt
     async with _lock_de(lista_id):
-        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", _ids_org(req.user_id)).single().execute()
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
         if not proy.data:
             raise HTTPException(status_code=404, detail="Lista no encontrada")
         data = _parse_lista(proy.data)
@@ -1185,7 +1182,7 @@ async def escanear_boleta(lista_id: str, req: BoletaScanRequest):
     boleta_url = None
     try:
         ext = "jpg" if "jpeg" in req.imagen_mime or "jpg" in req.imagen_mime else "png"
-        fname = f"{req.user_id}/{lista_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}.{ext}"
+        fname = f"{ctx.actor_user_id}/{lista_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}.{ext}"
         sb.storage.from_("boletas").upload(fname, base64.b64decode(req.imagen_base64), {
             "content-type": req.imagen_mime, "upsert": "true",
         })
@@ -1196,7 +1193,7 @@ async def escanear_boleta(lista_id: str, req: BoletaScanRequest):
     # 4. Matchear con los ítems de la lista y marcar como comprados
     matches: list[dict] = []
     async with _lock_de(lista_id):
-        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", _ids_org(req.user_id)).single().execute()
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
         data = _parse_lista(proy.data) or {}
         compras = data.setdefault("compras", {})
 
@@ -1226,7 +1223,7 @@ async def escanear_boleta(lista_id: str, req: BoletaScanRequest):
                 try:
                     from app.services.supplier_capability_intelligence import registrar_evento_para_resultado
                     registrar_evento_para_resultado(
-                        req.user_id, definitivo["resultado_id"], "purchase_completed",
+                        ctx.actor_user_id, definitivo["resultado_id"], "purchase_completed",
                         {"lista_id": lista_id, "precio_real": match.get("precio"), "origen": "boleta"},
                     )
                 except Exception as e:
@@ -1243,7 +1240,7 @@ async def escanear_boleta(lista_id: str, req: BoletaScanRequest):
 
 
 @router.get("/{lista_id}/informe")
-async def informe_lista(lista_id: str, user_id: str):
+async def informe_lista(lista_id: str, ctx: AuthContext = Depends(get_auth_context)):
     """Datos para el Informe de la lista: cada ítem con sus comparados
     (descripción scrapeada si falta), definitivo y totales."""
     import httpx
@@ -1251,7 +1248,10 @@ async def informe_lista(lista_id: str, user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    detalle = await detalle_lista(lista_id, user_id)
+    # detalle_lista sigue con su firma vieja (user_id plano) a propósito:
+    # cotizar/[id]/resultados/page.tsx (protegido, otra sesión) también la
+    # llama vía HTTP sin Bearer — migrarla rompería ese flujo.
+    detalle = await detalle_lista(lista_id, ctx.actor_user_id)
 
     # Scraping best-effort de descripciones faltantes (todas las de la lista)
     pendientes = [

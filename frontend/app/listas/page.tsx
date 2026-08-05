@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ListChecks } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import {
   PageHeader, Table, TableHead, TableRow, EmptyState, BtnPrimary, Badge, fmtCLP,
   SkeletonTableRow, CascadeWrapper,
@@ -44,7 +45,7 @@ export default function ListasPage() {
     createClient().auth.getUser().then(({ data }) => {
       const uid = data.user?.id;
       if (!uid) { setLoading(false); return; }
-      fetch(`${API_URL}/api/listas?user_id=${uid}`)
+      authFetch(`${API_URL}/api/listas`)
         .then(r => (r.ok ? r.json() : []))
         .then(setListas)
         .catch(() => {})
