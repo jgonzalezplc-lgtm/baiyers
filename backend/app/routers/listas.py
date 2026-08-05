@@ -789,7 +789,7 @@ async def _crear_y_enviar_solicitudes(sb, user_id: str, lista_id: str, lista_nom
     del Workflow Builder) y le envía su propio correo con magic link. Se usa
     tanto en la ronda inicial como cuando el workflow avanza a un tramo
     siguiente (ej: aprobación de finanzas tras la del jefe directo)."""
-    from app.routers.aprobaciones import solicitar_aprobacion as crear_solicitud
+    from app.routers.aprobaciones import _crear_solicitud_aprobacion
     from app.routers.aprobaciones import SolicitudRequest
     from app.services.gmail_service import get_gmail_service, send_email
 
@@ -808,8 +808,7 @@ async def _crear_y_enviar_solicitudes(sb, user_id: str, lista_id: str, lista_nom
 
     enviadas = []
     for responsable in resolucion["responsables_a_notificar"]:
-        sol = await crear_solicitud(SolicitudRequest(
-            user_id=user_id,
+        sol = _crear_solicitud_aprobacion(user_id, SolicitudRequest(
             referencia=f"lista:{lista_id}",
             resumen=resumen,
             aprobador_email=responsable["email"],
@@ -929,10 +928,9 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest):
         if not req.aprobador_email or not req.aprobador_email.strip():
             raise HTTPException(status_code=400, detail="No hay un ciclo de autorizaciones configurado con responsables asignados: ingresa el email del autorizador.")
 
-        from app.routers.aprobaciones import solicitar_aprobacion as crear_solicitud
+        from app.routers.aprobaciones import _crear_solicitud_aprobacion
         from app.routers.aprobaciones import SolicitudRequest
-        sol = await crear_solicitud(SolicitudRequest(
-            user_id=req.user_id,
+        sol = _crear_solicitud_aprobacion(req.user_id, SolicitudRequest(
             referencia=f"lista:{lista_id}",
             resumen=resumen,
             aprobador_email=req.aprobador_email,

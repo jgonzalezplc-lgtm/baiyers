@@ -11,9 +11,11 @@ import secrets
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/aprobaciones", tags=["aprobaciones"])
 
@@ -34,18 +36,17 @@ def _texto_notificacion_lista(decision: str, nombre: str, decidido_por: Optional
 # ─── Workflows ─────────────────────────────────────────────────────────────
 
 class WorkflowRequest(BaseModel):
-    user_id: str
     nombre: str = "Flujo por defecto"
     pasos: list[dict] = []          # [{orden, rol, nombre, email}]
     monto_minimo: float = 0
 
 
 @router.post("/workflows")
-async def crear_workflow(req: WorkflowRequest):
+async def crear_workflow(req: WorkflowRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
     ins = sb.table("approval_workflows").insert({
-        "user_id": req.user_id,
+        "user_id": ctx.actor_user_id,
         "nombre": req.nombre,
         "pasos": req.pasos,
         "monto_minimo": req.monto_minimo,
@@ -54,18 +55,16 @@ async def crear_workflow(req: WorkflowRequest):
 
 
 @router.get("/workflows")
-async def listar_workflows(user_id: str):
+async def listar_workflows(ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
-    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
-    res = sb.table("approval_workflows").select("*").in_("user_id", ids_organizacion(user_id)).eq("activo", True).execute()
+    res = sb.table("approval_workflows").select("*").in_("user_id", ctx.user_ids_organizacion).eq("activo", True).execute()
     return res.data or []
 
 
 # ─── Solicitudes de aprobación ─────────────────────────────────────────────
 
 class SolicitudRequest(BaseModel):
-    user_id: str
     referencia: str                  # "quote_supplier:<id>" | "oc:<id>"
     resumen: dict = {}               # snapshot de comparativa/OC para el correo
     aprobador_email: Optional[str] = None
@@ -79,9 +78,11 @@ class SolicitudRequest(BaseModel):
     responsable_id: Optional[str] = None
 
 
-@router.post("/solicitar")
-async def solicitar_aprobacion(req: SolicitudRequest):
-    """Crea la solicitud y devuelve el magic link para incluir en el correo."""
+def _crear_solicitud_aprobacion(user_id: str, req: SolicitudRequest) -> dict:
+    """Lógica real de /solicitar, separada del endpoint para poder llamarla
+    directamente desde listas.py (_crear_y_enviar_solicitudes) sin pasar por
+    la capa HTTP — ahí el `user_id` ya viene autorizado por el caller, así
+    que no depende de AuthContext (que solo se resuelve en un request real)."""
     from app.config import settings
     from app.services.supabase import get_supabase
     sb = get_supabase()
@@ -90,7 +91,7 @@ async def solicitar_aprobacion(req: SolicitudRequest):
     expira = (datetime.now(timezone.utc) + timedelta(days=req.dias_expiracion)).isoformat()
 
     ins = sb.table("approval_requests").insert({
-        "user_id": req.user_id,
+        "user_id": user_id,
         "workflow_id": req.workflow_id,
         "referencia": req.referencia,
         "resumen": req.resumen,
@@ -113,12 +114,17 @@ async def solicitar_aprobacion(req: SolicitudRequest):
     }
 
 
+@router.post("/solicitar")
+async def solicitar_aprobacion(req: SolicitudRequest, ctx: AuthContext = Depends(get_auth_context)):
+    """Crea la solicitud y devuelve el magic link para incluir en el correo."""
+    return _crear_solicitud_aprobacion(ctx.actor_user_id, req)
+
+
 @router.get("/solicitudes")
-async def listar_solicitudes(user_id: str, estado: Optional[str] = None):
+async def listar_solicitudes(estado: Optional[str] = None, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
-    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
-    q = sb.table("approval_requests").select("*").in_("user_id", ids_organizacion(user_id))
+    q = sb.table("approval_requests").select("*").in_("user_id", ctx.user_ids_organizacion)
     if estado:
         q = q.eq("estado", estado)
     res = q.order("created_at", desc=True).limit(100).execute()
