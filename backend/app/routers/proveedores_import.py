@@ -1,8 +1,10 @@
 import asyncio
 import io
 import json
-from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/proveedores", tags=["proveedores_import"])
 
@@ -37,10 +39,9 @@ async def descargar_plantilla():
 
 
 @router.post("/importar")
-async def importar_proveedores(file: UploadFile = File(...), user_id: str = ""):
+async def importar_proveedores(file: UploadFile = File(...), ctx: AuthContext = Depends(get_auth_context)):
     """Lee Excel/CSV, normaliza con Gemini y hace upsert en proveedores."""
-    if not user_id:
-        raise HTTPException(status_code=400, detail="user_id requerido")
+    user_id = ctx.actor_user_id
 
     try:
         import pandas as pd

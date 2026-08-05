@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import ReactMarkdown from "react-markdown";
 
@@ -59,7 +60,7 @@ export default function ChatPage() {
   }, [mensajes]);
 
   const cargarConversaciones = async (uid: string) => {
-    const res = await fetch(`${API_URL}/api/chat/conversaciones?user_id=${uid}`);
+    const res = await authFetch(`${API_URL}/api/chat/conversaciones`);
     if (res.ok) setConversaciones(await res.json());
   };
 
@@ -94,10 +95,10 @@ export default function ChatPage() {
     setMensajes(prev => [...prev, { rol: "user", contenido: msg }]);
 
     try {
-      const res = await fetch(`${API_URL}/api/chat/mensaje`, {
+      const res = await authFetch(`${API_URL}/api/chat/mensaje`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mensaje: msg, conversacion_id: convActiva, user_id: userId }),
+        body: JSON.stringify({ mensaje: msg, conversacion_id: convActiva }),
       });
       if (!res.ok) throw new Error();
       const data = await res.json();
@@ -128,7 +129,7 @@ export default function ChatPage() {
 
   const eliminarConversacion = async (convId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    await fetch(`${API_URL}/api/chat/conversaciones/${convId}?user_id=${userId}`, { method: "DELETE" });
+    await authFetch(`${API_URL}/api/chat/conversaciones/${convId}`, { method: "DELETE" });
     if (convActiva === convId) nuevaConversacion();
     if (userId) cargarConversaciones(userId);
   };

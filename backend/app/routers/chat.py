@@ -2,8 +2,10 @@
 import asyncio
 import json
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -11,7 +13,6 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 class MensajeRequest(BaseModel):
     mensaje: str
     conversacion_id: Optional[str] = None
-    user_id: str
 
 
 def _cargar_contexto_usuario(user_id: str) -> dict:
@@ -70,7 +71,7 @@ async def _ejecutar_sql_seguro(sql: str, user_id: str) -> list[dict]:
 
 
 @router.post("/mensaje")
-async def enviar_mensaje(req: MensajeRequest):
+async def enviar_mensaje(req: MensajeRequest, auth_ctx: AuthContext = Depends(get_auth_context)):
     from app.config import settings
     from app.services.supabase import get_supabase
     import google.generativeai as genai
@@ -85,7 +86,7 @@ async def enviar_mensaje(req: MensajeRequest):
     if not conv_id:
         # Crear nueva conversación
         conv = sb.table("chat_conversaciones").insert({
-            "user_id": req.user_id,
+            "user_id": auth_ctx.actor_user_id,
             "titulo": req.mensaje[:60],
         }).execute()
         conv_id = conv.data[0]["id"] if conv.data else None
@@ -99,7 +100,7 @@ async def enviar_mensaje(req: MensajeRequest):
         historial = msgs.data or []
 
     # ── Contexto del usuario ──────────────────────────────────────────────────
-    ctx = _cargar_contexto_usuario(req.user_id)
+    ctx = _cargar_contexto_usuario(auth_ctx.actor_user_id)
 
     # ── Prompt ────────────────────────────────────────────────────────────────
     system_prompt = f"""Eres Claria, asistente de compras e inteligencia de proveedores.
@@ -176,18 +177,18 @@ Si no tienes suficientes datos para responder precisamente, dilo honestamente.""
 
 
 @router.get("/conversaciones")
-async def listar_conversaciones(user_id: str):
+async def listar_conversaciones(ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    res = sb.table("chat_conversaciones").select("*").eq("user_id", user_id).order("updated_at", desc=True).limit(30).execute()
+    res = sb.table("chat_conversaciones").select("*").eq("user_id", ctx.actor_user_id).order("updated_at", desc=True).limit(30).execute()
     return res.data or []
 
 
 @router.delete("/conversaciones/{conv_id}")
-async def eliminar_conversacion(conv_id: str, user_id: str):
+async def eliminar_conversacion(conv_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    sb.table("chat_conversaciones").delete().eq("id", conv_id).eq("user_id", user_id).execute()
+    sb.table("chat_conversaciones").delete().eq("id", conv_id).eq("user_id", ctx.actor_user_id).execute()
     return {"ok": True}
 
 

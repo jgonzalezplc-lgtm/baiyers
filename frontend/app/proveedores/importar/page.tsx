@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -43,7 +44,7 @@ export default function ImportarProveedoresPage() {
     try {
       const form = new FormData();
       form.append("file", archivo);
-      const res = await fetch(`${API_URL}/api/proveedores/importar?user_id=${userId}`, {
+      const res = await authFetch(`${API_URL}/api/proveedores/importar`, {
         method: "POST",
         body: form,
       });
