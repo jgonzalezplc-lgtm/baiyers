@@ -1,5 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/calendario", tags=["calendario"])
 
@@ -8,14 +10,14 @@ from typing import Optional
 
 
 @router.get("/eventos")
-async def get_eventos(user_id: str, fecha_inicio: str, fecha_fin: str,
-                      tipo: Optional[str] = None, proveedor: Optional[str] = None):
+async def get_eventos(fecha_inicio: str, fecha_fin: str,
+                      tipo: Optional[str] = None, proveedor: Optional[str] = None,
+                      ctx: AuthContext = Depends(get_auth_context)):
     """Agrega eventos de todas las tablas para el rango de fechas dado.
     Filtros opcionales (v2): tipo (csv de tipos) y proveedor (substring)."""
     from app.services.supabase import get_supabase
-    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
-    ids = ids_organizacion(user_id)
+    ids = ctx.user_ids_organizacion
     eventos = []
 
     # ── Cotizaciones ──────────────────────────────────────────────────────────

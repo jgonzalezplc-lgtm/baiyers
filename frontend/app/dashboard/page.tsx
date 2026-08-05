@@ -75,10 +75,13 @@ export default async function DashboardPage({
   searchParams: Promise<{ gmail?: string }>;
 }) {
   let user;
+  let accessToken: string | undefined;
   try {
     const supabase = await createClient();
     const { data } = await supabase.auth.getUser();
     user = data.user;
+    const { data: sessionData } = await supabase.auth.getSession();
+    accessToken = sessionData.session?.access_token;
   } catch (e) {
     console.error("[dashboard] auth.getUser tiró:", (e as Error).message);
     redirect("/login");
@@ -114,11 +117,14 @@ export default async function DashboardPage({
   let autorizacionEstado: EstadoIndicador = "desconectado";
   let autorizacionDetalle = "Sin ciclo de autorización configurado.";
 
-  const fetchConTimeout = async (url: string, ms = 5000): Promise<Response | null> => {
+  const fetchConTimeout = async (url: string, ms = 5000, auth = false): Promise<Response | null> => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), ms);
     try {
-      return await fetch(url, { cache: "no-store", signal: ctrl.signal });
+      return await fetch(url, {
+        cache: "no-store", signal: ctrl.signal,
+        headers: auth && accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+      });
     } catch (e) {
       console.warn(`[dashboard SSR] fetch falló: ${url}`, (e as Error).message);
       return null;
@@ -129,7 +135,7 @@ export default async function DashboardPage({
 
   try {
     const [statsRes, cotRes, gmailRes, workflowsRes] = await Promise.all([
-      fetchConTimeout(`${API_URL}/api/dashboard/stats?user_id=${user.id}`),
+      fetchConTimeout(`${API_URL}/api/dashboard/stats`, 5000, true),
       fetchConTimeout(`${API_URL}/api/listas?user_id=${user.id}`),
       fetchConTimeout(`${API_URL}/api/gmail/status?user_id=${user.id}`),
       fetchConTimeout(`${API_URL}/api/workflows/estado/resumen?user_id=${user.id}`),

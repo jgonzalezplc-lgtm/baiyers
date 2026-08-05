@@ -1,7 +1,16 @@
-"""MCP tool: buscar_proveedores — lista proveedores con scores."""
-import httpx
+"""MCP tool: buscar_proveedores — lista proveedores con scores.
 
-API_BASE = "http://localhost:8000"
+No llama al backend por HTTP a sí mismo (localhost hardcodeado) — llama
+directo a la capa de datos en el mismo proceso, igual patrón que
+`routers/suppliers.py`. Evita el antipatrón que señala
+PLAN_DATA_FOUNTATION.md y evita que este tool dependa de que
+`/api/suppliers` acepte auth por query param (ya no lo hace, requiere
+AuthContext verificado — un MCP tool no tiene ese contexto HTTP).
+
+Pendiente real (Fase 4 del plan, no resuelto acá): `user_id` sigue siendo
+un parámetro libre que cualquier cliente MCP puede mandar — falta que las
+tools MCP se autentiquen con su propio token y resuelvan el usuario desde
+ahí, en vez de confiar en lo que declara el propio tool call."""
 
 
 async def buscar_proveedores(
@@ -22,18 +31,16 @@ async def buscar_proveedores(
     Returns:
         Lista de proveedores con nombre, rubro, score, email y telefono
     """
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            params = {"user_id": user_id}
-            if rubro:
-                params["rubro"] = rubro
-            if ciudad:
-                params["ciudad"] = ciudad
+    try:
+        from app.services.supabase import get_supabase
+        from app.services.organizacion import ids_organizacion
 
-            resp = await client.get(f"{API_BASE}/api/suppliers", params=params)
-            data = resp.json() if resp.status_code == 200 else []
-        except Exception:
-            data = []
+        sb = get_supabase()
+        data = sb.table("proveedores").select("*").in_(
+            "user_id", ids_organizacion(user_id)
+        ).order("score", desc=True).execute().data or []
+    except Exception:
+        data = []
 
     proveedores = data if isinstance(data, list) else data.get("proveedores", [])
 

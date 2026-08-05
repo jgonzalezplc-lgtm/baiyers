@@ -16,8 +16,10 @@ Columnas reales:
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api", tags=["cotizaciones"])
 
@@ -25,11 +27,10 @@ router = APIRouter(prefix="/api", tags=["cotizaciones"])
 # ─── Dashboard stats ──────────────────────────────────────────────────────────
 
 @router.get("/dashboard/stats")
-async def dashboard_stats(user_id: str):
+async def dashboard_stats(ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
-    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
-    ids = ids_organizacion(user_id)
+    ids = ctx.user_ids_organizacion
 
     now = datetime.now(timezone.utc)
     mes_inicio = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
@@ -78,11 +79,10 @@ async def dashboard_stats(user_id: str):
 # ─── Listar cotizaciones ───────────────────────────────────────────────────────
 
 @router.get("/cotizaciones")
-async def listar_cotizaciones(user_id: str, limit: int = 100):
+async def listar_cotizaciones(limit: int = 100, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
-    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
-    ids = ids_organizacion(user_id)
+    ids = ctx.user_ids_organizacion
 
     # confianza_ia puede no existir si no se corrió la migración aún
     try:
@@ -262,21 +262,19 @@ async def detalle_cotizacion(cotizacion_id: str):
 # ─── Agregar proveedor del directorio propio ──────────────────────────────────
 
 class AgregarProveedorDirectorioRequest(BaseModel):
-    user_id: str
     proveedor_id: str
     contacto_id: Optional[str] = None
 
 
 @router.post("/cotizaciones/{cotizacion_id}/proveedor-directorio")
-async def agregar_proveedor_directorio(cotizacion_id: str, req: AgregarProveedorDirectorioRequest):
+async def agregar_proveedor_directorio(cotizacion_id: str, req: AgregarProveedorDirectorioRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Suma un proveedor del directorio propio (/proveedores) como resultado de
     esta cotización, para poder cotizarle igual que a uno encontrado por el
     buscador. No pasa por scraping — usa el email de contacto ya guardado."""
     from app.services.supabase import get_supabase
-    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
 
-    prov = sb.table("proveedores").select("*").eq("id", req.proveedor_id).in_("user_id", ids_organizacion(req.user_id)).maybe_single().execute().data
+    prov = sb.table("proveedores").select("*").eq("id", req.proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
     if not prov:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 

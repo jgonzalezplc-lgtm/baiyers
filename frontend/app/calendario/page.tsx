@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -56,7 +57,7 @@ export default function CalendarioPage() {
   const cargarEventos = useCallback(async (uid: string, desde: string, hasta: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/calendario/eventos?user_id=${uid}&fecha_inicio=${desde}&fecha_fin=${hasta}`);
+      const res = await authFetch(`${API_URL}/api/calendario/eventos?fecha_inicio=${desde}&fecha_fin=${hasta}`);
       if (res.ok) setEventos(await res.json());
     } catch { /* silent */ } finally { setLoading(false); }
   }, []);
