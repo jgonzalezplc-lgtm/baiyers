@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Check, Mail, Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import { Badge, BtnPrimary, BtnSecondary, Card, CategoryChip, EmptyState, Input, PageHeader, SkeletonBox, CascadeWrapper, Textarea } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -24,7 +25,7 @@ export default function RevisarRFQPage() {
   const cargar = useCallback(async (uid: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/listas/${id}/rfq?user_id=${uid}`);
+      const res = await authFetch(`${API_URL}/api/listas/${id}/rfq`);
       const data = await res.json(); if (!res.ok) throw new Error(data.detail);
       setBatches(data.batches || []);
     } catch (e) { setMensaje(e instanceof Error ? e.message : "No pudimos cargar los borradores"); }
@@ -37,7 +38,7 @@ export default function RevisarRFQPage() {
 
   const guardar = async (batch: RFQBatch): Promise<boolean> => {
     if (!userId) return false;
-    const res = await fetch(`${API_URL}/api/listas/${id}/rfq/${batch.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId, destinatario_email: batch.destinatario_email, subject: batch.subject, body: batch.body }) });
+    const res = await authFetch(`${API_URL}/api/listas/${id}/rfq/${batch.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ destinatario_email: batch.destinatario_email, subject: batch.subject, body: batch.body }) });
     const data = await res.json();
     if (!res.ok) { setMensaje(data.detail || "No pudimos guardar el borrador"); return false; }
     setBatches(prev => prev.map(b => b.id === batch.id ? { ...b, ...data } : b));
@@ -49,7 +50,7 @@ export default function RevisarRFQPage() {
     setOcupado(batch.id); setMensaje("");
     try {
       if (!(await guardar(batch))) return;
-      const res = await fetch(`${API_URL}/api/listas/${id}/rfq/${batch.id}/enviar`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId }) });
+      const res = await authFetch(`${API_URL}/api/listas/${id}/rfq/${batch.id}/enviar`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
       const data = await res.json(); if (!res.ok) throw new Error(data.detail);
       setBatches(prev => prev.map(b => b.id === batch.id ? { ...b, estado: "sent", sent_at: new Date().toISOString() } : b));
       setMensaje(`Correo enviado a ${batch.proveedor.nombre || batch.destinatario_email}.`);

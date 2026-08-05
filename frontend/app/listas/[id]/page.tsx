@@ -5,6 +5,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { ArrowLeft, Check, Send, Wand2, Camera, ShoppingBag, Mail, ExternalLink, Network, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import { Card, Badge, BtnPrimary, BtnSecondary, SummaryPanel, Input, SkeletonBox, SkeletonText, CascadeWrapper } from "@/components/ui";
 import { useMiembrosOrg } from "@/lib/useMiembrosOrg";
 
@@ -236,9 +237,9 @@ export default function ListaDetallePage() {
     if (!userId) return;
     setPreparandoComparacion(true);
     try {
-      const res = await fetch(`${API_URL}/api/listas/${id}/rfq/preparar`, {
+      const res = await authFetch(`${API_URL}/api/listas/${id}/rfq/preparar`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId }),
+        body: JSON.stringify({}),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "No se pudo preparar la comparación");

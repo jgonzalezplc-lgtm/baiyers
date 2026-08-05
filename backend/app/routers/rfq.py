@@ -7,10 +7,11 @@ propio para que el agente de respuestas actualice el comparador existente.
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.routers.listas import _lock_de, _parse_lista
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/listas", tags=["rfq"])
 
@@ -64,15 +65,15 @@ def _resultado_para_item(sb, cotizacion_id: str, proveedor: dict, email: str) ->
 
 
 class PrepararRFQRequest(BaseModel):
-    user_id: str
+    pass
 
 
 @router.post("/{lista_id}/rfq/preparar")
-async def preparar_rfq(lista_id: str, req: PrepararRFQRequest):
+async def preparar_rfq(lista_id: str, req: PrepararRFQRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
     async with _lock_de(lista_id):
-        proyecto = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", _ids_org(req.user_id)).maybe_single().execute().data
+        proyecto = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
         data = _parse_lista(proyecto or {})
         if not data:
             raise HTTPException(status_code=404, detail="Lista no encontrada")
@@ -89,14 +90,14 @@ async def preparar_rfq(lista_id: str, req: PrepararRFQRequest):
         preparados = []
         for seleccion in selecciones:
             proveedor_id = seleccion["proveedor_id"]
-            proveedor = sb.table("proveedores").select("*").eq("id", proveedor_id).in_("user_id", _ids_org(req.user_id)).eq("bloqueado", False).maybe_single().execute().data
+            proveedor = sb.table("proveedores").select("*").eq("id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).eq("bloqueado", False).maybe_single().execute().data
             if not proveedor:
                 continue
             contacto = None
             if seleccion.get("contacto_id"):
-                contacto = sb.table("proveedor_contactos").select("*").eq("id", seleccion["contacto_id"]).eq("proveedor_id", proveedor_id).in_("user_id", _ids_org(req.user_id)).maybe_single().execute().data
+                contacto = sb.table("proveedor_contactos").select("*").eq("id", seleccion["contacto_id"]).eq("proveedor_id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
             if not contacto:
-                principales = sb.table("proveedor_contactos").select("*").eq("proveedor_id", proveedor_id).in_("user_id", _ids_org(req.user_id)).eq("es_principal", True).limit(1).execute().data or []
+                principales = sb.table("proveedor_contactos").select("*").eq("proveedor_id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).eq("es_principal", True).limit(1).execute().data or []
                 contacto = principales[0] if principales else None
             email = (contacto or {}).get("email") or proveedor.get("email")
             if not email:
@@ -122,7 +123,7 @@ async def preparar_rfq(lista_id: str, req: PrepararRFQRequest):
             clave = f"lista:{lista_id}:proveedor:{proveedor_id}:v1"
             respuesta_existente = (
                 sb.table("rfq_batches").select("*")
-                .in_("user_id", _ids_org(req.user_id))
+                .in_("user_id", ctx.user_ids_organizacion)
                 .eq("clave_idempotencia", clave).maybe_single().execute()
             )
             # Algunas versiones de postgrest-py devuelven None (no un objeto
@@ -133,7 +134,7 @@ async def preparar_rfq(lista_id: str, req: PrepararRFQRequest):
                 continue
             subject, body = _correo_default(proyecto.get("nombre") or "Cotización", proveedor["nombre"], items)
             row = {
-                "user_id": req.user_id, "lista_proyecto_id": lista_id,
+                "user_id": ctx.actor_user_id, "lista_proyecto_id": lista_id,
                 "proveedor_id": proveedor_id, "contacto_id": (contacto or {}).get("id"),
                 "destinatario_email": email, "subject": subject, "body": body,
                 "estado": "draft", "clave_idempotencia": clave, "updated_at": _now(),
@@ -182,23 +183,22 @@ def _listar_batches(sb, lista_id: str, user_id: str) -> list[dict]:
 
 
 @router.get("/{lista_id}/rfq")
-async def listar_rfq(lista_id: str, user_id: str):
+async def listar_rfq(lista_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
-    return {"batches": _listar_batches(get_supabase(), lista_id, user_id)}
+    return {"batches": _listar_batches(get_supabase(), lista_id, ctx.actor_user_id)}
 
 
 class EditarRFQRequest(BaseModel):
-    user_id: str
     destinatario_email: str
     subject: str
     body: str
 
 
 @router.patch("/{lista_id}/rfq/{batch_id}")
-async def editar_rfq(lista_id: str, batch_id: str, req: EditarRFQRequest):
+async def editar_rfq(lista_id: str, batch_id: str, req: EditarRFQRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    batch = sb.table("rfq_batches").select("id,estado").eq("id", batch_id).eq("lista_proyecto_id", lista_id).in_("user_id", _ids_org(req.user_id)).maybe_single().execute().data
+    batch = sb.table("rfq_batches").select("id,estado").eq("id", batch_id).eq("lista_proyecto_id", lista_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
     if not batch:
         raise HTTPException(status_code=404, detail="Borrador no encontrado")
     if batch["estado"] not in ("draft", "ready_to_send", "failed"):
@@ -215,16 +215,16 @@ async def editar_rfq(lista_id: str, batch_id: str, req: EditarRFQRequest):
 
 
 class EnviarRFQRequest(BaseModel):
-    user_id: str
+    pass
 
 
 @router.post("/{lista_id}/rfq/{batch_id}/enviar")
-async def enviar_rfq(lista_id: str, batch_id: str, req: EnviarRFQRequest):
+async def enviar_rfq(lista_id: str, batch_id: str, req: EnviarRFQRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.gmail_service import get_gmail_service, send_email
     from app.services.supabase import get_supabase
     from app.services.supplier_capability_intelligence import registrar_evento
     sb = get_supabase()
-    batch = sb.table("rfq_batches").select("*").eq("id", batch_id).eq("lista_proyecto_id", lista_id).in_("user_id", _ids_org(req.user_id)).maybe_single().execute().data
+    batch = sb.table("rfq_batches").select("*").eq("id", batch_id).eq("lista_proyecto_id", lista_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
     if not batch:
         raise HTTPException(status_code=404, detail="RFQ no encontrada")
     if batch["estado"] == "sent":
@@ -233,14 +233,14 @@ async def enviar_rfq(lista_id: str, batch_id: str, req: EnviarRFQRequest):
         raise HTTPException(status_code=409, detail="El estado del envío requiere revisión para evitar duplicados")
 
     # user_integrations es personal — cada usuario conecta su propio Gmail; no se comparte a la organización.
-    integration = sb.table("user_integrations").select("*").eq("user_id", req.user_id).eq("provider", "gmail").maybe_single().execute().data
+    integration = sb.table("user_integrations").select("*").eq("user_id", ctx.actor_user_id).eq("provider", "gmail").maybe_single().execute().data
     if not integration or not integration.get("refresh_token"):
         raise HTTPException(status_code=400, detail="Gmail no está conectado")
     sb.table("rfq_batches").update({"estado": "sending", "error_detalle": None, "updated_at": _now()}).eq("id", batch_id).execute()
     try:
         service, creds = get_gmail_service(integration["access_token"], integration["refresh_token"])
         if creds.token != integration["access_token"]:
-            sb.table("user_integrations").update({"access_token": creds.token, "token_expiry": creds.expiry.isoformat() if creds.expiry else None}).eq("user_id", req.user_id).eq("provider", "gmail").execute()
+            sb.table("user_integrations").update({"access_token": creds.token, "token_expiry": creds.expiry.isoformat() if creds.expiry else None}).eq("user_id", ctx.actor_user_id).eq("provider", "gmail").execute()
         msg = send_email(service, batch["destinatario_email"], batch["subject"], batch["body"], integration["email"])
     except Exception as e:
         sb.table("rfq_batches").update({"estado": "delivery_uncertain", "error_detalle": str(e)[:1000], "updated_at": _now()}).eq("id", batch_id).execute()
@@ -248,9 +248,9 @@ async def enviar_rfq(lista_id: str, batch_id: str, req: EnviarRFQRequest):
 
     now = _now()
     try:
-        proveedor = sb.table("proveedores").select("nombre").eq("id", batch["proveedor_id"]).in_("user_id", _ids_org(req.user_id)).maybe_single().execute().data or {}
+        proveedor = sb.table("proveedores").select("nombre").eq("id", batch["proveedor_id"]).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data or {}
         conv = sb.table("gmail_conversations").upsert({
-            "user_id": req.user_id, "gmail_thread_id": msg.get("threadId"),
+            "user_id": ctx.actor_user_id, "gmail_thread_id": msg.get("threadId"),
             "proveedor_id": batch["proveedor_id"], "contacto_id": batch.get("contacto_id"),
             "proveedor_nombre": proveedor.get("nombre"),
             "proveedor_email": batch["destinatario_email"], "lista_proyecto_id": lista_id,
@@ -266,14 +266,14 @@ async def enviar_rfq(lista_id: str, batch_id: str, req: EnviarRFQRequest):
         items = sb.table("rfq_batch_items").select("*").eq("rfq_batch_id", batch_id).execute().data or []
         try:
             from app.services.supplier_intelligence import registrar_solicitud
-            registrar_solicitud(req.user_id, proveedor.get("nombre") or "", batch["destinatario_email"])
+            registrar_solicitud(ctx.actor_user_id, proveedor.get("nombre") or "", batch["destinatario_email"])
         except Exception as e:
             print(f"[RFQ] supplier intelligence legacy: {e}")
         for item in items:
             sb.table("resultados").update({"solicitud_enviada_at": now, "estado": "contactado", "proveedor_email": batch["destinatario_email"]}).eq("id", item["resultado_id"]).execute()
             sb.table("rfq_batch_items").update({"estado": "sent", "updated_at": now}).eq("id", item["id"]).execute()
             cot = sb.table("cotizaciones").select("categoria").eq("id", item["cotizacion_id"]).maybe_single().execute().data or {}
-            registrar_evento(req.user_id, batch["proveedor_id"], "supplier_selected_for_rfq", resultado_id=item["resultado_id"], cotizacion_id=item["cotizacion_id"], categoria_confirmada=cot.get("categoria"), metadata={"rfq_batch_id": batch_id})
+            registrar_evento(ctx.actor_user_id, batch["proveedor_id"], "supplier_selected_for_rfq", resultado_id=item["resultado_id"], cotizacion_id=item["cotizacion_id"], categoria_confirmada=cot.get("categoria"), metadata={"rfq_batch_id": batch_id})
         sb.table("rfq_batches").update({
             "conversation_id": conv["id"], "gmail_message_id": msg.get("id"),
             "gmail_thread_id": msg.get("threadId"), "estado": "sent", "sent_at": now, "updated_at": now,

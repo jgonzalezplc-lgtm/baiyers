@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Building2, Check, Mail, Save, Search, Send, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import { Badge, BtnPrimary, BtnSecondary, Card, CategoryChip, EmptyState, PageHeader, SkeletonBox, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -73,7 +74,7 @@ export default function ProveedoresConfianzaPage() {
     setPreparando(true);
     try {
       if (!(await guardar())) return;
-      const res = await fetch(`${API_URL}/api/listas/${id}/rfq/preparar`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId }) });
+      const res = await authFetch(`${API_URL}/api/listas/${id}/rfq/preparar`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
       const data = await res.json(); if (!res.ok) throw new Error(data.detail);
       router.push(`/listas/${id}/rfq`);
     } catch (e) { setMensaje(e instanceof Error ? e.message : "No pudimos preparar los correos"); }
