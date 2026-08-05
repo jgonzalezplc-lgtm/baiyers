@@ -459,6 +459,7 @@ export default function CotizarPage() {
             onSubmit={handleIdentificar}
             loading={false}
             initialDescripcion={lastDescripcion}
+            initialAdjunto={lastAdjunto}
           />
         </div>
       </div>

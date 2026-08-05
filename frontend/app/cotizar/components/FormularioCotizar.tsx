@@ -8,6 +8,7 @@ interface Props {
   onSubmit: (descripcion: string, adjunto: AdjuntoCotizacion | null) => void;
   loading: boolean;
   initialDescripcion?: string;
+  initialAdjunto?: AdjuntoCotizacion | null;
 }
 
 const EJEMPLOS = [
@@ -16,9 +17,9 @@ const EJEMPLOS = [
   "Materiales para construir una bodega de 20m²",
 ];
 
-export default function FormularioCotizar({ onSubmit, loading, initialDescripcion = "" }: Props) {
+export default function FormularioCotizar({ onSubmit, loading, initialDescripcion = "", initialAdjunto = null }: Props) {
   const [descripcion, setDescripcion] = useState(initialDescripcion);
-  const [adjunto, setAdjunto] = useState<AdjuntoCotizacion | null>(null);
+  const [adjunto, setAdjunto] = useState<AdjuntoCotizacion | null>(initialAdjunto);
   const [dragging, setDragging] = useState(false);
   const [focus, setFocus] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);

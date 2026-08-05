@@ -297,7 +297,7 @@ def _es_error_modelo_no_disponible(exc: Exception) -> bool:
 async def identificar_item(req: IdentificarRequest):
     # Las recetas conocidas no dependen del LLM: cálculo, unidades y redondeos son
     # reproducibles. Esto también permite continuar sin reenviar una imagen.
-    if req.modo_cubicacion_conversacional and req.descripcion:
+    if req.modo_cubicacion_conversacional and req.descripcion and not req.archivo_base64:
         from app.services.cubicacion import flujo_determinista
         try:
             resultado_cubicacion = flujo_determinista(req.descripcion, req.respuestas_cubicacion)
@@ -347,7 +347,7 @@ async def identificar_item(req: IdentificarRequest):
             )
 
     prompt = PROMPT
-    if req.modo_cubicacion_conversacional:
+    if req.modo_cubicacion_conversacional and not req.archivo_base64:
         prompt += PROMPT_CUBICACION_CONVERSACIONAL
     if req.industria_empresa:
         prompt += (
@@ -399,14 +399,14 @@ async def identificar_item(req: IdentificarRequest):
         try:
             response = await asyncio.wait_for(
                 model.generate_content_async(parts),
-                timeout=45.0,
+                timeout=120.0 if req.archivo_base64 else 45.0,
             )
             text = _limpiar_json(response.text)
             usage = getattr(response, "usage_metadata", None)
             from app.services.control_plane_telemetry import registrar_uso_ia
             asyncio.create_task(asyncio.to_thread(
                 registrar_uso_ia,
-                feature="identificacion_cubicacion" if req.modo_cubicacion_conversacional else "identificacion",
+                feature="identificacion_documento" if req.archivo_base64 else ("identificacion_cubicacion" if req.modo_cubicacion_conversacional else "identificacion"),
                 provider="google",
                 requested_model=modelos[0],
                 effective_model=nombre_modelo,
@@ -418,7 +418,7 @@ async def identificar_item(req: IdentificarRequest):
                 user_id=req.user_id,
                 correlation_id=correlation_id,
                 metadata={
-                    "modo": "cubicacion" if req.modo_cubicacion_conversacional else "identificacion",
+                    "modo": "documento" if req.archivo_base64 else ("cubicacion" if req.modo_cubicacion_conversacional else "identificacion"),
                     "attribution_verified": False,
                 },
             ))
@@ -427,18 +427,23 @@ async def identificar_item(req: IdentificarRequest):
             from app.services.control_plane_telemetry import registrar_uso_ia
             asyncio.create_task(asyncio.to_thread(
                 registrar_uso_ia,
-                feature="identificacion_cubicacion" if req.modo_cubicacion_conversacional else "identificacion",
+                feature="identificacion_documento" if req.archivo_base64 else ("identificacion_cubicacion" if req.modo_cubicacion_conversacional else "identificacion"),
                 provider="google", requested_model=modelos[0], effective_model=nombre_modelo,
                 latency_ms=int((time.perf_counter() - intento_inicio) * 1000), status="timeout",
                 user_id=req.user_id, correlation_id=correlation_id, error=exc,
                 metadata={"attribution_verified": False},
             ))
-            raise HTTPException(status_code=504, detail="La cubicación está tomando más de lo esperado. Tus respuestas se conservaron; intenta nuevamente.")
+            detalle_timeout = (
+                "El documento está tomando más de lo esperado. El archivo se conservó; intenta nuevamente."
+                if req.archivo_base64 else
+                "La cubicación está tomando más de lo esperado. Tus respuestas se conservaron; intenta nuevamente."
+            )
+            raise HTTPException(status_code=504, detail=detalle_timeout)
         except Exception as exc:
             from app.services.control_plane_telemetry import registrar_uso_ia
             asyncio.create_task(asyncio.to_thread(
                 registrar_uso_ia,
-                feature="identificacion_cubicacion" if req.modo_cubicacion_conversacional else "identificacion",
+                feature="identificacion_documento" if req.archivo_base64 else ("identificacion_cubicacion" if req.modo_cubicacion_conversacional else "identificacion"),
                 provider="google", requested_model=modelos[0], effective_model=nombre_modelo,
                 latency_ms=int((time.perf_counter() - intento_inicio) * 1000), status="error",
                 user_id=req.user_id, correlation_id=correlation_id, error=exc,
@@ -466,7 +471,7 @@ async def identificar_item(req: IdentificarRequest):
                     "El intento anterior produjo JSON inválido. Reprocesa el documento completo desde cero, "
                     "devuelve únicamente JSON válido y compacto, e incluye todas las filas cotizables."
                 ]),
-                timeout=60.0,
+                timeout=120.0,
             )
             result = json.loads(_limpiar_json(reintento.text))
         except (asyncio.TimeoutError, json.JSONDecodeError, Exception) as exc:
