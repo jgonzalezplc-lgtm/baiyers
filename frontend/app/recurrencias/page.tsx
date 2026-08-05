@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import dynamic from "next/dynamic";
 
 const RecurrenciaModal = dynamic(() => import("@/components/RecurrenciaModal"), { ssr: false });
@@ -52,7 +53,7 @@ export default function RecurrenciasPage() {
   const cargar = async (uid: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/recurrencias?user_id=${uid}`);
+      const res = await authFetch(`${API_URL}/api/recurrencias`);
       if (res.ok) setRecurrencias(await res.json());
     } catch { /* silent */ } finally { setLoading(false); }
   };
@@ -62,7 +63,7 @@ export default function RecurrenciasPage() {
   const handleToggle = async (r: Recurrencia) => {
     if (!userId) return;
     try {
-      const res = await fetch(`${API_URL}/api/recurrencias/${r.id}/toggle?user_id=${userId}`, { method: "PATCH" });
+      const res = await authFetch(`${API_URL}/api/recurrencias/${r.id}/toggle`, { method: "PATCH" });
       if (res.ok) {
         const { activa } = await res.json();
         setRecurrencias(prev => prev.map(x => x.id === r.id ? { ...x, activa } : x));
@@ -74,7 +75,7 @@ export default function RecurrenciasPage() {
   const handleEliminar = async (r: Recurrencia) => {
     if (!userId || !confirm(`Eliminar "${r.nombre}"?`)) return;
     try {
-      await fetch(`${API_URL}/api/recurrencias/${r.id}?user_id=${userId}`, { method: "DELETE" });
+      await authFetch(`${API_URL}/api/recurrencias/${r.id}`, { method: "DELETE" });
       setRecurrencias(prev => prev.filter(x => x.id !== r.id));
       showToast("Recurrencia eliminada");
     } catch { showToast("Error eliminando"); }
@@ -84,7 +85,7 @@ export default function RecurrenciasPage() {
     if (!userId) return;
     setEjecutando(r.id);
     try {
-      const res = await fetch(`${API_URL}/api/recurrencias/${r.id}/ejecutar?user_id=${userId}`, { method: "POST" });
+      const res = await authFetch(`${API_URL}/api/recurrencias/${r.id}/ejecutar`, { method: "POST" });
       const data = await res.json();
       showToast(data.resultado || "Ejecutada");
       cargar(userId);

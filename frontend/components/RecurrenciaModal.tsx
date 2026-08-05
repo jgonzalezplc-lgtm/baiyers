@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { authFetch } from "@/lib/authFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -50,7 +51,7 @@ export default function RecurrenciaModal({ userId, recurrencia, onGuardado, onCe
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch(`${API_URL}/api/suppliers?user_id=${userId}`)
+    authFetch(`${API_URL}/api/suppliers`)
       .then(r => r.json())
       .then(data => setProveedores(data))
       .catch(() => {});
@@ -64,7 +65,6 @@ export default function RecurrenciaModal({ userId, recurrencia, onGuardado, onCe
     setError("");
 
     const payload = {
-      user_id: userId,
       nombre: nombre.trim(),
       items: items.trim(),
       frecuencia,
@@ -81,7 +81,7 @@ export default function RecurrenciaModal({ userId, recurrencia, onGuardado, onCe
         : `${API_URL}/api/recurrencias`;
       const method = recurrencia?.id ? "PUT" : "POST";
 
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer
@@ -102,12 +103,12 @@ export default function EstadisticasPage() {
     const base = `${API_URL}/api/estadisticas`;
     try {
       const [r1, r2, r3, r4, r5, r6] = await Promise.all([
-        fetch(`${base}/resumen?user_id=${uid}`).then(r => r.json()),
-        fetch(`${base}/gastos-mensuales?user_id=${uid}`).then(r => r.json()),
-        fetch(`${base}/por-categoria?user_id=${uid}`).then(r => r.json()),
-        fetch(`${base}/top-proveedores?user_id=${uid}`).then(r => r.json()),
-        fetch(`${base}/liquidez?user_id=${uid}`).then(r => r.json()),
-        fetch(`${base}/proveedores-historico?user_id=${uid}`).then(r => r.json()),
+        authFetch(`${base}/resumen`).then(r => r.json()),
+        authFetch(`${base}/gastos-mensuales`).then(r => r.json()),
+        authFetch(`${base}/por-categoria`).then(r => r.json()),
+        authFetch(`${base}/top-proveedores`).then(r => r.json()),
+        authFetch(`${base}/liquidez`).then(r => r.json()),
+        authFetch(`${base}/proveedores-historico`).then(r => r.json()),
       ]);
       setResumen(r1); setGastos(r2); setCategorias(r3); setTopProvs(r4); setLiquidez(r5); setHistorico(r6);
     } catch (e) {
@@ -119,7 +120,7 @@ export default function EstadisticasPage() {
     if (!userId) return;
     setExportando(true);
     try {
-      const res = await fetch(`${API_URL}/api/estadisticas/exportar-excel?user_id=${userId}`);
+      const res = await authFetch(`${API_URL}/api/estadisticas/exportar-excel`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

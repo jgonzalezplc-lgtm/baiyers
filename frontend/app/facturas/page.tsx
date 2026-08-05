@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -58,16 +59,16 @@ export default function FacturasPage() {
   const cargar = async (uid: string, estado?: string) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ user_id: uid });
+      const params = new URLSearchParams();
       if (estado && estado !== "todas") params.append("estado", estado);
-      const res = await fetch(`${API_URL}/api/facturas?${params}`);
+      const res = await authFetch(`${API_URL}/api/facturas?${params}`);
       if (res.ok) setFacturas(await res.json());
     } catch { /* silent */ } finally { setLoading(false); }
   };
 
   const cargarResumen = async (uid: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/facturas/resumen?user_id=${uid}`);
+      const res = await authFetch(`${API_URL}/api/facturas/resumen`);
       if (res.ok) setResumen(await res.json());
     } catch { /* silent */ }
   };
@@ -81,7 +82,7 @@ export default function FacturasPage() {
     if (!userId) return;
     setPagandoId(f.id);
     try {
-      const res = await fetch(`${API_URL}/api/facturas/${f.id}/pagar?user_id=${userId}`, {
+      const res = await authFetch(`${API_URL}/api/facturas/${f.id}/pagar`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fecha_pago: new Date().toISOString().slice(0,10) }),
@@ -99,7 +100,7 @@ export default function FacturasPage() {
     if (!userId) return;
     setScanLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/facturas/scan-inbox?user_id=${userId}`, { method: "POST" });
+      const res = await authFetch(`${API_URL}/api/facturas/scan-inbox`, { method: "POST" });
       if (res.ok) {
         const { facturas_encontradas } = await res.json();
         showToast(facturas_encontradas > 0 ? `${facturas_encontradas} factura(s) encontrada(s)` : "Sin facturas nuevas en inbox");

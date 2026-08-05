@@ -1,19 +1,14 @@
 from typing import Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/recurrencias", tags=["recurrencias"])
 
 
-def _ids_org(user_id: str) -> list[str]:
-    """Wrapper local para import perezoso (Fase B del multi-usuario)."""
-    from app.services.organizacion import ids_organizacion
-    return ids_organizacion(user_id)
-
-
 class RecurrenciaRequest(BaseModel):
-    user_id: str
     nombre: str
     items: str
     frecuencia: str  # diaria|semanal|mensual|bimestral|trimestral|anual
@@ -27,15 +22,15 @@ class RecurrenciaRequest(BaseModel):
 
 
 @router.get("")
-async def listar_recurrencias(user_id: str):
+async def listar_recurrencias(ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    res = sb.table("recurrencias").select("*, proveedores(nombre)").in_("user_id", _ids_org(user_id)).order("created_at", desc=True).execute()
+    res = sb.table("recurrencias").select("*, proveedores(nombre)").in_("user_id", ctx.user_ids_organizacion).order("created_at", desc=True).execute()
     return res.data
 
 
 @router.post("")
-async def crear_recurrencia(req: RecurrenciaRequest):
+async def crear_recurrencia(req: RecurrenciaRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     from app.services.recurrencia_service import calcular_proxima_ejecucion
     sb = get_supabase()
@@ -57,7 +52,7 @@ async def crear_recurrencia(req: RecurrenciaRequest):
             req.monto_maximo = 0
 
     row = {
-        "user_id": req.user_id,
+        "user_id": ctx.actor_user_id,
         "nombre": req.nombre,
         "items": req.items,
         "frecuencia": req.frecuencia,
@@ -82,12 +77,12 @@ async def crear_recurrencia(req: RecurrenciaRequest):
 
 
 @router.put("/{recurrencia_id}")
-async def actualizar_recurrencia(recurrencia_id: str, req: RecurrenciaRequest):
+async def actualizar_recurrencia(recurrencia_id: str, req: RecurrenciaRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     from app.services.recurrencia_service import calcular_proxima_ejecucion
     sb = get_supabase()
 
-    existe = sb.table("recurrencias").select("id").eq("id", recurrencia_id).in_("user_id", _ids_org(req.user_id)).single().execute()
+    existe = sb.table("recurrencias").select("id").eq("id", recurrencia_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
     if not existe.data:
         raise HTTPException(status_code=404, detail="Recurrencia no encontrada")
 
@@ -109,18 +104,18 @@ async def actualizar_recurrencia(recurrencia_id: str, req: RecurrenciaRequest):
 
 
 @router.delete("/{recurrencia_id}")
-async def eliminar_recurrencia(recurrencia_id: str, user_id: str):
+async def eliminar_recurrencia(recurrencia_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    sb.table("recurrencias").delete().eq("id", recurrencia_id).in_("user_id", _ids_org(user_id)).execute()
+    sb.table("recurrencias").delete().eq("id", recurrencia_id).in_("user_id", ctx.user_ids_organizacion).execute()
     return {"success": True}
 
 
 @router.patch("/{recurrencia_id}/toggle")
-async def toggle_recurrencia(recurrencia_id: str, user_id: str):
+async def toggle_recurrencia(recurrencia_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    actual = sb.table("recurrencias").select("activa").eq("id", recurrencia_id).in_("user_id", _ids_org(user_id)).single().execute()
+    actual = sb.table("recurrencias").select("activa").eq("id", recurrencia_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
     if not actual.data:
         raise HTTPException(status_code=404, detail="Recurrencia no encontrada")
     nueva = not actual.data["activa"]
@@ -129,12 +124,12 @@ async def toggle_recurrencia(recurrencia_id: str, user_id: str):
 
 
 @router.post("/{recurrencia_id}/ejecutar")
-async def ejecutar_ahora(recurrencia_id: str, user_id: str):
+async def ejecutar_ahora(recurrencia_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     from app.services.recurrencia_service import ejecutar_recurrencia
     sb = get_supabase()
 
-    existe = sb.table("recurrencias").select("id").eq("id", recurrencia_id).in_("user_id", _ids_org(user_id)).single().execute()
+    existe = sb.table("recurrencias").select("id").eq("id", recurrencia_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
     if not existe.data:
         raise HTTPException(status_code=404, detail="Recurrencia no encontrada")
 

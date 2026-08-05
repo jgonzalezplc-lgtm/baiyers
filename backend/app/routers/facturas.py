@@ -1,12 +1,13 @@
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/facturas", tags=["facturas"])
 
 
 class FacturaManualRequest(BaseModel):
-    user_id: str
     proveedor_nombre: str
     numero_factura: Optional[str] = None
     fecha_factura: Optional[str] = None
@@ -23,13 +24,12 @@ class PagarRequest(BaseModel):
 
 
 @router.get("")
-async def listar_facturas(user_id: str, estado: Optional[str] = None, mes: Optional[str] = None):
+async def listar_facturas(estado: Optional[str] = None, mes: Optional[str] = None, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
-    from app.services.organizacion import ids_organizacion
     from datetime import date
 
     sb = get_supabase()
-    query = sb.table("facturas").select("*").in_("user_id", ids_organizacion(user_id))
+    query = sb.table("facturas").select("*").in_("user_id", ctx.user_ids_organizacion)
 
     if estado and estado != "todas":
         if estado == "vencidas":
@@ -56,19 +56,18 @@ async def listar_facturas(user_id: str, estado: Optional[str] = None, mes: Optio
 
 
 @router.post("")
-async def crear_factura_manual(req: FacturaManualRequest):
+async def crear_factura_manual(req: FacturaManualRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
     # Buscar proveedor_id
     proveedor_id = None
-    from app.services.organizacion import ids_organizacion
-    prov_res = sb.table("proveedores").select("id").in_("user_id", ids_organizacion(req.user_id)).ilike("nombre", f"%{req.proveedor_nombre[:50]}%").limit(1).execute()
+    prov_res = sb.table("proveedores").select("id").in_("user_id", ctx.user_ids_organizacion).ilike("nombre", f"%{req.proveedor_nombre[:50]}%").limit(1).execute()
     if prov_res.data:
         proveedor_id = prov_res.data[0]["id"]
 
     row = {
-        "user_id": req.user_id,
+        "user_id": ctx.actor_user_id,
         "proveedor_id": proveedor_id,
         "proveedor_nombre": req.proveedor_nombre,
         "numero_factura": req.numero_factura,
@@ -87,13 +86,12 @@ async def crear_factura_manual(req: FacturaManualRequest):
 
 
 @router.patch("/{factura_id}/pagar")
-async def marcar_pagada(factura_id: str, user_id: str, req: PagarRequest):
+async def marcar_pagada(factura_id: str, req: PagarRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     from datetime import date
 
-    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
-    existe = sb.table("facturas").select("id").eq("id", factura_id).in_("user_id", ids_organizacion(user_id)).single().execute()
+    existe = sb.table("facturas").select("id").eq("id", factura_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
     if not existe.data:
         raise HTTPException(status_code=404, detail="Factura no encontrada")
 
@@ -103,15 +101,16 @@ async def marcar_pagada(factura_id: str, user_id: str, req: PagarRequest):
 
 
 @router.post("/scan-inbox")
-async def scan_inbox(user_id: str):
-    """Escanea el inbox de Gmail buscando facturas."""
+async def scan_inbox(ctx: AuthContext = Depends(get_auth_context)):
+    """Escanea el inbox de Gmail buscando facturas — usa el Gmail personal
+    del actor verificado, no de cualquier user_id que mande el cliente."""
     from app.services.factura_parser import scan_inbox as do_scan
-    encontradas = await do_scan(user_id)
+    encontradas = await do_scan(ctx.actor_user_id)
     return {"success": True, "facturas_encontradas": encontradas}
 
 
 @router.get("/resumen")
-async def resumen_facturas(user_id: str):
+async def resumen_facturas(ctx: AuthContext = Depends(get_auth_context)):
     """Totales pendiente / pagado / vencido."""
     from app.services.supabase import get_supabase
     from datetime import date
@@ -120,8 +119,7 @@ async def resumen_facturas(user_id: str):
     hoy = date.today().isoformat()
     mes_inicio = hoy[:7] + "-01"
 
-    from app.services.organizacion import ids_organizacion
-    res = sb.table("facturas").select("monto_total, estado, fecha_vencimiento, moneda").in_("user_id", ids_organizacion(user_id)).execute()
+    res = sb.table("facturas").select("monto_total, estado, fecha_vencimiento, moneda").in_("user_id", ctx.user_ids_organizacion).execute()
 
     total_pendiente = 0.0
     total_pagado_mes = 0.0
