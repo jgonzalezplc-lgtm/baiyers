@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Building2, Plus, Search, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import { BtnPrimary, BtnSecondary, Card, CategoryChip, EmptyState, FieldLabel, Input, Modal, PageHeader, Textarea, SkeletonCard, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -58,7 +59,7 @@ export default function ProveedoresPage() {
   const cargar = async (uid: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/suppliers?user_id=${uid}`);
+      const res = await authFetch(`${API_URL}/api/suppliers`);
       if (!res.ok) throw new Error();
       setProveedores(await res.json());
     } catch { mostrarToast("No pudimos cargar los proveedores"); }

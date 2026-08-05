@@ -1,6 +1,8 @@
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/suppliers", tags=["suppliers"])
 
@@ -17,12 +19,14 @@ class RatingRequest(BaseModel):
 
 
 @router.get("")
-async def listar_suppliers(user_id: str):
+async def listar_suppliers(ctx: AuthContext = Depends(get_auth_context)):
+    """Piloto de AuthContext (PLAN_DATA_FOUNDATION.md): ya no confía en un
+    `user_id` de query — el actor y su organización se verifican contra el
+    token real de Supabase. Requiere que el frontend llame con authFetch."""
     from app.services.supabase import get_supabase
-    from app.services.organizacion import ids_organizacion
 
     sb = get_supabase()
-    res = sb.table("proveedores").select("*").in_("user_id", ids_organizacion(user_id)).order("score", desc=True).execute()
+    res = sb.table("proveedores").select("*").in_("user_id", ctx.user_ids_organizacion).order("score", desc=True).execute()
 
     proveedores = []
     for p in res.data:
