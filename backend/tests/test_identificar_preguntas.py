@@ -4,6 +4,7 @@ from app.routers.identificar import (
     _es_error_modelo_no_disponible,
     _excluir_servicios_de_proyecto,
     _modelos_identificacion,
+    _limpiar_json,
     _normalizar_preguntas,
     _normalizar_revision_generada,
     _preguntas_itemizado_faltantes,
@@ -76,6 +77,9 @@ class PreguntasCubicacionTest(unittest.TestCase):
             "item_0_cantidad", "item_0_unidad", "item_1_unidad",
         ])
         self.assertIn("Tableros", preguntas[0]["texto"])
+
+    def test_limpia_texto_alrededor_del_json(self):
+        self.assertEqual(_limpiar_json('Respuesta: {"items": []} fin'), '{"items": []}')
 
 
 if __name__ == "__main__":

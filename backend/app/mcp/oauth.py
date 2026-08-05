@@ -17,15 +17,31 @@ JWT_SECRET = settings.mcp_jwt_secret
 JWT_ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 24 * 30  # 30 days
 
-# In-memory code store (use Redis in production)
-_auth_codes: dict[str, dict] = {}
+# El estado del flujo OAuth vive en Supabase (migración 032), NO en un dict
+# en memoria del proceso — Railway corre el backend con más de un
+# worker/instancia, así que un GET /authorize (guarda el estado pendiente) y
+# el POST /consent que lo confirma pueden caer en procesos sin memoria
+# compartida. Bug real encontrado conectando Claude Desktop en producción:
+# "Estado de autorización inválido o expirado" pese a que el usuario hizo
+# todo bien. Mismo motivo para mcp_registered_clients (RFC 7591).
 
-# Registro dinámico de clientes (RFC 7591) — sin esto, clientes MCP reales
-# (Claude, etc.) no pueden auto-registrarse y caen a flujos manuales
-# improvisados (redirect_uri/state armados a mano) que terminan rebotando
-# mal. En memoria por ahora, igual que _auth_codes — mover a tabla si el
-# proceso se reinicia seguido y los clientes necesitan sobrevivir el reinicio.
-_registered_clients: dict[str, dict] = {}
+def _guardar_estado(key: str, data: dict, ttl_minutos: int = 15) -> None:
+    expira = (datetime.utcnow() + timedelta(minutes=ttl_minutos)).isoformat()
+    SUPABASE.table("mcp_auth_codes").upsert({
+        "key": key, "data": data, "expires_at": expira,
+    }).execute()
+
+
+def _leer_y_consumir_estado(key: str) -> Optional[dict]:
+    """Lee y borra en el mismo paso (equivalente a dict.pop) — un código de
+    autorización de un solo uso no debe poder reutilizarse."""
+    fila = SUPABASE.table("mcp_auth_codes").select("*").eq("key", key).maybe_single().execute().data
+    if not fila:
+        return None
+    SUPABASE.table("mcp_auth_codes").delete().eq("key", key).execute()
+    if fila["expires_at"] < datetime.utcnow().isoformat():
+        return None
+    return fila["data"]
 
 
 @router.post("/register")
@@ -39,23 +55,27 @@ async def registrar_cliente(body: dict = Body(...)):
         raise HTTPException(400, detail={"error": "invalid_client_metadata", "error_description": "redirect_uris es requerido"})
 
     client_id = secrets.token_urlsafe(16)
-    _registered_clients[client_id] = {
-        "client_name": body.get("client_name", "MCP Client"),
+    client_name = body.get("client_name", "MCP Client")
+    grant_types = body.get("grant_types", ["authorization_code", "refresh_token"])
+    response_types = body.get("response_types", ["code"])
+
+    SUPABASE.table("mcp_registered_clients").insert({
+        "client_id": client_id,
+        "client_name": client_name,
         "redirect_uris": redirect_uris,
-        "grant_types": body.get("grant_types", ["authorization_code", "refresh_token"]),
-        "response_types": body.get("response_types", ["code"]),
+        "grant_types": grant_types,
+        "response_types": response_types,
         "token_endpoint_auth_method": "none",  # cliente público, PKCE obligatorio
-        "created_at": datetime.utcnow().isoformat(),
-    }
+    }).execute()
 
     return JSONResponse({
         "client_id": client_id,
         "client_id_issued_at": int(datetime.utcnow().timestamp()),
         "redirect_uris": redirect_uris,
-        "grant_types": _registered_clients[client_id]["grant_types"],
-        "response_types": _registered_clients[client_id]["response_types"],
+        "grant_types": grant_types,
+        "response_types": response_types,
         "token_endpoint_auth_method": "none",
-        "client_name": _registered_clients[client_id]["client_name"],
+        "client_name": client_name,
     }, status_code=201)
 
 
@@ -95,15 +115,16 @@ async def authorize(
     if response_type != "code":
         raise HTTPException(400, "Only code flow supported")
 
-    # Store params in session-like dict keyed by state
-    _auth_codes[f"pending_{state}"] = {
+    # Estado pendiente, compartido entre procesos vía Supabase (ver nota
+    # arriba de _guardar_estado).
+    _guardar_estado(f"pending_{state}", {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "scope": scope,
         "state": state,
         "code_challenge": code_challenge,
         "code_challenge_method": code_challenge_method,
-    }
+    })
 
     scopes_display = {
         "read": "Leer cotizaciones, proveedores y estadisticas",
@@ -172,7 +193,7 @@ async def consent(
     action: str = Form("allow"),
 ):
     """Process user consent and issue auth code."""
-    pending = _auth_codes.pop(f"pending_{state}", None)
+    pending = _leer_y_consumir_estado(f"pending_{state}")
     if not pending:
         raise HTTPException(400, "Estado de autorización inválido o expirado")
 
@@ -191,11 +212,7 @@ async def consent(
 
     # Generate auth code
     code = secrets.token_urlsafe(32)
-    _auth_codes[code] = {
-        **pending,
-        "user_id": user_id,
-        "expires_at": (datetime.utcnow() + timedelta(minutes=10)).timestamp(),
-    }
+    _guardar_estado(code, {**pending, "user_id": user_id}, ttl_minutos=10)
 
     return RedirectResponse(
         f"{pending['redirect_uri']}?code={code}&state={state}",
@@ -214,12 +231,9 @@ async def token(
 ):
     """Exchange auth code for access token (OAuth 2.1 PKCE)."""
     if grant_type == "authorization_code":
-        entry = _auth_codes.pop(code, None)
+        entry = _leer_y_consumir_estado(code or "")
         if not entry:
-            raise HTTPException(400, detail={"error": "invalid_grant"})
-
-        if datetime.utcnow().timestamp() > entry["expires_at"]:
-            raise HTTPException(400, detail={"error": "invalid_grant", "error_description": "Code expired"})
+            raise HTTPException(400, detail={"error": "invalid_grant", "error_description": "Code expired or already used"})
 
         # Verify PKCE
         if entry.get("code_challenge") and code_verifier:
