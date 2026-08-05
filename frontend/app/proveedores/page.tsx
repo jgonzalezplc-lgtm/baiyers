@@ -100,9 +100,9 @@ export default function ProveedoresPage() {
     if (!userId || !form.nombre.trim()) return mostrarToast("El nombre es obligatorio");
     setGuardando(true);
     try {
-      const res = await fetch(`${API_URL}/api/proveedores`, {
+      const res = await authFetch(`${API_URL}/api/proveedores`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, user_id: userId }),
+        body: JSON.stringify(form),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail);
@@ -116,7 +116,7 @@ export default function ProveedoresPage() {
     if (!userId) return;
     const accion = p.bloqueado ? "desbloquear" : "bloquear";
     try {
-      const res = await fetch(`${API_URL}/api/suppliers/${p.id}/${accion}?user_id=${userId}`, { method: "POST" });
+      const res = await authFetch(`${API_URL}/api/suppliers/${p.id}/${accion}`, { method: "POST" });
       if (!res.ok) throw new Error();
       setProveedores(prev => prev.map(x => x.id === p.id ? { ...x, bloqueado: !x.bloqueado } : x));
       mostrarToast(p.bloqueado ? "Proveedor desbloqueado" : "Proveedor bloqueado");

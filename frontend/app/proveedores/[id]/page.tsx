@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import { Badge, BtnPrimary, BtnSecondary, Card, CategoryChip, FieldLabel, Input, PageHeader, SkeletonBox, CascadeWrapper, Textarea } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -30,7 +31,7 @@ export default function ProveedorPage() {
   const cargar = async (uid: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/proveedores/${proveedorId}?user_id=${uid}`);
+      const res = await authFetch(`${API_URL}/api/proveedores/${proveedorId}`);
       const data = await res.json(); if (!res.ok) throw new Error(data.detail);
       setProveedor(data.proveedor); setCapacidades(data.capacidades || []); setOrdenes(data.ordenes || []);
     } catch (e) { setMensaje(e instanceof Error ? e.message : "No pudimos cargar el proveedor"); }
@@ -41,7 +42,7 @@ export default function ProveedorPage() {
     if (!userId || !proveedor) return;
     setGuardando(true);
     try {
-      const res = await fetch(`${API_URL}/api/proveedores/${proveedorId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId, nombre: proveedor.nombre, rut: proveedor.rut || null, sitio_web: proveedor.sitio_web ?? "", pais: proveedor.pais ?? "", email: proveedor.email ?? "", telefono: proveedor.telefono ?? "", notas_privadas: proveedor.notas_privadas ?? "", preferido: !!proveedor.preferido, bloqueado: !!proveedor.bloqueado }) });
+      const res = await authFetch(`${API_URL}/api/proveedores/${proveedorId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombre: proveedor.nombre, rut: proveedor.rut || null, sitio_web: proveedor.sitio_web ?? "", pais: proveedor.pais ?? "", email: proveedor.email ?? "", telefono: proveedor.telefono ?? "", notas_privadas: proveedor.notas_privadas ?? "", preferido: !!proveedor.preferido, bloqueado: !!proveedor.bloqueado }) });
       const data = await res.json(); if (!res.ok) throw new Error(data.detail); setProveedor(data); setMensaje("Cambios guardados");
     } catch (e) { setMensaje(e instanceof Error ? e.message : "No pudimos guardar los cambios"); }
     finally { setGuardando(false); }
@@ -49,13 +50,13 @@ export default function ProveedorPage() {
 
   const agregarCategoria = async () => {
     if (!userId || !nuevaCategoria) return;
-    const res = await fetch(`${API_URL}/api/proveedores/${proveedorId}/categorias`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId, categorias: [nuevaCategoria] }) });
+    const res = await authFetch(`${API_URL}/api/proveedores/${proveedorId}/categorias`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ categorias: [nuevaCategoria] }) });
     if (res.ok) { setNuevaCategoria(""); await cargar(userId); setMensaje("Categoría agregada"); } else setMensaje("No pudimos agregar la categoría");
   };
 
   const quitarCategoria = async (categoria: string) => {
     if (!userId) return;
-    const res = await fetch(`${API_URL}/api/proveedores/${proveedorId}/categorias/${encodeURIComponent(categoria)}?user_id=${userId}`, { method: "DELETE" });
+    const res = await authFetch(`${API_URL}/api/proveedores/${proveedorId}/categorias/${encodeURIComponent(categoria)}`, { method: "DELETE" });
     if (res.ok) { setCapacidades(prev => prev.filter(c => c.categoria !== categoria)); setMensaje("Categoría quitada"); } else setMensaje("No pudimos quitar la categoría");
   };
 

@@ -14,8 +14,10 @@ import asyncio
 import json
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/proveedores", tags=["proveedores"])
 
@@ -133,7 +135,6 @@ async def investigar_proveedor(req: InvestigarProveedorRequest):
 
 
 class CrearProveedorRequest(BaseModel):
-    user_id: str
     nombre: str
     rut: Optional[str] = None
     sitio_web: Optional[str] = None
@@ -148,7 +149,7 @@ class CrearProveedorRequest(BaseModel):
 
 
 @router.post("")
-async def crear_proveedor(req: CrearProveedorRequest):
+async def crear_proveedor(req: CrearProveedorRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Alta manual — reutiliza el mismo dedupe (RUT → email/dominio → nombre)
     que usan la importación Excel y el agente de Gmail, para no crear un
     directorio paralelo."""
@@ -162,7 +163,7 @@ async def crear_proveedor(req: CrearProveedorRequest):
     categorias = [c.lower().strip() for c in req.categorias if c.lower().strip() in CATEGORIAS_VALIDAS]
 
     sb = get_supabase()
-    proveedor_id = resolver_o_crear_proveedor(sb, req.user_id, nombre, req.email, req.rut)
+    proveedor_id = resolver_o_crear_proveedor(sb, ctx.actor_user_id, nombre, req.email, req.rut)
 
     cambios: dict = {
         "nombre": nombre[:200],
@@ -181,11 +182,11 @@ async def crear_proveedor(req: CrearProveedorRequest):
     sb.table("proveedores").update(cambios).eq("id", proveedor_id).execute()
 
     if req.email:
-        resolver_o_crear_contacto(sb, req.user_id, proveedor_id, req.email, nombre=req.contacto_nombre, origen="manual")
+        resolver_o_crear_contacto(sb, ctx.actor_user_id, proveedor_id, req.email, nombre=req.contacto_nombre, origen="manual")
 
     for categoria in categorias:
         registrar_evento(
-            req.user_id, proveedor_id, "manual_category_assigned",
+            ctx.actor_user_id, proveedor_id, "manual_category_assigned",
             categoria_confirmada=categoria,
         )
 
@@ -193,20 +194,18 @@ async def crear_proveedor(req: CrearProveedorRequest):
 
 
 @router.get("/{proveedor_id}")
-async def ficha_proveedor(proveedor_id: str, user_id: str):
+async def ficha_proveedor(proveedor_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     from app.services.supplier_capability_intelligence import listar_capacidades
 
-    from app.services.organizacion import ids_organizacion
-
     sb = get_supabase()
-    ids = ids_organizacion(user_id)
+    ids = ctx.user_ids_organizacion
     proveedor = sb.table("proveedores").select("*").eq("id", proveedor_id).in_("user_id", ids).maybe_single().execute().data
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
     contactos = sb.table("proveedor_contactos").select("*").eq("proveedor_id", proveedor_id).execute().data or []
-    capacidades = listar_capacidades(user_id, proveedor_id)
+    capacidades = listar_capacidades(ctx.actor_user_id, proveedor_id)
     ocs = sb.table("ordenes_compra").select(
         "numero_oc, estado, precio_total, moneda, created_at, confirmada_at"
     ).in_("user_id", ids).eq("proveedor_nombre", proveedor["nombre"]).order("created_at", desc=True).execute().data or []
@@ -220,7 +219,6 @@ async def ficha_proveedor(proveedor_id: str, user_id: str):
 
 
 class EditarProveedorRequest(BaseModel):
-    user_id: str
     nombre: Optional[str] = None
     rut: Optional[str] = None
     sitio_web: Optional[str] = None
@@ -233,13 +231,12 @@ class EditarProveedorRequest(BaseModel):
 
 
 @router.patch("/{proveedor_id}")
-async def editar_proveedor(proveedor_id: str, req: EditarProveedorRequest):
+async def editar_proveedor(proveedor_id: str, req: EditarProveedorRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     from app.services.proveedores_matching import normalizar_rut
-    from app.services.organizacion import ids_organizacion
 
     sb = get_supabase()
-    existente = sb.table("proveedores").select("id").eq("id", proveedor_id).in_("user_id", ids_organizacion(req.user_id)).maybe_single().execute().data
+    existente = sb.table("proveedores").select("id").eq("id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
     if not existente:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
@@ -259,20 +256,18 @@ async def editar_proveedor(proveedor_id: str, req: EditarProveedorRequest):
 
 
 class ConfirmarCategoriasRequest(BaseModel):
-    user_id: str
     categorias: list[str]
 
 
 @router.post("/{proveedor_id}/categorias")
-async def confirmar_categorias(proveedor_id: str, req: ConfirmarCategoriasRequest):
+async def confirmar_categorias(proveedor_id: str, req: ConfirmarCategoriasRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Confirma una o más categorías (sugeridas por /investigar o elegidas a
     mano) — cada una queda como evento auditable con confianza máxima."""
     from app.services.supabase import get_supabase
     from app.services.supplier_capability_intelligence import registrar_evento
-    from app.services.organizacion import ids_organizacion
 
     sb = get_supabase()
-    proveedor = sb.table("proveedores").select("id").eq("id", proveedor_id).in_("user_id", ids_organizacion(req.user_id)).maybe_single().execute().data
+    proveedor = sb.table("proveedores").select("id").eq("id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
@@ -280,20 +275,19 @@ async def confirmar_categorias(proveedor_id: str, req: ConfirmarCategoriasReques
     if not categorias:
         raise HTTPException(status_code=400, detail="Ninguna categoría válida")
 
-    resultado = [registrar_evento(req.user_id, proveedor_id, "manual_category_assigned", categoria_confirmada=c) for c in categorias]
+    resultado = [registrar_evento(ctx.actor_user_id, proveedor_id, "manual_category_assigned", categoria_confirmada=c) for c in categorias]
     return {"capacidades": resultado}
 
 
 @router.delete("/{proveedor_id}/categorias/{categoria}")
-async def quitar_categoria(proveedor_id: str, categoria: str, user_id: str):
+async def quitar_categoria(proveedor_id: str, categoria: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     from app.services.supplier_capability_intelligence import rechazar_capacidad
-    from app.services.organizacion import ids_organizacion
 
     sb = get_supabase()
-    proveedor = sb.table("proveedores").select("id").eq("id", proveedor_id).in_("user_id", ids_organizacion(user_id)).maybe_single().execute().data
+    proveedor = sb.table("proveedores").select("id").eq("id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
-    rechazar_capacidad(user_id, proveedor_id, categoria.lower().strip())
+    rechazar_capacidad(ctx.actor_user_id, proveedor_id, categoria.lower().strip())
     return {"success": True}

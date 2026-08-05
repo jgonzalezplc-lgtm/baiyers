@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { authFetch } from "@/lib/authFetch";
 
 interface Props {
   proveedorNombre: string;
@@ -26,12 +27,11 @@ export default function RatingModal({ proveedorNombre, proveedorId, userId, ocId
     setGuardando(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/api/suppliers/rating`, {
+      const res = await authFetch(`${API_URL}/api/suppliers/rating`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           proveedor_id: proveedorId,
-          user_id: userId,
           estrellas,
           precio_cumplido: precioCumplido,
           plazo_cumplido: plazoCumplido,

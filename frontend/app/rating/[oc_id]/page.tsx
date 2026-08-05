@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import Link from "next/link";
 import RatingModal from "@/components/RatingModal";
 
@@ -47,7 +48,7 @@ export default function RatingPage() {
         setOc(data);
 
         if (uid) {
-          const suppRes = await fetch(`${API_URL}/api/suppliers?user_id=${uid}`);
+          const suppRes = await authFetch(`${API_URL}/api/suppliers`);
           if (suppRes.ok) {
             const suppliers = await suppRes.json();
             const match = suppliers.find((s: { nombre: string; id: string }) =>
