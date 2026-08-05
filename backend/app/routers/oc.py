@@ -3,13 +3,15 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/oc", tags=["oc"])
 
 
-def _registrar_conversacion_oc(sb, req, mi_email: str, msg: dict, subject: str, body: str) -> None:
+def _registrar_conversacion_oc(sb, req, user_id: str, mi_email: str, msg: dict, subject: str, body: str) -> None:
     """Engancha el envío de la OC al agente de Gmail (mismo mecanismo que las
     cotizaciones): así el cron que ya lee respuestas cada 1 min también
     detecta el acuse de recibo o el aviso de despacho de esta OC. No bloquea
@@ -19,11 +21,11 @@ def _registrar_conversacion_oc(sb, req, mi_email: str, msg: dict, subject: str, 
         from app.services.proveedores_matching import resolver_o_crear_proveedor, resolver_o_crear_contacto
         thread_id = msg.get("threadId")
         now_iso = datetime.now(_tz.utc).isoformat()
-        proveedor_id = resolver_o_crear_proveedor(sb, req.user_id, req.proveedor_nombre or req.proveedor_email, req.proveedor_email)
-        contacto_id = resolver_o_crear_contacto(sb, req.user_id, proveedor_id, req.proveedor_email, origen="gmail_agent")
+        proveedor_id = resolver_o_crear_proveedor(sb, user_id, req.proveedor_nombre or req.proveedor_email, req.proveedor_email)
+        contacto_id = resolver_o_crear_contacto(sb, user_id, proveedor_id, req.proveedor_email, origen="gmail_agent")
 
         conv = sb.table("gmail_conversations").upsert({
-            "user_id": req.user_id,
+            "user_id": user_id,
             "gmail_thread_id": thread_id,
             "proveedor_id": proveedor_id,
             "contacto_id": contacto_id,
@@ -55,7 +57,6 @@ def _registrar_conversacion_oc(sb, req, mi_email: str, msg: dict, subject: str, 
 class CrearOCRequest(BaseModel):
     cotizacion_id: str
     resultado_id: Optional[str] = None
-    user_id: str
     nombre_item: str
     proveedor_nombre: str
     proveedor_email: Optional[str] = None
@@ -70,7 +71,6 @@ class CrearOCRequest(BaseModel):
 class EnviarOCRequest(BaseModel):
     oc_id: str
     pdf_base64: str
-    user_id: str
     proveedor_nombre: str
     proveedor_email: Optional[str] = None
     numero_oc: str
@@ -79,7 +79,7 @@ class EnviarOCRequest(BaseModel):
 
 
 @router.post("/crear")
-async def crear_oc(req: CrearOCRequest):
+async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
 
     sb = get_supabase()
@@ -99,7 +99,7 @@ async def crear_oc(req: CrearOCRequest):
     row = {
         "cotizacion_id": req.cotizacion_id if req.cotizacion_id != "demo" else None,
         "resultado_id": req.resultado_id,
-        "user_id": req.user_id,
+        "user_id": ctx.actor_user_id,
         "numero_oc": numero_oc,
         "estado": "borrador",
         "precio_total": total,
@@ -146,7 +146,7 @@ async def crear_oc(req: CrearOCRequest):
 
 
 @router.post("/enviar")
-async def enviar_oc(req: EnviarOCRequest):
+async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     from app.services.gmail_service import get_gmail_service, send_email_with_attachment, send_email
     from app.config import settings
@@ -175,7 +175,7 @@ async def enviar_oc(req: EnviarOCRequest):
     }).eq("id", req.oc_id).execute()
 
     # Tokens Gmail
-    gmail_res = sb.table("user_integrations").select("*").eq("user_id", req.user_id).eq("provider", "gmail").single().execute()
+    gmail_res = sb.table("user_integrations").select("*").eq("user_id", ctx.actor_user_id).eq("provider", "gmail").single().execute()
     if not gmail_res.data:
         raise HTTPException(status_code=400, detail="Gmail no conectado")
 
@@ -183,7 +183,7 @@ async def enviar_oc(req: EnviarOCRequest):
     service, creds = get_gmail_service(integration["access_token"], integration["refresh_token"])
 
     if creds.token != integration["access_token"]:
-        sb.table("user_integrations").update({"access_token": creds.token}).eq("user_id", req.user_id).eq("provider", "gmail").execute()
+        sb.table("user_integrations").update({"access_token": creds.token}).eq("user_id", ctx.actor_user_id).eq("provider", "gmail").execute()
 
     token_oc = sb.table("ordenes_compra").select("token_confirmacion").eq("id", req.oc_id).single().execute().data["token_confirmacion"]
     confirm_url = f"{settings.frontend_url}/oc/confirmar/{token_oc}"
@@ -212,14 +212,14 @@ async def enviar_oc(req: EnviarOCRequest):
                 pdf_bytes=pdf_bytes,
                 pdf_filename=f"{req.numero_oc}.pdf",
             )
-            _registrar_conversacion_oc(sb, req, integration["email"], msg, subject_proveedor, body_proveedor)
+            _registrar_conversacion_oc(sb, req, ctx.actor_user_id, integration["email"], msg, subject_proveedor, body_proveedor)
         except Exception as e:
             print(f"[OC] Error enviando al proveedor: {e}")
 
     # Supplier Intelligence — registrar OC enviada
     try:
         from app.services.supplier_intelligence import registrar_oc_enviada
-        registrar_oc_enviada(req.user_id, req.proveedor_nombre, req.proveedor_email)
+        registrar_oc_enviada(ctx.actor_user_id, req.proveedor_nombre, req.proveedor_email)
     except Exception as e:
         print(f"[OC] SI oc_enviada error: {e}")
 

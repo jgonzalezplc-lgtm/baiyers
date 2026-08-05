@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { pdf } from "@react-pdf/renderer";
 import { FileText, X } from "lucide-react";
+import { authFetch } from "@/lib/authFetch";
 import OCPDFTemplate, { type OCData } from "./OCPDFTemplate";
 import type { Resultado } from "@/app/cotizar/components/CardProveedor";
 
@@ -76,12 +77,11 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
     setGenerando(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/api/oc/crear`, {
+      const res = await authFetch(`${API_URL}/api/oc/crear`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cotizacion_id: cotizacionId,
-          user_id: userId,
           nombre_item: nombreItem,
           proveedor_nombre: proveedorNombre,
           proveedor_email: email || null,
@@ -120,13 +120,12 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
       uint8.forEach(b => binary += String.fromCharCode(b));
       const base64 = btoa(binary);
 
-      const res = await fetch(`${API_URL}/api/oc/enviar`, {
+      const res = await authFetch(`${API_URL}/api/oc/enviar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           oc_id: ocId,
           pdf_base64: base64,
-          user_id: userId,
           proveedor_nombre: proveedorNombre,
           proveedor_email: email || null,
           numero_oc: ocData.numero_oc,
