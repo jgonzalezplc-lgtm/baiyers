@@ -4,7 +4,7 @@ import hashlib
 import base64
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Request, Form, Query
+from fastapi import APIRouter, HTTPException, Request, Form, Query, Body
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from jose import jwt
 from supabase import create_client
@@ -19,6 +19,44 @@ TOKEN_EXPIRE_HOURS = 24 * 30  # 30 days
 
 # In-memory code store (use Redis in production)
 _auth_codes: dict[str, dict] = {}
+
+# Registro dinámico de clientes (RFC 7591) — sin esto, clientes MCP reales
+# (Claude, etc.) no pueden auto-registrarse y caen a flujos manuales
+# improvisados (redirect_uri/state armados a mano) que terminan rebotando
+# mal. En memoria por ahora, igual que _auth_codes — mover a tabla si el
+# proceso se reinicia seguido y los clientes necesitan sobrevivir el reinicio.
+_registered_clients: dict[str, dict] = {}
+
+
+@router.post("/register")
+async def registrar_cliente(body: dict = Body(...)):
+    """Dynamic Client Registration (RFC 7591). Cliente público (PKCE, sin
+    secret) — cualquier MCP client que implemente el flujo estándar puede
+    registrarse solo, sin que el usuario tenga que inventar un client_id
+    a mano."""
+    redirect_uris = body.get("redirect_uris") or []
+    if not redirect_uris:
+        raise HTTPException(400, detail={"error": "invalid_client_metadata", "error_description": "redirect_uris es requerido"})
+
+    client_id = secrets.token_urlsafe(16)
+    _registered_clients[client_id] = {
+        "client_name": body.get("client_name", "MCP Client"),
+        "redirect_uris": redirect_uris,
+        "grant_types": body.get("grant_types", ["authorization_code", "refresh_token"]),
+        "response_types": body.get("response_types", ["code"]),
+        "token_endpoint_auth_method": "none",  # cliente público, PKCE obligatorio
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    return JSONResponse({
+        "client_id": client_id,
+        "client_id_issued_at": int(datetime.utcnow().timestamp()),
+        "redirect_uris": redirect_uris,
+        "grant_types": _registered_clients[client_id]["grant_types"],
+        "response_types": _registered_clients[client_id]["response_types"],
+        "token_endpoint_auth_method": "none",
+        "client_name": _registered_clients[client_id]["client_name"],
+    }, status_code=201)
 
 
 def _generate_token(user_id: str, client_id: str, scopes: list[str]) -> str:

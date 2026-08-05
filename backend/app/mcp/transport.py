@@ -56,8 +56,9 @@ def _audit_log(user_id: str, tool_name: str, params: dict, result: Any):
 # ─── Manifest / Discovery ────────────────────────────────────────────────────
 
 @router.get("/manifest.json")
-async def manifest():
+async def manifest(request: Request):
     """MCP manifest for client discovery."""
+    base = str(request.base_url).rstrip("/")
     return {
         "schema_version": "v1",
         "name_for_human": "Claria — Cotizador Inteligente",
@@ -73,12 +74,13 @@ async def manifest():
             "type": "oauth",
             "client_url": f"{settings.frontend_url}/mcp/autorizar",
             "scope": "read write",
-            "authorization_url": "http://localhost:8000/api/mcp/oauth/authorize",
-            "token_url": "http://localhost:8000/api/mcp/oauth/token",
+            "authorization_url": f"{base}/api/mcp/oauth/authorize",
+            "token_url": f"{base}/api/mcp/oauth/token",
+            "registration_url": f"{base}/api/mcp/oauth/register",
         },
         "api": {
             "type": "openapi",
-            "url": "http://localhost:8000/openapi.json",
+            "url": f"{base}/openapi.json",
         },
         "logo_url": f"{settings.frontend_url}/logo.png",
         "contact_email": "hola@claria.cc",
