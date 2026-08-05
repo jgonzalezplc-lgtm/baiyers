@@ -104,7 +104,10 @@ export default async function DashboardPage({
 
   // Si Gmail recién conectado, sincronizar email real
   if (gmailRecienConectado) {
-    fetch(`${API_URL}/api/gmail/sync-email?user_id=${user!.id}`, { method: "POST" }).catch(() => {});
+    fetch(`${API_URL}/api/gmail/sync-email`, {
+      method: "POST",
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+    }).catch(() => {});
   }
 
   // Fetch real stats & recent quotes — con timeout duro para que un backend
@@ -137,7 +140,7 @@ export default async function DashboardPage({
     const [statsRes, cotRes, gmailRes, workflowsRes] = await Promise.all([
       fetchConTimeout(`${API_URL}/api/dashboard/stats`, 5000, true),
       fetchConTimeout(`${API_URL}/api/listas?user_id=${user.id}`),
-      fetchConTimeout(`${API_URL}/api/gmail/status?user_id=${user.id}`),
+      fetchConTimeout(`${API_URL}/api/gmail/status`, 5000, true),
       fetchConTimeout(`${API_URL}/api/workflows/estado/resumen?user_id=${user.id}`),
     ]);
     if (statsRes?.ok) stats = await statsRes.json();

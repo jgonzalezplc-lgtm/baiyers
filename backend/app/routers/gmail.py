@@ -8,9 +8,11 @@ import secrets
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/gmail", tags=["gmail"])
 
@@ -142,7 +144,7 @@ async def gmail_callback(code: str, state: str):
 
 
 @router.get("/status")
-async def gmail_status(user_id: str):
+async def gmail_status(ctx: AuthContext = Depends(get_auth_context)):
     """Estado persistente de la integración para la UI del dashboard. Nunca
     desde `?gmail=conectado` (query param temporal del callback OAuth) — este
     endpoint es la única fuente de verdad.
@@ -156,6 +158,7 @@ async def gmail_status(user_id: str):
     from app.services.supabase import get_supabase
 
     sb = get_supabase()
+    user_id = ctx.actor_user_id
     result = sb.table("user_integrations").select("refresh_token, email").eq(
         "user_id", user_id
     ).eq("provider", "gmail").limit(1).execute()
@@ -364,11 +367,12 @@ async def enviar_correo(req: EnviarRequest):
 # ─── Sync email (fix para cuentas con email hardcodeado) ──────────────────────
 
 @router.post("/sync-email")
-async def sync_gmail_email(user_id: str):
+async def sync_gmail_email(ctx: AuthContext = Depends(get_auth_context)):
     """Actualiza el email real de la cuenta Gmail conectada."""
     import httpx
     from app.services.supabase import get_supabase
 
+    user_id = ctx.actor_user_id
     sb = get_supabase()
     res = sb.table("user_integrations").select("*").eq("user_id", user_id).eq("provider", "gmail").single().execute()
     if not res.data:
@@ -567,10 +571,10 @@ def _aplicar_campo_resultado(sb, entity_id: str, field: str, valor, cuando_iso: 
 
 
 @router.post("/sincronizar-respuestas")
-async def sincronizar_respuestas(user_id: str):
+async def sincronizar_respuestas(ctx: AuthContext = Depends(get_auth_context)):
     """Trigger manual (botón en /conversaciones) — delega en la misma función
     que corre sola cada pocos minutos vía cron (ver sincronizar_todos_los_usuarios)."""
-    return await _sincronizar_usuario(user_id)
+    return await _sincronizar_usuario(ctx.actor_user_id)
 
 
 async def _sincronizar_usuario(user_id: str) -> dict:
@@ -848,11 +852,10 @@ async def sincronizar_todos_los_usuarios() -> dict:
 
 
 @router.get("/conversaciones")
-async def listar_conversaciones(user_id: str):
+async def listar_conversaciones(ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
-    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
-    ids = ids_organizacion(user_id)
+    ids = ctx.user_ids_organizacion
     convs = sb.table("gmail_conversations").select("*").in_("user_id", ids).order("last_message_at", desc=True).execute().data or []
 
     propuestas = sb.table("item_field_updates").select("source_id").in_("user_id", ids).eq("estado", "propuesta").execute().data or []
@@ -874,11 +877,10 @@ async def listar_conversaciones(user_id: str):
 
 
 @router.get("/conversaciones/{conversation_id}")
-async def detalle_conversacion(conversation_id: str, user_id: str):
+async def detalle_conversacion(conversation_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
-    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
-    conv = sb.table("gmail_conversations").select("*").eq("id", conversation_id).in_("user_id", ids_organizacion(user_id)).maybe_single().execute().data
+    conv = sb.table("gmail_conversations").select("*").eq("id", conversation_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
     conv["gmail_url"] = f"https://mail.google.com/mail/u/0/#all/{conv['gmail_thread_id']}"
@@ -895,19 +897,18 @@ async def detalle_conversacion(conversation_id: str, user_id: str):
 
 
 class RevisarPropuestaRequest(BaseModel):
-    user_id: str
+    pass
 
 
 @router.post("/propuestas/{propuesta_id}/aplicar")
-async def aplicar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest):
+async def aplicar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Aprueba una propuesta: la marca aplicada y, si el campo mapea a una
     columna real de `resultados`, la escribe. Acción explícita de un humano —
     el agente nunca llega a este estado por sí solo."""
     from app.services.supabase import get_supabase
-    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
 
-    p = sb.table("item_field_updates").select("*").eq("id", propuesta_id).in_("user_id", ids_organizacion(req.user_id)).maybe_single().execute().data
+    p = sb.table("item_field_updates").select("*").eq("id", propuesta_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
     if not p:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
     if p["estado"] != "propuesta":
@@ -921,31 +922,30 @@ async def aplicar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest):
         try:
             sb.table("rfq_batch_items").update({"estado": "responded", "updated_at": aplicado_at}).eq("resultado_id", p["entity_id"]).execute()
             from app.services.supplier_capability_intelligence import registrar_evento_para_resultado
-            registrar_evento_para_resultado(req.user_id, p["entity_id"], "supplier_replied_can_supply", {"propuesta_id": propuesta_id, "revision": "manual"})
+            registrar_evento_para_resultado(ctx.actor_user_id, p["entity_id"], "supplier_replied_can_supply", {"propuesta_id": propuesta_id, "revision": "manual"})
             if p["field"] == "precio_unitario":
-                registrar_evento_para_resultado(req.user_id, p["entity_id"], "valid_quote_received", {"propuesta_id": propuesta_id, "revision": "manual"})
+                registrar_evento_para_resultado(ctx.actor_user_id, p["entity_id"], "valid_quote_received", {"propuesta_id": propuesta_id, "revision": "manual"})
         except Exception as e:
             print(f"[Gmail propuesta] evidencia de capacidad: {e}")
     elif p["entity_type"] == "proveedor_contacto" and p["field"] == "email":
         from app.services.proveedores_matching import resolver_o_crear_contacto
-        resolver_o_crear_contacto(sb, req.user_id, p["entity_id"], nuevo_valor, origen="gmail_agent")
+        resolver_o_crear_contacto(sb, ctx.actor_user_id, p["entity_id"], nuevo_valor, origen="gmail_agent")
 
     sb.table("item_field_updates").update({
-        "estado": "aplicado", "reviewed_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": req.user_id,
+        "estado": "aplicado", "reviewed_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": ctx.actor_user_id,
     }).eq("id", propuesta_id).execute()
 
     return {"success": True}
 
 
 @router.post("/propuestas/{propuesta_id}/rechazar")
-async def rechazar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest):
+async def rechazar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
-    from app.services.organizacion import ids_organizacion
     sb = get_supabase()
-    p = sb.table("item_field_updates").select("id,estado").eq("id", propuesta_id).in_("user_id", ids_organizacion(req.user_id)).maybe_single().execute().data
+    p = sb.table("item_field_updates").select("id,estado").eq("id", propuesta_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
     if not p:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
     sb.table("item_field_updates").update({
-        "estado": "descartado", "reviewed_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": req.user_id,
+        "estado": "descartado", "reviewed_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": ctx.actor_user_id,
     }).eq("id", propuesta_id).execute()
     return {"success": True}

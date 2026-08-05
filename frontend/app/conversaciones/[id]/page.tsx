@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ExternalLink, Paperclip, Check, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import { Card, Badge, BtnPrimary, BtnSecondary, SkeletonText, SkeletonChatBubble, SkeletonBox, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -81,7 +82,7 @@ export default function ConversacionDetallePage() {
 
   const cargar = useCallback((uid: string) => {
     setLoading(true);
-    fetch(`${API_URL}/api/gmail/conversaciones/${id}?user_id=${uid}`)
+    authFetch(`${API_URL}/api/gmail/conversaciones/${id}`)
       .then(r => r.json())
       .then(d => {
         setConv(d.conversacion);
@@ -105,9 +106,9 @@ export default function ConversacionDetallePage() {
     if (!userId) return;
     setProcesando(propuestaId);
     try {
-      const res = await fetch(`${API_URL}/api/gmail/propuestas/${propuestaId}/${accion}`, {
+      const res = await authFetch(`${API_URL}/api/gmail/propuestas/${propuestaId}/${accion}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId }),
+        body: JSON.stringify({}),
       });
       if (res.ok) cargar(userId);
     } finally {

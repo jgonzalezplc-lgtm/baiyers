@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Mail, ExternalLink, RefreshCw, ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import { PageHeader, Table, TableHead, TableRow, EmptyState, Badge, BtnSecondary, SkeletonTableRow, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -52,7 +53,7 @@ export default function ConversacionesPage() {
 
   const cargar = useCallback((uid: string) => {
     setLoading(true);
-    fetch(`${API_URL}/api/gmail/conversaciones?user_id=${uid}`)
+    authFetch(`${API_URL}/api/gmail/conversaciones`)
       .then(r => (r.ok ? r.json() : []))
       .then(setConvs)
       .catch(() => {})
@@ -73,7 +74,7 @@ export default function ConversacionesPage() {
     setSincronizando(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/api/gmail/sincronizar-respuestas?user_id=${userId}`, { method: "POST" });
+      const res = await authFetch(`${API_URL}/api/gmail/sincronizar-respuestas`, { method: "POST" });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.detail || "No se pudo sincronizar");
