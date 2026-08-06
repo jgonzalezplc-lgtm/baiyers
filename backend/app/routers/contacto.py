@@ -1,8 +1,10 @@
 """Contacto del proveedor al cotizar: email + WhatsApp con mensaje pre-hecho."""
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api", tags=["contacto"])
 
@@ -16,7 +18,7 @@ class ContactoRequest(BaseModel):
 
 
 @router.post("/contacto")
-async def obtener_contacto(req: ContactoRequest):
+async def obtener_contacto(req: ContactoRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Scrapea la página del proveedor y devuelve email + link de WhatsApp con
     un mensaje de cotización listo para copiar/pegar o abrir en WhatsApp."""
     from app.services.contacto_scraper import (

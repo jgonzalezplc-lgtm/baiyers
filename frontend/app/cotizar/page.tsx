@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import FormularioCotizar, { type AdjuntoCotizacion } from "./components/FormularioCotizar";
 import ResultadoIdentificacion from "./components/ResultadoIdentificacion";
 import ResultadoIdentificacionMulti, { type ItemIdentificado } from "./components/ResultadoIdentificacionMulti";
@@ -219,11 +220,10 @@ export default function CotizarPage() {
       const ids = inserts.map(r => r.data?.id).filter(Boolean) as string[];
       if (ids.length !== itemsSel.length) throw new Error("No se pudieron guardar todos los ítems");
 
-      const res = await fetch(`${API_URL}/api/listas`, {
+      const res = await authFetch(`${API_URL}/api/listas`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: userId,
           nombre: nombreLista || `Lista ${new Date().toLocaleDateString("es-CL")}`,
           items: itemsSel.map((it, i) => ({
             cotizacion_id: ids[i],
@@ -292,11 +292,10 @@ export default function CotizarPage() {
     // así todo el flujo — comparador, definitivo, aprobación — es el mismo sin
     // importar cuántos ítems tenga la compra.
     try {
-      const resLista = await fetch(`${API_URL}/api/listas`, {
+      const resLista = await authFetch(`${API_URL}/api/listas`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: userId,
           nombre: nombreLista || resultado.nombre_tecnico,
           items: [{ cotizacion_id: cotizacion.id, nombre: resultado.nombre_tecnico, cantidad: resultado.lista_items?.[0]?.cantidad ?? 1, unidad: resultado.lista_items?.[0]?.unidad ?? "unidad" }],
         }),

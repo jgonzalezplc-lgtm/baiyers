@@ -11,13 +11,31 @@ Rápido y sin APIs de pago: descarga el HTML de la URL (y prueba /contacto,
 """
 from __future__ import annotations
 
+import ipaddress
 import re
+import socket
 import urllib.parse
 
 import httpx
 from bs4 import BeautifulSoup
 
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+
+
+def _es_url_publica(url: str) -> bool:
+    """Bloquea SSRF: rechaza esquemas distintos de http(s) y hosts que resuelvan
+    a IPs privadas/loopback/link-local (incluye 169.254.169.254 de metadata cloud)."""
+    try:
+        partes = urllib.parse.urlsplit(url)
+        if partes.scheme not in ("http", "https") or not partes.hostname:
+            return False
+        for info in socket.getaddrinfo(partes.hostname, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return False
+        return True
+    except Exception:
+        return False
 _EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 _WA_RE = re.compile(r"(?:wa\.me/|api\.whatsapp\.com/send\?phone=|whatsapp://send\?phone=|web\.whatsapp\.com/send\?phone=)(\+?\d[\d\s\-]{6,})", re.I)
 # Emails de plataformas/imágenes que no son contacto real
@@ -102,7 +120,7 @@ async def extraer_contacto(url: str, timeout: float = 8.0, proveedor: str | None
     resuelve el sitio real de la tienda por el nombre del proveedor.
     """
     vacio = {"email": None, "whatsapp": None, "telefono": None}
-    if not url or not url.startswith("http"):
+    if not url or not _es_url_publica(url):
         return vacio
 
     emails: list[str] = []
@@ -124,6 +142,8 @@ async def extraer_contacto(url: str, timeout: float = 8.0, proveedor: str | None
             # La URL (producto o tienda) primero, luego rutas de contacto típicas
             urls = [origen] + [base + r for r in _RUTAS_CONTACTO if r]
             for u in urls[:5]:
+                if not _es_url_publica(u):
+                    continue
                 try:
                     resp = await client.get(u)
                     if resp.status_code != 200:

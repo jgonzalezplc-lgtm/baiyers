@@ -171,7 +171,7 @@ async def listar_cotizaciones(limit: int = 100, ctx: AuthContext = Depends(get_a
 # ─── Detalle de una cotización con todos sus resultados ───────────────────────
 
 @router.get("/cotizaciones/{cotizacion_id}/detalle")
-async def detalle_cotizacion(cotizacion_id: str):
+async def detalle_cotizacion(cotizacion_id: str, ctx: AuthContext = Depends(get_auth_context)):
     import asyncio
     from app.services.supabase import get_supabase
     sb = get_supabase()
@@ -185,7 +185,7 @@ async def detalle_cotizacion(cotizacion_id: str):
     )
 
     def _q_cotizacion():
-        return sb.table("cotizaciones").select("*").eq("id", cotizacion_id).single().execute()
+        return sb.table("cotizaciones").select("*").eq("id", cotizacion_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
 
     def _q_resultados():
         # Intentar con columnas opcionales (pueden faltar si la migración 015 no corrió)
@@ -313,11 +313,15 @@ class SeleccionComparadorRequest(BaseModel):
 
 
 @router.post("/cotizaciones/{cotizacion_id}/comparador")
-async def seleccionar_comparador(cotizacion_id: str, req: SeleccionComparadorRequest):
+async def seleccionar_comparador(cotizacion_id: str, req: SeleccionComparadorRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Marca qué resultados van al comparador: relevante=true para los
     seleccionados, false para el resto aún no contactado."""
     from app.services.supabase import get_supabase
     sb = get_supabase()
+
+    cot = sb.table("cotizaciones").select("id").eq("id", cotizacion_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+    if not cot:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
 
     rows = (sb.table("resultados")
             .select("id, url, solicitud_enviada_at")
@@ -349,12 +353,25 @@ async def seleccionar_comparador(cotizacion_id: str, req: SeleccionComparadorReq
 
 # ─── Descartar un resultado del comparador ────────────────────────────────────
 
+def _verificar_dueno_resultado(sb, resultado_id: str, ids_organizacion: list[str]) -> dict:
+    """Los `resultados` no tienen user_id propio: la propiedad se verifica a
+    través de la cotización a la que pertenecen."""
+    resultado = sb.table("resultados").select("id, cotizacion_id").eq("id", resultado_id).maybe_single().execute().data
+    if not resultado:
+        raise HTTPException(status_code=404, detail="Resultado no encontrado")
+    cot = sb.table("cotizaciones").select("id").eq("id", resultado["cotizacion_id"]).in_("user_id", ids_organizacion).maybe_single().execute().data
+    if not cot:
+        raise HTTPException(status_code=404, detail="Resultado no encontrado")
+    return resultado
+
+
 @router.post("/resultados/{resultado_id}/descartar")
-async def descartar_resultado(resultado_id: str):
+async def descartar_resultado(resultado_id: str, ctx: AuthContext = Depends(get_auth_context)):
     """Saca un proveedor del comparador (relevante=false). Se puede recuperar
     volviendo a la búsqueda y seleccionándolo de nuevo."""
     from app.services.supabase import get_supabase
     sb = get_supabase()
+    _verificar_dueno_resultado(sb, resultado_id, ctx.user_ids_organizacion)
     sb.table("resultados").update({"relevante": False}).eq("id", resultado_id).execute()
     return {"success": True}
 
@@ -380,7 +397,7 @@ def _extraer_descripcion_html(html: str) -> Optional[str]:
 
 
 @router.get("/cotizaciones/{cotizacion_id}/informe")
-async def datos_informe(cotizacion_id: str):
+async def datos_informe(cotizacion_id: str, ctx: AuthContext = Depends(get_auth_context)):
     """Datos para el Informe de Cotización en PDF: ítem + proveedores del
     comparador con descripción (metadata o scrapeada en vivo de la página),
     precio y URL de origen."""
@@ -390,7 +407,7 @@ async def datos_informe(cotizacion_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    cot = sb.table("cotizaciones").select("*").eq("id", cotizacion_id).single().execute()
+    cot = sb.table("cotizaciones").select("*").eq("id", cotizacion_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
     if not cot.data:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
 
@@ -472,9 +489,10 @@ class RespuestaProveedorRequest(BaseModel):
 
 
 @router.post("/resultados/{resultado_id}/respuesta")
-async def registrar_respuesta(resultado_id: str, req: RespuestaProveedorRequest):
+async def registrar_respuesta(resultado_id: str, req: RespuestaProveedorRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
+    _verificar_dueno_resultado(sb, resultado_id, ctx.user_ids_organizacion)
 
     now_iso = datetime.now(timezone.utc).isoformat()
     update_data: dict = {
@@ -521,8 +539,11 @@ class EstadoRequest(BaseModel):
 
 
 @router.patch("/cotizaciones/{cotizacion_id}/estado")
-async def actualizar_estado(cotizacion_id: str, req: EstadoRequest):
+async def actualizar_estado(cotizacion_id: str, req: EstadoRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
+    cot = sb.table("cotizaciones").select("id").eq("id", cotizacion_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+    if not cot:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
     sb.table("cotizaciones").update({"estado": req.estado}).eq("id", cotizacion_id).execute()
     return {"ok": True}

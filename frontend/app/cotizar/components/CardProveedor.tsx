@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { authFetch } from "@/lib/authFetch";
 
 export interface Resultado {
   /** Identidad estable de esta fila, asignada al cargarla (no la url: varias
@@ -116,7 +117,7 @@ export default function CardProveedor({ resultado, seleccionado, onSeleccionar, 
     if (contacto || cargandoContacto || !resultado.url) return;
     setCargandoContacto(true);
     try {
-      const res = await fetch(`${API_URL}/api/contacto`, {
+      const res = await authFetch(`${API_URL}/api/contacto`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

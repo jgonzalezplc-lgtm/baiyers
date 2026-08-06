@@ -6,6 +6,7 @@
  */
 import { useState } from "react";
 import { pdf, Document, Page, Text, View, Link as PdfLink, StyleSheet } from "@react-pdf/renderer";
+import { authFetch } from "@/lib/authFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -157,7 +158,7 @@ export default function InformeCotizacion({ cotizacionId, nombreItem }: { cotiza
     setGenerando(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/api/cotizaciones/${cotizacionId}/informe`);
+      const res = await authFetch(`${API_URL}/api/cotizaciones/${cotizacionId}/informe`);
       if (!res.ok) throw new Error("No se pudieron obtener los datos del informe");
       const datos: DatosInforme = await res.json();
       if (!datos.proveedores.length) throw new Error("No hay proveedores en el comparador");

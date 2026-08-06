@@ -4,6 +4,7 @@ import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import FiltrosProveedores from "../../components/FiltrosProveedores";
 import CardProveedor, { type Resultado } from "../../components/CardProveedor";
 import SkeletonResultados from "../../components/SkeletonResultados";
@@ -142,7 +143,6 @@ export default function ResultadosPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const id = params.id as string;
-  const [creandoLista, setCreandoLista] = useState(false);
 
   const [resultados, setResultados] = useState<Resultado[]>([]);
   const [loading, setLoading] = useState(true);
@@ -489,7 +489,7 @@ export default function ResultadosPage() {
   // Fusiona las marcas locales de la sesión (el servidor puede ir atrasado).
   useEffect(() => {
     if (!listaId || !userId) return;
-    fetch(`${API_URL}/api/listas/${listaId}?user_id=${userId}`)
+    authFetch(`${API_URL}/api/listas/${listaId}`)
       .then(r => (r.ok ? r.json() : null))
       .then(d => {
         if (!d) return;
@@ -518,10 +518,10 @@ export default function ResultadosPage() {
     const val = n > 0 ? n : 1;
     setCantidad(val);
     if (listaId && userId) {
-      fetch(`${API_URL}/api/listas/${listaId}/cantidad`, {
+      authFetch(`${API_URL}/api/listas/${listaId}/cantidad`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, cotizacion_id: id, cantidad: val }),
+        body: JSON.stringify({ cotizacion_id: id, cantidad: val }),
         keepalive: true,
       }).catch(() => {});
       setLista(prev => prev ? {
@@ -545,7 +545,7 @@ export default function ResultadosPage() {
     setComparando(true);
     try {
       // keepalive: los POST sobreviven a la navegación inmediata
-      const pComparador = fetch(`${API_URL}/api/cotizaciones/${id}/comparador`, {
+      const pComparador = authFetch(`${API_URL}/api/cotizaciones/${id}/comparador`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ urls }),
@@ -553,10 +553,10 @@ export default function ResultadosPage() {
       });
 
       if (listaId) {
-        const pComparado = fetch(`${API_URL}/api/listas/${listaId}/comparado`, {
+        const pComparado = authFetch(`${API_URL}/api/listas/${listaId}/comparado`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: userId, cotizacion_id: id }),
+          body: JSON.stringify({ cotizacion_id: id }),
           keepalive: true,
         });
 
@@ -564,7 +564,7 @@ export default function ResultadosPage() {
         let listaData = lista;
         if (!listaData) {
           try {
-            const r = await fetch(`${API_URL}/api/listas/${listaId}?user_id=${userId}`);
+            const r = await authFetch(`${API_URL}/api/listas/${listaId}`);
             if (r.ok) {
               const d = await r.json();
               const loc0 = comparadosLocales(listaId);
@@ -604,69 +604,6 @@ export default function ResultadosPage() {
       setToast("No se pudo guardar la selección");
       setTimeout(() => setToast(""), 3000);
       setComparando(false);
-    }
-  };
-
-  const handleAgregarLista = async () => {
-    if (!userId) {
-      setToast("Debes iniciar sesion para crear una lista de cotizacion");
-      setTimeout(() => setToast(""), 3000);
-      return;
-    }
-    const selArray = resultados.filter(r => seleccionados.has(r._uid!));
-    if (!selArray.length) return;
-    setCreandoLista(true);
-
-    // Badges automáticos (el usuario los puede reasignar en la lista)
-    const conPrecio = selArray.filter(r => r.precio != null);
-    const masEconomico = conPrecio.length
-      ? conPrecio.reduce((a, b) => (a.precio! <= b.precio! ? a : b))._uid : null;
-    const disponibles = selArray.filter(r =>
-      r.stock_disponible === true || (typeof r.stock === "number" && r.stock > 0));
-    const conveniente = (disponibles.filter(r => r.precio != null).sort((a, b) => a.precio! - b.precio!)[0]
-      ?? conPrecio.sort((a, b) => a.precio! - b.precio!)[0])?._uid ?? null;
-
-    const proveedores = selArray.map(r => {
-      let badge: string | null = null;
-      if (r._uid === conveniente) badge = "mas_conveniente";
-      else if (r._uid === masEconomico) badge = "mas_economico";
-      else if (r.stock_disponible === true || (typeof r.stock === "number" && r.stock > 0)) badge = "disponibilidad_inmediata";
-      return {
-        proveedor_nombre: r.proveedor || r.titulo,
-        proveedor_email: null,
-        fuente: r.fuente,
-        url_referencia: r.url,
-        precio_referencial: r.precio,
-        moneda_referencial: r.moneda || "CLP",
-        plazo_entrega_estimado: r.plazo_entrega_estimado ?? null,
-        badge,
-      };
-    });
-
-    try {
-      const res = await fetch(`${API_URL}/api/procurement/eventos`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: userId,
-          nombre: searchParams.get("lista") || nombreItem || "Nueva lista de cotización",
-          cotizacion_id: id,
-          items: [{
-            nombre: nombreItem || selArray[0].titulo,
-            numero_parte: selArray[0].numero_parte ?? null,
-            marca: selArray[0].marca ?? null,
-            cantidad: 1,
-            proveedores,
-          }],
-        }),
-      });
-      const data = await res.json();
-      if (data?.evento?.id) router.push(`/procurement/${data.evento.id}`);
-    } catch {
-      setToast("No se pudo crear la lista de cotización");
-      setTimeout(() => setToast(""), 3000);
-    } finally {
-      setCreandoLista(false);
     }
   };
 
@@ -716,7 +653,7 @@ export default function ResultadosPage() {
       selArray.forEach(async r => {
         if ((r as unknown as { contacto?: string }).contacto || !r.url) return;
         try {
-          const cr = await fetch(`${API_URL}/api/contacto`, {
+          const cr = await authFetch(`${API_URL}/api/contacto`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ url: r.url, proveedor: r.proveedor, nombre_item: nombreItem, cantidad }),
@@ -752,13 +689,17 @@ export default function ResultadosPage() {
       if (formResp.plazo) body.plazo_entrega = formResp.plazo;
       if (formResp.condiciones) body.condiciones_pago = formResp.condiciones;
       if (formResp.notas) body.notas = formResp.notas;
-      await fetch(`${API_URL}/api/resultados/${modalRespuesta.resultado_id}/respuesta`, {
+      const res = await authFetch(`${API_URL}/api/resultados/${modalRespuesta.resultado_id}/respuesta`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
+      if (!res.ok) throw new Error();
       setToast(`Respuesta de ${modalRespuesta.proveedor} registrada`);
       setTimeout(() => setToast(""), 3000);
       setModalRespuesta(null);
-    } catch { /* silent */ } finally { setGuardandoResp(false); }
+    } catch {
+      setToast("No se pudo guardar la respuesta. Intenta de nuevo.");
+      setTimeout(() => setToast(""), 3500);
+    } finally { setGuardandoResp(false); }
   };
 
   const handleEnviarEmails = async () => {
@@ -1405,14 +1346,6 @@ export default function ResultadosPage() {
                 {nSeleccionados} seleccionado{nSeleccionados > 1 ? "s" : ""}
               </span>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  onClick={handleAgregarLista}
-                  disabled={creandoLista}
-                  style={{ ...barBtn, opacity: creandoLista ? 0.5 : 1 }}
-                  title="Agrupa varios ítems en una lista de cotización / proyecto"
-                >
-                  {creandoLista ? "Creando…" : "+ Lista"}
-                </button>
                 <button
                   onClick={handleSolicitar}
                   disabled={generandoEmail}

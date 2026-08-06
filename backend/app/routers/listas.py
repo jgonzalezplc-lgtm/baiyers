@@ -89,13 +89,12 @@ class ItemListaIn(BaseModel):
 
 
 class CrearListaRequest(BaseModel):
-    user_id: str
     nombre: str
     items: list[ItemListaIn]
 
 
 @router.post("")
-async def crear_lista(req: CrearListaRequest):
+async def crear_lista(req: CrearListaRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
@@ -105,7 +104,7 @@ async def crear_lista(req: CrearListaRequest):
         "definitivos": {},
     }
     row = {
-        "user_id": req.user_id,
+        "user_id": ctx.actor_user_id,
         "nombre": req.nombre,
         "descripcion": json.dumps(data, ensure_ascii=False),
         "estado": "borrador",
@@ -259,9 +258,10 @@ def _resultados_visibles(item: dict, resultados: list[dict]) -> list[dict]:
 
 
 @router.get("/{lista_id}")
-async def detalle_lista(lista_id: str, user_id: str):
+async def detalle_lista(lista_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
+    user_id = ctx.actor_user_id
 
     # Si lista_id es en realidad una cotización suelta, se envuelve al vuelo:
     # así toda cotización (1 ítem o N) pasa por la misma pantalla de detalle.
@@ -359,7 +359,6 @@ def _recomendaciones_item(item: dict, privados: list[dict], sugeridos: list[dict
 
 
 class MarcarComparadoRequest(BaseModel):
-    user_id: str
     cotizacion_id: str
 
 
@@ -658,12 +657,12 @@ async def estado_busqueda_complementaria(lista_id: str, ctx: AuthContext = Depen
 
 
 @router.post("/{lista_id}/comparado")
-async def marcar_comparado(lista_id: str, req: MarcarComparadoRequest):
+async def marcar_comparado(lista_id: str, req: MarcarComparadoRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
     async with _lock_de(lista_id):
-        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", _ids_org(req.user_id)).single().execute()
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
         if not proy.data:
             raise HTTPException(status_code=404, detail="Lista no encontrada")
         data = _parse_lista(proy.data)
@@ -750,13 +749,12 @@ async def elegir_definitivo(lista_id: str, req: DefinitivoRequest, ctx: AuthCont
 
 
 class CantidadRequest(BaseModel):
-    user_id: str
     cotizacion_id: str
     cantidad: float
 
 
 @router.post("/{lista_id}/cantidad")
-async def actualizar_cantidad(lista_id: str, req: CantidadRequest):
+async def actualizar_cantidad(lista_id: str, req: CantidadRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Actualiza la cantidad a comprar de un ítem de la lista."""
     from app.services.supabase import get_supabase
     sb = get_supabase()
@@ -765,7 +763,7 @@ async def actualizar_cantidad(lista_id: str, req: CantidadRequest):
         raise HTTPException(status_code=400, detail="La cantidad debe ser mayor a 0")
 
     async with _lock_de(lista_id):
-        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", _ids_org(req.user_id)).single().execute()
+        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
         if not proy.data:
             raise HTTPException(status_code=404, detail="Lista no encontrada")
         data = _parse_lista(proy.data)
@@ -1255,10 +1253,7 @@ async def informe_lista(lista_id: str, ctx: AuthContext = Depends(get_auth_conte
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    # detalle_lista sigue con su firma vieja (user_id plano) a propósito:
-    # cotizar/[id]/resultados/page.tsx (protegido, otra sesión) también la
-    # llama vía HTTP sin Bearer — migrarla rompería ese flujo.
-    detalle = await detalle_lista(lista_id, ctx.actor_user_id)
+    detalle = await detalle_lista(lista_id, ctx)
 
     # Scraping best-effort de descripciones faltantes (todas las de la lista)
     pendientes = [

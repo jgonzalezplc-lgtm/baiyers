@@ -31,7 +31,7 @@ export default function AutorizarListaPage() {
   useEffect(() => { createClient().auth.getUser().then(async ({ data }) => {
     const u = data.user; if (!u) return router.replace("/login");
     setUserId(u.id); const m = u.user_metadata as Record<string, string>; setMeta(m); setEmail(m.autorizador_email || "");
-    const r = await fetch(`${API_URL}/api/listas/${id}?user_id=${u.id}`);
+    const r = await authFetch(`${API_URL}/api/listas/${id}`);
     if (r.ok) {
       const d = await r.json(); setLista(d);
       const automaticas = JSON.parse(sessionStorage.getItem(`baiyer:justificaciones:${id}`) || "{}"); setJustificaciones({ ...automaticas, ...(d.justificaciones || {}) }); sessionStorage.removeItem(`baiyer:justificaciones:${id}`);

@@ -156,7 +156,7 @@ export default function ListaDetallePage() {
 
   const cargar = useCallback(async (uid: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/listas/${idUrl}?user_id=${uid}`);
+      const res = await authFetch(`${API_URL}/api/listas/${idUrl}`);
       if (res.ok) {
         const data = await res.json();
         setLista(data);
@@ -260,10 +260,10 @@ export default function ListaDetallePage() {
       items: prev.items.map(it => it.cotizacion_id === item.cotizacion_id ? { ...it, cantidad } : it),
     } : prev);
     try {
-      await fetch(`${API_URL}/api/listas/${id}/cantidad`, {
+      await authFetch(`${API_URL}/api/listas/${id}/cantidad`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, cotizacion_id: item.cotizacion_id, cantidad }),
+        body: JSON.stringify({ cotizacion_id: item.cotizacion_id, cantidad }),
       });
     } catch {
       setToast("No se pudo guardar la cantidad");
@@ -275,13 +275,19 @@ export default function ListaDetallePage() {
     if (!userId) return;
     setGuardandoDef(item.cotizacion_id);
     try {
-      await authFetch(`${API_URL}/api/listas/${id}/definitivo`, {
+      const resp = await authFetch(`${API_URL}/api/listas/${id}/definitivo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cotizacion_id: item.cotizacion_id, quitar: true }),
       });
+      if (!resp.ok) throw new Error();
       await cargar(userId);
-    } catch { /* silent */ } finally { setGuardandoDef(null); }
+    } catch {
+      setToast("No se pudo quitar la selección. Intenta de nuevo.");
+      setTimeout(() => setToast(""), 3500);
+    } finally {
+      setGuardandoDef(null);
+    }
   };
 
   const autoSeleccionarBaratos = async () => {
@@ -363,13 +369,17 @@ export default function ListaDetallePage() {
   ) => {
     if (!userId) return;
     try {
-      await authFetch(`${API_URL}/api/listas/${id}/compra`, {
+      const resp = await authFetch(`${API_URL}/api/listas/${id}/compra`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cotizacion_id: cotizacionId, estado, ...extra }),
       });
+      if (!resp.ok) throw new Error();
       await cargar(userId);
-    } catch { /* silent */ }
+    } catch {
+      setToast("No se pudo registrar la compra. Intenta de nuevo.");
+      setTimeout(() => setToast(""), 3500);
+    }
   };
 
   const subirBoleta = async (file: File) => {
