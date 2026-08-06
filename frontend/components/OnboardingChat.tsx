@@ -76,12 +76,14 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     }
     if (campo === "nombre") {
       return t
+        .replace(/^(no|nop)\s*[,.:]?\s*/i, "")
         .replace(/^(me llamo|mi nombre es|mi nombre completo es|soy|me dicen)\s+/i, "")
         .replace(/[.!,]+$/, "")
         .trim();
     }
     if (campo === "empresa") {
       return t
+        .replace(/^(no|nop)\s*[,.:]?\s*/i, "")
         .replace(/^(se llama|la empresa es|mi empresa es|nuestra empresa es|somos|es|trabajo en|estoy en)\s+/i, "")
         .replace(/[.!,]+$/, "")
         .trim();
