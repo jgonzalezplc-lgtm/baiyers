@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Bot, Send, CheckCircle2, XCircle, LayoutGrid } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { BtnPrimary, BtnSecondary, Card, Input, TypingBubble } from "@/components/ui";
+import { BtnPrimary, BtnSecondary, Card, Input, TypingBubble, CascadeWrapper, SkeletonBox } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -55,6 +55,7 @@ function fmtCLP(n: number) {
 export default function ConfiguracionAutorizacionesPage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
+  const [cargandoInicial, setCargandoInicial] = useState(true);
   const [mensajes, setMensajes] = useState<Mensaje[]>([
     { rol: "bot", texto: "Cuéntame cómo funciona hoy tu proceso de compras. Puede ser informal — por ejemplo: \"Los cotizadores preparan la comparación, después la revisa mi jefe, y si es sobre $500.000 también tiene que aprobar finanzas.\"" },
   ]);
@@ -73,7 +74,10 @@ export default function ConfiguracionAutorizacionesPage() {
   const finRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    createClient().auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+    createClient().auth.getUser().then(({ data }) => {
+      setUserId(data.user?.id ?? null);
+      setCargandoInicial(false);
+    });
   }, []);
 
   useEffect(() => {
@@ -210,6 +214,20 @@ export default function ConfiguracionAutorizacionesPage() {
     }
   };
 
+  if (cargandoInicial) {
+    return (
+      <div style={{ maxWidth: 640, margin: "0 auto" }}>
+        <SkeletonBox height={13} width={120} style={{ marginBottom: 16 }} />
+        <SkeletonBox height={26} width={320} style={{ marginBottom: 8 }} />
+        <SkeletonBox height={13} width={400} style={{ marginBottom: 20 }} />
+        <CascadeWrapper>
+          <Card padding={18}><SkeletonBox height={60} width="100%" /></Card>
+          <Card padding={18} style={{ marginTop: 16 }}><SkeletonBox height={70} width="100%" /></Card>
+        </CascadeWrapper>
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: 640, margin: "0 auto" }}>
       <button onClick={() => router.push("/settings")} style={{ border: 0, background: "none", color: "var(--n-600)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 16, fontSize: 13.5 }}>
@@ -271,7 +289,7 @@ export default function ConfiguracionAutorizacionesPage() {
               {(propuesta.responsables_detectados || []).length > 0 && (
                 <div style={{ marginTop: 4, paddingTop: 10, borderTop: "1px dashed var(--n-200)" }}>
                   <div style={{ fontSize: 12.5, color: "var(--n-500)", marginBottom: 6 }}>
-                    Personas detectadas · destildá para no invitar
+                    Personas detectadas · desmarca para no invitar
                   </div>
                   {(propuesta.responsables_detectados || []).map((r, i) => {
                     const puedeInvitar = !!r.email;
