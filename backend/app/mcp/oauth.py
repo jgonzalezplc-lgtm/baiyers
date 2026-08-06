@@ -203,16 +203,28 @@ async def consent(
             status_code=302,
         )
 
-    # Authenticate user with Supabase
+    # Authenticate user with Supabase — con un cliente propio, descartable,
+    # NO con el `SUPABASE` global de módulo. `sign_in_with_password` muta la
+    # sesión interna del cliente que lo llama; si se hace con el cliente
+    # compartido, las escrituras posteriores a mcp_auth_codes (más abajo)
+    # dejan de correr como service role y quedan bloqueadas por RLS (la
+    # tabla no tiene policies para un usuario autenticado normal) — eso
+    # tiraba 500 Internal Server Error de forma silenciosa, encontrado
+    # probando la conexión real de Claude Desktop en producción.
     try:
-        auth = SUPABASE.auth.sign_in_with_password({"email": email, "password": password})
+        cliente_login = create_client(settings.supabase_url, settings.supabase_service_key)
+        auth = cliente_login.auth.sign_in_with_password({"email": email, "password": password})
         user_id = auth.user.id
     except Exception:
         raise HTTPException(401, "Credenciales invalidas")
 
     # Generate auth code
     code = secrets.token_urlsafe(32)
-    _guardar_estado(code, {**pending, "user_id": user_id}, ttl_minutos=10)
+    try:
+        _guardar_estado(code, {**pending, "user_id": user_id}, ttl_minutos=10)
+    except Exception as e:
+        print(f"[MCP OAuth] error guardando código emitido: {e}")
+        raise HTTPException(500, "No se pudo completar la autorización, intenta de nuevo")
 
     return RedirectResponse(
         f"{pending['redirect_uri']}?code={code}&state={state}",
