@@ -17,8 +17,21 @@ router = APIRouter(tags=["mcp-discovery"])
 def _base(request: Request) -> str:
     """URL base real de la request (protocolo + host), nunca hardcodeada —
     el manifest.json legado tenía `localhost:8000` fijo y por eso apuntaba
-    mal en producción."""
-    return str(request.base_url).rstrip("/")
+    mal en producción.
+
+    Railway termina TLS en un proxy delante de la app: la conexión que
+    llega a uvicorn es HTTP plano, así que `request.base_url` por sí solo
+    siempre da `http://`, incluso en producción detrás de HTTPS real. Eso
+    hacía que el discovery publicara endpoints `http://` — un cliente MCP
+    real (Claude) los rechaza por inseguros y el registro dinámico fallaba
+    en silencio ("no se pudo registrar"). El proxy sí manda
+    `X-Forwarded-Proto: https`, que es la señal correcta a confiar acá.
+    """
+    base = str(request.base_url).rstrip("/")
+    proto_real = request.headers.get("x-forwarded-proto")
+    if proto_real and base.startswith("http://"):
+        base = proto_real + base[len("http"):]
+    return base
 
 
 @router.get("/.well-known/oauth-authorization-server")

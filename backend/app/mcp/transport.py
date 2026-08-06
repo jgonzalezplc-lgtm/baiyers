@@ -58,7 +58,8 @@ def _audit_log(user_id: str, tool_name: str, params: dict, result: Any):
 @router.get("/manifest.json")
 async def manifest(request: Request):
     """MCP manifest for client discovery."""
-    base = str(request.base_url).rstrip("/")
+    from app.mcp.discovery import _base
+    base = _base(request)
     return {
         "schema_version": "v1",
         "name_for_human": "Claria — Cotizador Inteligente",
