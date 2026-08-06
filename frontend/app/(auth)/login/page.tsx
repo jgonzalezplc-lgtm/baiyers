@@ -1,10 +1,16 @@
 "use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { BtnPrimary, BtnSecondary, Input } from "@/components/ui";
 import { Eye, EyeOff } from "lucide-react";
+
+const ERRORES_URL: Record<string, string> = {
+  oauth: "El enlace de confirmación ya fue usado o expiró. Inicia sesión si ya confirmaste, o regístrate de nuevo para recibir un enlace nuevo.",
+  signup: "No se pudo confirmar tu cuenta: el enlace ya fue usado o expiró. Regístrate de nuevo con el mismo correo para recibir uno nuevo.",
+  recovery: "El enlace de recuperación no es válido o ya expiró. Solicita uno nuevo abajo.",
+};
 
 function GoogleIcon() {
   return (
@@ -28,7 +34,8 @@ function OutlookIcon() {
   );
 }
 
-export default function LoginPage() {
+function LoginInner() {
+  const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [verPassword, setVerPassword] = useState(false);
@@ -38,6 +45,11 @@ export default function LoginPage() {
   const [recoveryEnviado, setRecoveryEnviado] = useState(false);
   const router = useRouter();
   const supabase = createClient();
+
+  useEffect(() => {
+    const codigo = params.get("error");
+    if (codigo) setError(ERRORES_URL[codigo] || "Ocurrió un error. Intenta de nuevo.");
+  }, [params]);
 
   const handleLogin = async () => {
     setLoading(true);
@@ -58,7 +70,7 @@ export default function LoginPage() {
       provider: "google",
       options: { redirectTo: `${window.location.origin}/auth/callback?next=/onboarding` },
     });
-    if (error) setError("No se pudo iniciar con Google. Intenta de nuevo.");
+    if (error) setError(`No se pudo iniciar con Google: ${error.message}`);
   };
 
   const handleOutlook = async () => {
@@ -285,5 +297,13 @@ export default function LoginPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: "100vh", background: "var(--canvas)" }} />}>
+      <LoginInner />
+    </Suspense>
   );
 }

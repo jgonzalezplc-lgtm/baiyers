@@ -83,7 +83,7 @@ export default function RegisterPage() {
       provider: "google",
       options: { redirectTo: `${window.location.origin}/auth/callback?next=/onboarding` },
     });
-    if (error) setError("No se pudo continuar con Google. Intenta de nuevo.");
+    if (error) setError(`No se pudo continuar con Google: ${error.message}`);
   };
 
   const handleOutlook = async () => {
