@@ -34,8 +34,14 @@ def _guardar_estado(key: str, data: dict, ttl_minutos: int = 15) -> None:
 
 def _leer_y_consumir_estado(key: str) -> Optional[dict]:
     """Lee y borra en el mismo paso (equivalente a dict.pop) — un código de
-    autorización de un solo uso no debe poder reutilizarse."""
-    fila = SUPABASE.table("mcp_auth_codes").select("*").eq("key", key).maybe_single().execute().data
+    autorización de un solo uso no debe poder reutilizarse.
+
+    Esta versión del SDK de Supabase devuelve `None` directamente (no un
+    objeto con `.data = None`) cuando `maybe_single()` no encuentra filas —
+    acceder a `.data` sobre eso tira AttributeError en vez de dar un
+    resultado vacío. Mismo comportamiento ya documentado en rfq.py."""
+    respuesta = SUPABASE.table("mcp_auth_codes").select("*").eq("key", key).maybe_single().execute()
+    fila = respuesta.data if respuesta else None
     if not fila:
         return None
     SUPABASE.table("mcp_auth_codes").delete().eq("key", key).execute()
