@@ -7,7 +7,7 @@ import { BtnPrimary, BtnSecondary, Input } from "@/components/ui";
 import { Eye, EyeOff } from "lucide-react";
 
 const ERRORES_URL: Record<string, string> = {
-  oauth: "El enlace de confirmación ya fue usado o expiró. Inicia sesión si ya confirmaste, o regístrate de nuevo para recibir un enlace nuevo.",
+  oauth: "No se pudo completar el inicio de sesión con Google. Intenta de nuevo — si sigue fallando, prueba abrir baiyer.cl directamente en Chrome o Safari (no desde el navegador interno de otra app).",
   signup: "No se pudo confirmar tu cuenta: el enlace ya fue usado o expiró. Regístrate de nuevo con el mismo correo para recibir uno nuevo.",
   recovery: "El enlace de recuperación no es válido o ya expiró. Solicita uno nuevo abajo.",
 };
