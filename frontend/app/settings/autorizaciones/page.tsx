@@ -56,7 +56,7 @@ export default function ConfiguracionAutorizacionesPage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [mensajes, setMensajes] = useState<Mensaje[]>([
-    { rol: "bot", texto: "Contame cómo funciona hoy tu proceso de compras. Puede ser informal — por ejemplo: \"Los cotizadores preparan la comparación, después la revisa mi jefe, y si es sobre $500.000 también tiene que aprobar finanzas.\"" },
+    { rol: "bot", texto: "Cuéntame cómo funciona hoy tu proceso de compras. Puede ser informal — por ejemplo: \"Los cotizadores preparan la comparación, después la revisa mi jefe, y si es sobre $500.000 también tiene que aprobar finanzas.\"" },
   ]);
   const [entrada, setEntrada] = useState("");
   const [cargando, setCargando] = useState(false);
@@ -123,7 +123,7 @@ export default function ConfiguracionAutorizacionesPage() {
 
   const corregir = () => {
     setPropuesta(null);
-    setMensajes(prev => [...prev, { rol: "bot", texto: "Contame qué cambiarías." }]);
+    setMensajes(prev => [...prev, { rol: "bot", texto: "Cuéntame qué cambiarías." }]);
   };
 
   const confirmar = async () => {
@@ -218,7 +218,7 @@ export default function ConfiguracionAutorizacionesPage() {
 
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 600, color: "var(--n-900)", margin: "0 0 4px" }}>Ciclo de compras y autorizaciones</h1>
-        <p style={{ fontSize: 13.5, color: "var(--n-600)", margin: 0 }}>Contáselo a Baiyer en tus palabras. Después puedes ajustarlo visualmente.</p>
+        <p style={{ fontSize: 13.5, color: "var(--n-600)", margin: 0 }}>Cuéntaselo a Baiyer en tus palabras. Después puedes ajustarlo visualmente.</p>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
