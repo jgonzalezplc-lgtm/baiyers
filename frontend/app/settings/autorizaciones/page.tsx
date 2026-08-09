@@ -24,7 +24,6 @@ export default function ConfiguracionAutorizacionesPage() {
   const [nombreWorkflow, setNombreWorkflow] = useState("Ciclo de compras");
   const [workflowGuardado, setWorkflowGuardado] = useState<{ id: string; estado: string } | null>(null);
   const [errores, setErrores] = useState<{ codigo: string; mensaje: string }[]>([]);
-  const [activando, setActivando] = useState(false);
   const [creandoEnBlanco, setCreandoEnBlanco] = useState(false);
   // Emails de responsables detectados que el usuario deja marcados para
   // invitar al confirmar. Un email vacío nunca entra acá (los responsables
@@ -136,19 +135,10 @@ export default function ConfiguracionAutorizacionesPage() {
     }
   };
 
-  const activar = async () => {
-    if (!workflowGuardado || !userId) return;
-    setActivando(true);
-    try {
-      await authFetch(`${API_URL}/api/workflows/${workflowGuardado.id}/activar`, {
-        method: "POST",
-      });
-      setWorkflowGuardado(prev => prev ? { ...prev, estado: "activo" } : prev);
-    } catch {
-      setMensajes(prev => [...prev, { rol: "bot", texto: "No se pudo activar. Revisa la validación e intenta de nuevo." }]);
-    } finally {
-      setActivando(false);
-    }
+  const modificar = () => {
+    setWorkflowGuardado(null);
+    setErrores([]);
+    setMensajes(prev => [...prev, { rol: "bot", texto: "Dale, cuéntame de nuevo cómo funciona tu proceso de compras." }]);
   };
 
   const empezarEnBlanco = async () => {
@@ -221,9 +211,8 @@ export default function ConfiguracionAutorizacionesPage() {
           <WorkflowGuardadoCard
             workflow={workflowGuardado}
             errores={errores}
-            activando={activando}
-            onActivar={activar}
-            onAjustarVisualmente={() => router.push(`/settings/autorizaciones/canvas/${workflowGuardado.id}`)}
+            onAceptar={() => router.push(`/settings/autorizaciones/canvas/${workflowGuardado.id}`)}
+            onModificar={modificar}
           />
         )}
 

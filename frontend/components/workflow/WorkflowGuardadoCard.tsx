@@ -15,16 +15,19 @@ export interface ErrorValidacion {
 interface Props {
   workflow: WorkflowGuardado;
   errores: ErrorValidacion[];
-  activando: boolean;
-  onActivar: () => void;
-  onAjustarVisualmente: () => void;
+  /** "Aceptar" — abre el canvas de inmediato. Activar el ciclo ya se hace
+   * desde ahí (el canvas tiene su propio botón "Activar"), no desde acá. */
+  onAceptar: () => void;
+  /** "Modificar" — descarta este borrador y vuelve al chat original para
+   * redescribir el proceso desde cero. */
+  onModificar: () => void;
 }
 
-/** Tarjeta de resultado tras crear/activar un workflow — validación,
- * link al canvas y botón de activación explícita. Compartida entre
- * `/settings/autorizaciones` y el onboarding para no duplicar el flujo de
- * "borrador → validar → activar". */
-export function WorkflowGuardadoCard({ workflow, errores, activando, onActivar, onAjustarVisualmente }: Props) {
+/** Tarjeta de resultado tras crear un workflow — dos únicas acciones, sin
+ * ambigüedad: aceptarlo (te lleva al canvas a revisar/activar) o pedir
+ * cambios (vuelve al chat). Compartida entre `/settings/autorizaciones` y
+ * el onboarding para no duplicar el flujo. */
+export function WorkflowGuardadoCard({ workflow, errores, onAceptar, onModificar }: Props) {
   return (
     <Card padding={18} style={{ marginLeft: 36 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -43,14 +46,12 @@ export function WorkflowGuardadoCard({ workflow, errores, activando, onActivar, 
         </ul>
       )}
       <div style={{ display: "flex", gap: 8 }}>
-        <BtnSecondary onClick={onAjustarVisualmente} style={{ flex: 1 }}>
-          Ajustar visualmente
+        <BtnSecondary onClick={onModificar} style={{ flex: 1 }}>
+          Modificar
         </BtnSecondary>
-        {workflow.estado !== "activo" && (
-          <BtnPrimary onClick={onActivar} disabled={activando || errores.length > 0} style={{ flex: 1 }}>
-            {activando ? "Activando…" : "Activar este ciclo"}
-          </BtnPrimary>
-        )}
+        <BtnPrimary onClick={onAceptar} style={{ flex: 1 }}>
+          Aceptar
+        </BtnPrimary>
       </div>
     </Card>
   );

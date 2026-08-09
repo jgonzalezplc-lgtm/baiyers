@@ -87,7 +87,6 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   const [guardandoWorkflow, setGuardandoWorkflow] = useState(false);
   const [workflowGuardado, setWorkflowGuardado] = useState<WorkflowGuardado | null>(null);
   const [erroresWorkflow, setErroresWorkflow] = useState<ErrorValidacion[]>([]);
-  const [activandoWorkflow, setActivandoWorkflow] = useState(false);
   const emailsVistosRef = useRef<Set<string>>(new Set());
 
   // Los responsables recién detectados quedan marcados para invitar por
@@ -307,17 +306,10 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     }
   };
 
-  const activarWorkflow = async () => {
-    if (!workflowGuardado || activandoWorkflow) return;
-    setActivandoWorkflow(true);
-    try {
-      await authFetch(`${API_URL}/api/workflows/${workflowGuardado.id}/activar`, { method: "POST" });
-      setWorkflowGuardado(prev => prev ? { ...prev, estado: "activo" } : prev);
-    } catch {
-      addBot("No se pudo activar el ciclo. Revisa la validación e intenta de nuevo.");
-    } finally {
-      setActivandoWorkflow(false);
-    }
+  const modificarWorkflow = () => {
+    setWorkflowGuardado(null);
+    setErroresWorkflow([]);
+    addBot("Dale, cuéntame de nuevo cómo funciona tu proceso de compra.");
   };
 
   // Confirma la sesión en el backend (perfil organizacional canónico) y
@@ -457,9 +449,8 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
             <WorkflowGuardadoCard
               workflow={workflowGuardado}
               errores={erroresWorkflow}
-              activando={activandoWorkflow}
-              onActivar={activarWorkflow}
-              onAjustarVisualmente={() => router.push(`/settings/autorizaciones/canvas/${workflowGuardado.id}`)}
+              onAceptar={() => router.push(`/settings/autorizaciones/canvas/${workflowGuardado.id}`)}
+              onModificar={modificarWorkflow}
             />
           )}
 
