@@ -45,9 +45,17 @@ def resolver_organizacion(auth_uid: str) -> Optional[ContextoOrganizacion]:
     no leas `membresias_organizacion` a mano.
     """
     sb = _sb()
-    membresia = sb.table("membresias_organizacion").select(
+    # `.maybe_single()` en postgrest-py 2.x devuelve `None` desde `.execute()`
+    # (no un objeto con `.data = None`) cuando no hay ninguna fila — bug real
+    # encontrado en producción: crasheaba con AttributeError para cualquier
+    # usuario sin fila en membresias_organizacion (ej. creado después del
+    # backfill de la 030), tumbando resolver_organizacion y con él CASI TODOS
+    # los endpoints que dependen de AuthContext (dashboard, listas, gmail,
+    # workflows...).
+    resp = sb.table("membresias_organizacion").select(
         "rol, organizacion_id, organizaciones(id, nombre, owner_user_id)"
-    ).eq("user_id", auth_uid).maybe_single().execute().data
+    ).eq("user_id", auth_uid).maybe_single().execute()
+    membresia = resp.data if resp else None
     if not membresia:
         return None
 
@@ -196,9 +204,10 @@ def invitar_a_organizacion(
     if ya_existe:
         # Si ya está en NUESTRA organización, no reinvitar — solo linkear
         # el responsable si vino uno. Es idempotente.
-        ya_miembro = sb.table("membresias_organizacion").select(
+        _resp_ya_miembro = sb.table("membresias_organizacion").select(
             "organizacion_id"
-        ).eq("user_id", ya_existe.id).maybe_single().execute().data
+        ).eq("user_id", ya_existe.id).maybe_single().execute()
+        ya_miembro = _resp_ya_miembro.data if _resp_ya_miembro else None
         if ya_miembro and ya_miembro["organizacion_id"] == ctx.organizacion_id:
             if responsable_id:
                 sb.table("responsables").update(

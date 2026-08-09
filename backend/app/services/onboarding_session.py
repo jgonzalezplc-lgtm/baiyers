@@ -51,10 +51,14 @@ def obtener_sesion(session_id: str, user_id: str) -> Optional[dict]:
     es dueño — el router debe traducir None a 404, nunca filtrar existencia
     de sesiones ajenas con un mensaje distinto."""
     sb = _sb()
-    fila = sb.table("onboarding_sessions").select("*").eq("id", session_id).eq(
+    # `.maybe_single()` en postgrest-py 2.x devuelve `None` desde `.execute()`
+    # (no un objeto con `.data = None`) cuando no hay ninguna fila — hay que
+    # chequear antes de acceder a `.data`, o una sesión inexistente/ajena
+    # crashea con 500 en vez de devolver el 404 esperado.
+    resp = sb.table("onboarding_sessions").select("*").eq("id", session_id).eq(
         "user_id", user_id
-    ).maybe_single().execute().data
-    return fila
+    ).maybe_single().execute()
+    return resp.data if resp else None
 
 
 def fusionar_draft(draft_actual: dict, actualizaciones: dict) -> dict:

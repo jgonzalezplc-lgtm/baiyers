@@ -169,5 +169,28 @@ class SincronizarMembresiaCapoTest(unittest.TestCase):
             self.fail("_sincronizar_membresia_capo no debe propagar excepciones")
 
 
+class FakeQueryExecuteNone:
+    """Reproduce el bug real encontrado en producción: en postgrest-py 2.x,
+    `.maybe_single().execute()` devuelve `None` directamente (no un objeto
+    con `.data = None`) cuando la consulta no matchea ninguna fila. Tumbaba
+    resolver_organizacion con AttributeError para cualquier usuario sin fila
+    en membresias_organizacion — y con él, casi todos los endpoints que
+    dependen de AuthContext (dashboard, listas, gmail, workflows...)."""
+    def select(self, *_): return self
+    def eq(self, *_): return self
+    def maybe_single(self): return self
+    def execute(self): return None
+
+
+class ResolverOrganizacionExecuteNoneTest(unittest.TestCase):
+    def test_maybe_single_execute_none_no_crashea(self):
+        fake = MagicMock()
+        fake.table.return_value = FakeQueryExecuteNone()
+        with patch("app.services.organizacion._sb", return_value=fake):
+            from app.services.organizacion import resolver_organizacion
+            ctx = resolver_organizacion("u-sin-membresia")
+        self.assertIsNone(ctx)
+
+
 if __name__ == "__main__":
     unittest.main()
