@@ -184,14 +184,13 @@ class GuardarVersionYResolverTest(unittest.TestCase):
         self.assertIn("gracias!", resultado["body"])
 
     def test_precedencia_nodo_sobre_workflow_sobre_organizacion(self):
-        svc.guardar_version("org-1", "approval_requested", "Org", "{{nombre_autorizador}} {{nombre_solicitante}} {{item}} {{monto}} {{organizacion_nombre}} {{link_autorizacion}}",
-                             ["nombre_autorizador", "nombre_solicitante", "item", "monto", "organizacion_nombre", "link_autorizacion"], "user-1")
-        svc.guardar_version("org-1", "approval_requested", "Workflow", "{{nombre_autorizador}} {{nombre_solicitante}} {{item}} {{monto}} {{organizacion_nombre}} {{link_autorizacion}}",
-                             ["nombre_autorizador", "nombre_solicitante", "item", "monto", "organizacion_nombre", "link_autorizacion"], "user-1", workflow_id="wf-1")
-        svc.guardar_version("org-1", "approval_requested", "Nodo", "{{nombre_autorizador}} {{nombre_solicitante}} {{item}} {{monto}} {{organizacion_nombre}} {{link_autorizacion}}",
-                             ["nombre_autorizador", "nombre_solicitante", "item", "monto", "organizacion_nombre", "link_autorizacion"], "user-1", workflow_id="wf-1", nodo_id="n1")
+        vars_declaradas = ["nombre_autorizador", "nombre_solicitante", "lista_nombre", "monto", "organizacion_nombre", "link_autorizacion"]
+        cuerpo = "{{nombre_autorizador}} {{nombre_solicitante}} {{lista_nombre}} {{monto}} {{organizacion_nombre}} {{link_autorizacion}}"
+        svc.guardar_version("org-1", "approval_requested", "Org", cuerpo, vars_declaradas, "user-1")
+        svc.guardar_version("org-1", "approval_requested", "Workflow", cuerpo, vars_declaradas, "user-1", workflow_id="wf-1")
+        svc.guardar_version("org-1", "approval_requested", "Nodo", cuerpo, vars_declaradas, "user-1", workflow_id="wf-1", nodo_id="n1")
 
-        variables = {"nombre_autorizador": "x", "nombre_solicitante": "y", "item": "z", "monto": "1", "organizacion_nombre": "o", "link_autorizacion": "l"}
+        variables = {"nombre_autorizador": "x", "nombre_solicitante": "y", "lista_nombre": "z", "monto": "1", "organizacion_nombre": "o", "link_autorizacion": "l"}
         solo_org = svc.render("approval_requested", variables, organizacion_id="org-1")
         self.assertEqual(solo_org["subject"], "Org")
 

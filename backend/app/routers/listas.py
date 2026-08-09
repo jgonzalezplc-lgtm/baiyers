@@ -788,7 +788,7 @@ class SolicitarAprobacionRequest(BaseModel):
     empresa: str = ""
 
 
-async def _crear_y_enviar_solicitudes(sb, user_id: str, lista_id: str, lista_nombre: str, resumen: dict, resolucion: dict) -> list[dict]:
+async def _crear_y_enviar_solicitudes(sb, user_id: str, lista_id: str, lista_nombre: str, resumen: dict, resolucion: dict, organizacion_id: Optional[str] = None) -> list[dict]:
     """Crea una `approval_requests` por cada responsable a notificar (Fase 4
     del Workflow Builder) y le envía su propio correo con magic link. Se usa
     tanto en la ronda inicial como cuando el workflow avanza a un tramo
@@ -796,6 +796,7 @@ async def _crear_y_enviar_solicitudes(sb, user_id: str, lista_id: str, lista_nom
     from app.routers.aprobaciones import _crear_solicitud_aprobacion
     from app.routers.aprobaciones import SolicitudRequest
     from app.services.gmail_service import get_gmail_service, send_email
+    from app.services.mail_template_service import render, registrar_envio
 
     # user_integrations es personal — cada usuario conecta su propio Gmail.
     integ = sb.table("user_integrations").select("*").eq("user_id", user_id).eq("provider", "gmail").limit(1).execute()
@@ -827,15 +828,28 @@ async def _crear_y_enviar_solicitudes(sb, user_id: str, lista_id: str, lista_nom
                     "access_token": creds.token,
                     "token_expiry": creds.expiry.isoformat() if creds.expiry else None,
                 }).eq("user_id", user_id).eq("provider", "gmail").execute()
-            asunto = f"Solicitud de aprobación ({resolucion['nodo_nombre']}): {lista_nombre}"
-            cuerpo = (
-                f"Hola {responsable['nombre']},\n\n{resumen.get('solicitante') or 'Un usuario'} de {resumen.get('empresa') or 'la empresa'} "
-                f"solicita tu aprobación como {resolucion['nodo_nombre']} para la siguiente lista de compra:\n\n"
-                f"Lista: {lista_nombre}\nTotal: {_fmt_clp(resumen.get('monto_total', 0))}\n\n{item_lines}\n\n"
-                f"Revisa el detalle y aprueba o rechaza (puedes agregar comentarios) desde este enlace:\n{sol['magic_link']}\n\n"
-                f"Este enlace expira el {sol['expira_at'][:10]}.\n\nBaiyer, Procurement Inteligente"
-            )
+            renderizado = render("approval_requested", {
+                "nombre_autorizador": responsable["nombre"],
+                "nombre_solicitante": resumen.get("solicitante") or "Un usuario",
+                "organizacion_nombre": resumen.get("empresa") or "la empresa",
+                "lista_nombre": lista_nombre,
+                "nodo_nombre": resolucion["nodo_nombre"],
+                "monto": _fmt_clp(resumen.get("monto_total", 0)),
+                "item_lines": item_lines,
+                "link_autorizacion": sol["magic_link"],
+                "expira_at": sol["expira_at"][:10],
+            }, organizacion_id=organizacion_id)
+            asunto, cuerpo = renderizado["subject"], renderizado["body"]
             send_email(service, responsable["email"], asunto, cuerpo, integration["email"])
+            if organizacion_id:
+                try:
+                    registrar_envio(
+                        organizacion_id, "approval_requested", responsable["email"],
+                        f"approval_requested:{sol['id']}", estado="enviado",
+                        responsable_id=responsable.get("id"),
+                    )
+                except Exception as e:
+                    print(f"[listas] registrar_envio falló (correo ya enviado, solo auditoría): {e}")
         except HTTPException:
             raise
         except Exception as e:
@@ -908,7 +922,7 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest, c
         resolucion = iniciar_autorizacion_workflow(ctx.actor_user_id, lista_id, monto_total)
 
         if resolucion:
-            enviadas = await _crear_y_enviar_solicitudes(sb, ctx.actor_user_id, lista_id, proy.data["nombre"], resumen, resolucion)
+            enviadas = await _crear_y_enviar_solicitudes(sb, ctx.actor_user_id, lista_id, proy.data["nombre"], resumen, resolucion, organizacion_id=ctx.organization_id)
             data["aprobacion"] = {
                 "estado": "pendiente",
                 "modo": "workflow",
@@ -946,6 +960,7 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest, c
         # interno, no un proveedor, así que no se engancha al agente de
         # seguimiento de respuestas (eso es solo para precios de proveedor).
         from app.services.gmail_service import get_gmail_service, send_email
+        from app.services.mail_template_service import render, registrar_envio
         # user_integrations es personal — cada usuario conecta su propio Gmail.
         integ = sb.table("user_integrations").select("*").eq("user_id", ctx.actor_user_id).eq("provider", "gmail").limit(1).execute()
         integration = (integ.data or [None])[0]
@@ -966,14 +981,29 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest, c
                 + (f", {it['justificacion']}" if it.get("justificacion") else "")
                 for it in resumen_items
             )
-            asunto = f"Solicitud de aprobación: {proy.data['nombre']}"
-            cuerpo = (
-                f"Hola,\n\n{req.nombre_solicitante or 'Un usuario'} de {req.empresa or 'la empresa'} solicita tu aprobación "
-                f"para la siguiente lista de compra:\n\nLista: {proy.data['nombre']}\nTotal: {_fmt_clp(monto_total)}\n\n{item_lines}\n\n"
-                f"Revisa el detalle y aprueba o rechaza (puedes agregar comentarios) desde este enlace:\n{sol['magic_link']}\n\n"
-                f"Este enlace expira el {sol['expira_at'][:10]}.\n\nBaiyer, Procurement Inteligente"
-            )
+            # Flujo legado: no hay un responsable con nombre real asignado
+            # (solo un email escrito a mano), así que se usa el email como
+            # identificador del saludo — más cercano que un "Hola," genérico.
+            renderizado = render("approval_requested", {
+                "nombre_autorizador": req.aprobador_email,
+                "nombre_solicitante": req.nombre_solicitante or "Un usuario",
+                "organizacion_nombre": req.empresa or "la empresa",
+                "lista_nombre": proy.data["nombre"],
+                "nodo_nombre": "autorizador",
+                "monto": _fmt_clp(monto_total),
+                "item_lines": item_lines,
+                "link_autorizacion": sol["magic_link"],
+                "expira_at": sol["expira_at"][:10],
+            }, organizacion_id=ctx.organization_id)
+            asunto, cuerpo = renderizado["subject"], renderizado["body"]
             send_email(service, req.aprobador_email, asunto, cuerpo, integration["email"])
+            try:
+                registrar_envio(
+                    ctx.organization_id, "approval_requested", req.aprobador_email,
+                    f"approval_requested:{sol['id']}", estado="enviado",
+                )
+            except Exception as e:
+                print(f"[listas] registrar_envio falló (correo ya enviado, solo auditoría): {e}")
         except HTTPException:
             raise
         except Exception as e:

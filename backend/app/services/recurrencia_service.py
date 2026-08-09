@@ -56,20 +56,35 @@ def ejecutar_recurrencia(recurrencia_id: str) -> dict:
                     gmail_res = sb.table("user_integrations").select("*").eq("user_id", rec["user_id"]).eq("provider", "gmail").single().execute()
                     if gmail_res.data:
                         from app.services.gmail_service import get_gmail_service, send_email
+                        from app.services.mail_template_service import render, registrar_envio
+                        from app.services.organizacion import obtener_perfil_organizacion, resolver_organizacion
                         integration = gmail_res.data
                         service, _ = get_gmail_service(integration["access_token"], integration["refresh_token"])
+                        ctx_org = resolver_organizacion(rec["user_id"])
+                        organizacion_id = ctx_org.organizacion_id if ctx_org else None
+                        empresa_nombre = (obtener_perfil_organizacion(organizacion_id).get("nombre") if organizacion_id else None) or "Baiyer"
+                        renderizado = render("rfq_requested", {
+                            "proveedor_nombre": proveedor_nombre,
+                            "items": rec["items"],
+                            "empresa_nombre": empresa_nombre,
+                            "recurrencia_nombre": rec["nombre"],
+                        }, organizacion_id=organizacion_id)
                         send_email(
                             service=service,
                             to=proveedor_email,
-                            subject=f"Solicitud de cotización — {rec['nombre']}",
-                            body=(
-                                f"Estimado/a {proveedor_nombre},\n\n"
-                                f"Necesitamos cotización para los siguientes ítems:\n\n{rec['items']}\n\n"
-                                f"Por favor envíenos precios, disponibilidad y plazo de entrega.\n\n"
-                                f"Saludos,\nEquipo Claria\nhola@claria.cc"
-                            ),
+                            subject=renderizado["subject"],
+                            body=renderizado["body"],
                             from_email=integration["email"],
                         )
+                        if organizacion_id:
+                            try:
+                                registrar_envio(
+                                    organizacion_id, "rfq_requested", proveedor_email,
+                                    f"rfq_requested:{recurrencia_id}:{datetime.now(timezone.utc).date().isoformat()}",
+                                    estado="enviado",
+                                )
+                            except Exception as e:
+                                print(f"[recurrencias] registrar_envio falló (correo ya enviado, solo auditoría): {e}")
                 except Exception as e:
                     resultado_texto = f"Error enviando email: {e}"
         else:

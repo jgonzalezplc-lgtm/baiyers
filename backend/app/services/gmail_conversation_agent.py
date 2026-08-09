@@ -27,27 +27,6 @@ def _listar_campos(campos: set[str]) -> str:
     return ", ".join(labels[:-1]) + " y " + labels[-1]
 
 
-def redactar_agradecimiento(proveedor_nombre: str | None) -> str:
-    nombre = proveedor_nombre or "estimados"
-    return (
-        f"Estimados {nombre},\n\n"
-        "Muchas gracias por la información enviada, ya quedó registrada de nuestro lado. "
-        "Quedamos en contacto para los siguientes pasos.\n\n"
-        "Saludos cordiales."
-    )
-
-
-def redactar_pedir_faltantes(proveedor_nombre: str | None, pendientes: set[str]) -> str:
-    nombre = proveedor_nombre or "estimados"
-    return (
-        f"Estimados {nombre},\n\n"
-        "Gracias por su respuesta, ya registramos lo que nos enviaron. "
-        f"Para completar la evaluación nos falta {_listar_campos(pendientes)}.\n\n"
-        "¿Podrían confirmarnos ese dato? Quedamos atentos.\n\n"
-        "Saludos cordiales."
-    )
-
-
 def redactar_inicio_compra(proveedor_nombre: str | None, items: list[str] | None = None) -> str:
     nombre = proveedor_nombre or "estimados"
     detalle = ""
@@ -65,7 +44,7 @@ def redactar_inicio_compra(proveedor_nombre: str | None, items: list[str] | None
     )
 
 
-def _enviar_y_registrar(sb, service, conv: dict, mi_email: str, cuerpo: str, nuevo_estado: str, nuevo_tipo: str | None = None) -> bool:
+def _enviar_y_registrar(sb, service, conv: dict, mi_email: str, cuerpo: str, nuevo_estado: str, evento: str, nuevo_tipo: str | None = None) -> bool:
     from app.services.gmail_service import send_email_threaded, headers_de
 
     ultimo_inbound = (
@@ -98,16 +77,51 @@ def _enviar_y_registrar(sb, service, conv: dict, mi_email: str, cuerpo: str, nue
     if nuevo_tipo:
         cambios["tipo"] = nuevo_tipo
     sb.table("gmail_conversations").update(cambios).eq("id", conv["id"]).execute()
+
+    if conv.get("user_id"):
+        try:
+            from app.services.mail_template_service import registrar_envio
+            from app.services.organizacion import resolver_organizacion
+            ctx_org = resolver_organizacion(conv["user_id"])
+            if ctx_org:
+                registrar_envio(
+                    ctx_org.organizacion_id, evento, destino,
+                    f"{evento}:{msg['id']}", estado="enviado",
+                    gmail_message_id=msg["id"], gmail_thread_id=conv["gmail_thread_id"],
+                )
+        except Exception as e:
+            print(f"[Gmail agent] registrar_envio falló (correo ya enviado, solo auditoría): {e}")
     return True
+
+
+def _renderizar_seguimiento(evento: str, conv: dict, extra: dict) -> str:
+    """Wrapper del renderer de plantillas (Fase 6) — textos fijos, sin LLM,
+    igual que antes: `render()` solo interpola variables, nunca genera
+    contenido nuevo. Si algo falla, cae al texto exacto que salía antes de
+    migrar (nunca deja un envío automático sin cuerpo)."""
+    from app.services.mail_template_service import render
+    from app.services.organizacion import resolver_organizacion
+
+    nombre = conv.get("proveedor_nombre") or "estimados"
+    ctx_org = resolver_organizacion(conv["user_id"]) if conv.get("user_id") else None
+    try:
+        return render(evento, {"proveedor_nombre": nombre, **extra}, organizacion_id=ctx_org.organizacion_id if ctx_org else None)["body"]
+    except Exception as e:
+        print(f"[Gmail agent] render() falló para {evento}, uso el texto default: {e}")
+        from app.services.mail_events import EVENTOS
+        texto = EVENTOS[evento].cuerpo_default
+        for clave, valor in {"proveedor_nombre": nombre, **extra}.items():
+            texto = texto.replace(f"{{{{{clave}}}}}", str(valor))
+        return texto
 
 
 def seguimiento_automatico(sb, service, conv: dict, mi_email: str, pendientes: set[str]) -> bool:
     """Envía agradecimiento (si no falta nada) o pide sólo lo pendiente."""
     if pendientes:
-        cuerpo = redactar_pedir_faltantes(conv.get("proveedor_nombre"), pendientes)
-        return _enviar_y_registrar(sb, service, conv, mi_email, cuerpo, "partially_answered")
-    cuerpo = redactar_agradecimiento(conv.get("proveedor_nombre"))
-    return _enviar_y_registrar(sb, service, conv, mi_email, cuerpo, "closed")
+        cuerpo = _renderizar_seguimiento("rfq_missing_information", conv, {"campos_faltantes": _listar_campos(pendientes)})
+        return _enviar_y_registrar(sb, service, conv, mi_email, cuerpo, "partially_answered", evento="rfq_missing_information")
+    cuerpo = _renderizar_seguimiento("rfq_received_thanks", conv, {})
+    return _enviar_y_registrar(sb, service, conv, mi_email, cuerpo, "closed", evento="rfq_received_thanks")
 
 
 def iniciar_proceso_compra(user_id: str, resultado_id: str) -> bool:
@@ -168,7 +182,11 @@ def iniciar_proceso_compra_resultados(user_id: str, resultado_ids: list[str]) ->
         if conv.get("estado") == "compra_iniciada":
             continue
         cuerpo = redactar_inicio_compra(conv.get("proveedor_nombre"), entrada["items"])
-        if _enviar_y_registrar(sb, service, conv, integ["email"], cuerpo, "compra_iniciada", nuevo_tipo="compra"):
+        # No mapea a ningún evento del catálogo (homologación/inicio de compra
+        # no está entre los 16 eventos) — se deja como texto fijo, mismo
+        # criterio de "sin buen encaje semántico" que el resto de sitios
+        # excluidos de esta fase. La etiqueta es solo para la auditoría.
+        if _enviar_y_registrar(sb, service, conv, integ["email"], cuerpo, "compra_iniciada", evento="supplier_intake_started", nuevo_tipo="compra"):
             enviados += 1
             if entrada["batch_items"]:
                 try:

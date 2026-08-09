@@ -196,19 +196,24 @@ async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_co
     confirm_url = f"{settings.frontend_url}/oc/confirmar/{token_oc}"
     total_fmt = f"${int(req.precio_total):,}".replace(",", ".")
     from_email = integration["email"]
-    subject_proveedor = f"Orden de Compra {req.numero_oc} — Claria"
+
+    from app.services.mail_template_service import render, registrar_envio
+    from app.services.organizacion import obtener_perfil_organizacion
+    empresa_nombre = obtener_perfil_organizacion(ctx.organization_id).get("nombre") or "Baiyer"
 
     # Email al proveedor — pide el acuse de recibo por el mismo correo (lo
     # normal para un proveedor real); el link de confirmación queda solo como
     # alternativa para quien prefiera no responder por texto.
     if req.proveedor_email:
-        body_proveedor = (
-            f"Estimado {req.proveedor_nombre},\n\n"
-            f"Adjuntamos la Orden de Compra {req.numero_oc} por {total_fmt} {req.moneda}.\n\n"
-            f"Por favor confírmennos por este mismo correo la recepción de la orden, y avísennos cuando "
-            f"despachen el pedido. Si lo prefieren, también pueden confirmar la recepción aquí:\n{confirm_url}\n\n"
-            f"Saludos,\nEquipo Claria\nhola@claria.cc"
-        )
+        renderizado = render("purchase_order_sent", {
+            "proveedor_nombre": req.proveedor_nombre,
+            "numero_oc": req.numero_oc,
+            "empresa_nombre": empresa_nombre,
+            "monto": total_fmt,
+            "moneda": req.moneda,
+            "link_confirmacion": confirm_url,
+        }, organizacion_id=ctx.organization_id)
+        subject_proveedor, body_proveedor = renderizado["subject"], renderizado["body"]
         try:
             msg = send_email_with_attachment(
                 service=service,
@@ -220,6 +225,13 @@ async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_co
                 pdf_filename=f"{req.numero_oc}.pdf",
             )
             _registrar_conversacion_oc(sb, req, ctx.actor_user_id, integration["email"], msg, subject_proveedor, body_proveedor)
+            try:
+                registrar_envio(
+                    ctx.organization_id, "purchase_order_sent", req.proveedor_email,
+                    f"purchase_order_sent:{req.oc_id}", estado="enviado",
+                )
+            except Exception as e:
+                print(f"[OC] registrar_envio falló (correo ya enviado, solo auditoría): {e}")
         except Exception as e:
             print(f"[OC] Error enviando al proveedor: {e}")
 

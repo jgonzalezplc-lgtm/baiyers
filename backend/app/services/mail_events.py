@@ -28,13 +28,25 @@ EVENTOS: dict[str, EventoDef] = {
     "approval_requested": EventoDef(
         audiencia="internal",
         descripcion="Se pide autorización de una compra",
-        variables_permitidas=["nombre_autorizador", "nombre_solicitante", "item", "monto", "organizacion_nombre", "link_autorizacion"],
-        asunto_default="Autorización requerida — {{item}}",
+        # Ampliado en Fase 6 al migrar los dos sitios reales (listas.py): el
+        # correo real incluye el detalle ítem por ítem y la fecha de
+        # expiración del enlace, que la versión inicial de Fase 4 no
+        # contemplaba. Cambiar esto es seguro porque nadie lo personalizó
+        # todavía en /settings/comunicaciones (recién se deployó).
+        variables_permitidas=[
+            "nombre_autorizador", "nombre_solicitante", "organizacion_nombre",
+            "lista_nombre", "monto", "item_lines", "nodo_nombre",
+            "link_autorizacion", "expira_at",
+        ],
+        asunto_default="Solicitud de aprobación — {{lista_nombre}}",
         cuerpo_default=(
             "Hola {{nombre_autorizador}},\n\n"
-            "{{nombre_solicitante}} solicitó autorización para \"{{item}}\" por {{monto}} "
-            "en {{organizacion_nombre}}.\n\n"
-            "Revisa y decide acá: {{link_autorizacion}}"
+            "{{nombre_solicitante}} de {{organizacion_nombre}} solicita tu aprobación como "
+            "{{nodo_nombre}} para la siguiente lista de compra:\n\n"
+            "Lista: {{lista_nombre}}\nTotal: {{monto}}\n\n{{item_lines}}\n\n"
+            "Revisa el detalle y aprueba o rechaza (puedes agregar comentarios) desde este enlace:\n"
+            "{{link_autorizacion}}\n\n"
+            "Este enlace expira el {{expira_at}}.\n\nBaiyer, Procurement Inteligente"
         ),
     ),
     "approval_reminder": EventoDef(
@@ -95,12 +107,18 @@ EVENTOS: dict[str, EventoDef] = {
     "rfq_requested": EventoDef(
         audiencia="external",
         descripcion="Solicitud de cotización a un proveedor",
-        variables_permitidas=["proveedor_nombre", "items", "empresa_nombre", "plazo_respuesta"],
-        asunto_default="Solicitud de cotización — {{empresa_nombre}}",
+        # "recurrencia_nombre" se agregó en Fase 6 al migrar
+        # recurrencia_service.py — el asunto real usa el nombre de la
+        # recurrencia, no el de la empresa. "plazo_respuesta" queda
+        # disponible para quien lo quiera usar en su propia plantilla, pero
+        # el default no lo necesita.
+        variables_permitidas=["proveedor_nombre", "items", "empresa_nombre", "plazo_respuesta", "recurrencia_nombre"],
+        asunto_default="Solicitud de cotización — {{recurrencia_nombre}}",
         cuerpo_default=(
             "Estimado/a {{proveedor_nombre}},\n\n"
-            "Necesitamos cotización para: {{items}}.\n\n"
-            "Agradecemos tu respuesta antes de {{plazo_respuesta}}.\n\nSaludos, {{empresa_nombre}}"
+            "Necesitamos cotización para los siguientes ítems:\n\n{{items}}\n\n"
+            "Por favor envíanos precios, disponibilidad y plazo de entrega.\n\n"
+            "Saludos,\n{{empresa_nombre}}"
         ),
     ),
     "rfq_followup": EventoDef(
@@ -117,19 +135,32 @@ EVENTOS: dict[str, EventoDef] = {
     "rfq_missing_information": EventoDef(
         audiencia="external",
         descripcion="Faltan datos en la respuesta del proveedor",
+        # Wording exacto de `gmail_conversation_agent.redactar_pedir_faltantes`
+        # — ese correo lo dispara el agente automáticamente sin revisión
+        # humana, así que migrarlo a Fase 6 debía preservar el texto
+        # exacto, no solo el sentido.
         variables_permitidas=["proveedor_nombre", "campos_faltantes"],
         asunto_default="Nos falta un dato para tu cotización",
         cuerpo_default=(
-            "Estimado/a {{proveedor_nombre}},\n\n"
-            "Gracias por tu respuesta. Nos falta que nos confirmes: {{campos_faltantes}}."
+            "Estimados {{proveedor_nombre}},\n\n"
+            "Gracias por su respuesta, ya registramos lo que nos enviaron. "
+            "Para completar la evaluación nos falta {{campos_faltantes}}.\n\n"
+            "¿Podrían confirmarnos ese dato? Quedamos atentos.\n\nSaludos cordiales."
         ),
     ),
     "rfq_received_thanks": EventoDef(
         audiencia="external",
         descripcion="Agradecimiento al recibir la cotización completa",
+        # Wording exacto de `gmail_conversation_agent.redactar_agradecimiento`
+        # — mismo motivo que rfq_missing_information: es un correo
+        # automático sin revisión humana.
         variables_permitidas=["proveedor_nombre"],
         asunto_default="Recibimos tu cotización — gracias",
-        cuerpo_default="Estimado/a {{proveedor_nombre}},\n\nGracias, recibimos tu cotización completa. Te avisaremos si resultas seleccionado.",
+        cuerpo_default=(
+            "Estimados {{proveedor_nombre}},\n\n"
+            "Muchas gracias por la información enviada, ya quedó registrada de nuestro lado. "
+            "Quedamos en contacto para los siguientes pasos.\n\nSaludos cordiales."
+        ),
     ),
     "supplier_awarded": EventoDef(
         audiencia="external",
@@ -148,9 +179,18 @@ EVENTOS: dict[str, EventoDef] = {
     "purchase_order_sent": EventoDef(
         audiencia="external",
         descripcion="Envío de la Orden de Compra al proveedor",
-        variables_permitidas=["proveedor_nombre", "numero_oc", "empresa_nombre"],
+        # Ampliado en Fase 6 al migrar oc.py: el correo real incluye monto,
+        # moneda y el link de confirmación alternativo — sin migración
+        # necesaria, nadie lo personalizó todavía.
+        variables_permitidas=["proveedor_nombre", "numero_oc", "empresa_nombre", "monto", "moneda", "link_confirmacion"],
         asunto_default="Orden de Compra {{numero_oc}} — {{empresa_nombre}}",
-        cuerpo_default="Estimado/a {{proveedor_nombre}},\n\nAdjuntamos la Orden de Compra {{numero_oc}}. Por favor confirma la recepción.",
+        cuerpo_default=(
+            "Estimado/a {{proveedor_nombre}},\n\n"
+            "Adjuntamos la Orden de Compra {{numero_oc}} por {{monto}} {{moneda}}.\n\n"
+            "Por favor confírmanos por este mismo correo la recepción de la orden, y avísanos cuando "
+            "despaches el pedido. Si prefieres, también puedes confirmar la recepción acá:\n{{link_confirmacion}}\n\n"
+            "Saludos,\n{{empresa_nombre}}"
+        ),
     ),
     "purchase_order_ack_reminder": EventoDef(
         audiencia="external",
