@@ -10,10 +10,23 @@ import { PropuestaWorkflowCard, type Propuesta } from "@/components/workflow/Pro
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+interface WorkflowExistente {
+  id: string;
+  nombre: string;
+  estado: string;
+  version: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+const ESTADO_LABEL: Record<string, string> = { activo: "Activo", borrador: "Borrador", archivado: "Archivado" };
+
 export default function ConfiguracionAutorizacionesPage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [cargandoInicial, setCargandoInicial] = useState(true);
+  const [workflowsExistentes, setWorkflowsExistentes] = useState<WorkflowExistente[]>([]);
+  const [mostrarChatNuevo, setMostrarChatNuevo] = useState(false);
   const [mensajes, setMensajes] = useState<Mensaje[]>([
     { rol: "bot", texto: "Cuéntame cómo funciona hoy tu proceso de compras. Puede ser informal — por ejemplo: \"Los cotizadores preparan la comparación, después la revisa mi jefe, y si es sobre $500.000 también tiene que aprobar finanzas.\"" },
   ]);
@@ -29,8 +42,17 @@ export default function ConfiguracionAutorizacionesPage() {
   const finRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    createClient().auth.getUser().then(({ data }) => {
-      setUserId(data.user?.id ?? null);
+    createClient().auth.getUser().then(async ({ data }) => {
+      const uid = data.user?.id ?? null;
+      setUserId(uid);
+      if (uid) {
+        try {
+          const lista: WorkflowExistente[] = await fetch(`${API_URL}/api/workflows?user_id=${uid}`).then(r => r.json());
+          setWorkflowsExistentes(Array.isArray(lista) ? lista : []);
+        } catch {
+          setWorkflowsExistentes([]);
+        }
+      }
       setCargandoInicial(false);
     });
   }, []);
@@ -166,6 +188,46 @@ export default function ConfiguracionAutorizacionesPage() {
         <p style={{ fontSize: 13.5, color: "var(--n-600)", margin: 0 }}>Cuéntaselo a Baiyer en tus palabras. Después puedes ajustarlo visualmente.</p>
       </div>
 
+      {workflowsExistentes.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.3 }}>
+            Ciclos que ya creaste
+          </div>
+          <Card padding={0}>
+            {workflowsExistentes.map((w, i) => (
+              <div
+                key={w.id}
+                onClick={() => router.push(`/settings/autorizaciones/canvas/${w.id}`)}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                  padding: "12px 16px", cursor: "pointer",
+                  borderBottom: i === workflowsExistentes.length - 1 ? "none" : "1px solid var(--n-100)",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--n-900)" }}>{w.nombre}</div>
+                  <div style={{ fontSize: 12, color: "var(--n-500)", marginTop: 2 }}>v{w.version} · {ESTADO_LABEL[w.estado] ?? w.estado}</div>
+                </div>
+                <span style={{ fontSize: 12.5, color: "var(--brand)", flexShrink: 0 }}>Abrir →</span>
+              </div>
+            ))}
+          </Card>
+          {!mostrarChatNuevo && (
+            <button
+              onClick={() => setMostrarChatNuevo(true)}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10,
+                border: 0, background: "none", color: "var(--n-500)", fontSize: 12.5, cursor: "pointer",
+              }}
+            >
+              + Crear un ciclo nuevo
+            </button>
+          )}
+        </div>
+      )}
+
+      {(mostrarChatNuevo || workflowsExistentes.length === 0) && (
+      <>
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
         <ChatBubbles mensajes={mensajes} />
 
@@ -225,6 +287,8 @@ export default function ConfiguracionAutorizacionesPage() {
           <Send size={16} />
         </BtnPrimary>
       </div>
+      </>
+      )}
     </div>
   );
 }
