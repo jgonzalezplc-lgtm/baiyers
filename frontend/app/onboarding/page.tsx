@@ -23,7 +23,7 @@ export default function OnboardingPage() {
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         <OnboardingChat />
       </div>
     </div>

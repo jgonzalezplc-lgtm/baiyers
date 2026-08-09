@@ -1,14 +1,22 @@
 "use client";
 /**
- * Chat conversacional que junta los datos de perfil requeridos (empresa, RUT,
- * nombre, industria). Se usa tanto en /onboarding (página completa, primera vez)
- * como flotando sobre el dashboard (OnboardingFloating) para retomar sólo lo que
- * falte sin repetir la conversación completa.
+ * Chat conversacional de onboarding. Antes era una máquina de fases con
+ * regex (pedir_nombre → rut → nombre_usuario → logo → proceso); ahora cada
+ * mensaje se manda tal cual al backend (`/api/onboarding/sesion/:id/turno`),
+ * que extrae los campos con tolerancia a lenguaje natural, fuera de orden y
+ * correcciones, y decide cuándo la sesión está realmente completa — la
+ * verdad de la conversación vive en `onboarding_sessions`, no en este
+ * componente, así que se puede recargar la página sin perder el progreso.
+ *
+ * Se usa tanto en /onboarding (página completa, primera vez) como flotando
+ * sobre el dashboard (OnboardingFloating) para retomar sólo lo que falte.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { camposFaltantes, normalizarRut, rutChilenoValido, type CampoRequerido } from "@/lib/onboarding";
+import { authFetch } from "@/lib/authFetch";
+import { camposFaltantes } from "@/lib/onboarding";
+import { PropuestaWorkflowCard, type Propuesta } from "@/components/workflow/PropuestaWorkflowCard";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -27,9 +35,17 @@ interface Investigacion {
   generico?: boolean;
 }
 
+interface DraftCampo {
+  valor: string;
+  confianza: string;
+  origen: string;
+  confirmado: boolean;
+  evidencia?: string;
+}
+type Draft = Record<string, DraftCampo>;
+
 type Rol = "bot" | "user";
-interface Msg { rol: Rol; texto?: string; card?: Investigacion; logoIdx?: number; }
-type Fase = "cargando" | "pedir_nombre" | "confirmar_empresa" | "rut" | "nombre_usuario" | "logo" | "proceso" | "fin" | "nada";
+interface Msg { rol: Rol; texto?: string; card?: Investigacion; }
 
 interface Props {
   /** Estilo compacto para panel flotante (sin header de página completa). */
@@ -40,67 +56,35 @@ interface Props {
   onSkip?: () => void;
 }
 
+const ETIQUETAS_CAMPO: Record<string, string> = {
+  empresa: "Empresa", rut: "RUT", nombre_usuario: "Tu nombre",
+};
+
 export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   const router = useRouter();
   const [email, setEmail] = useState("");
-  const [inv, setInv] = useState<Investigacion | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
-  const [fase, setFase] = useState<Fase>("cargando");
+  const [draft, setDraft] = useState<Draft>({});
+  const [completo, setCompleto] = useState(false);
+  const [propuestaWorkflow, setPropuestaWorkflow] = useState<Propuesta | null>(null);
+  const [cargandoInicial, setCargandoInicial] = useState(true);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [finalizando, setFinalizando] = useState(false);
+
+  const [investigacion, setInvestigacion] = useState<Investigacion | null>(null);
   const [logoIdx, setLogoIdx] = useState(0);
-
-  // Datos que se van juntando
-  const [empresa, setEmpresa] = useState("");
-  const [rut, setRut] = useState("");
-  const [nombreUsuario, setNombreUsuario] = useState("");
-  const [cats, setCats] = useState<string[]>([]);
-
-  // true = flujo completo (empresa desconocida, incluye logo/proceso). false = sólo faltan rut/nombre.
-  const [modoCompleto, setModoCompleto] = useState(true);
-  const metaExistenteRef = useRef<Record<string, unknown>>({});
-  const faltanRef = useRef<CampoRequerido[]>([]);
+  const [logoUrlFinal, setLogoUrlFinal] = useState<string | null>(null);
+  const [logoOcupado, setLogoOcupado] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, [msgs, fase]);
-
-  const esConfirmacion = (t: string): boolean =>
-    /^(s[ií]|si+|ok|correcto|exacto|ese|esa|eso|claro|dale|ya|sep|sip|confirmo|está bien|esta bien|así es|asi es|afirmativo|yeap?|yes|yep|sí,?\s*es)$/i.test(t.trim());
-
-  const extraer = (texto: string, campo: "rut" | "nombre" | "empresa"): string => {
-    const t = texto.trim();
-    if (!t) return "";
-    if (campo === "rut") {
-      const m = t.match(/(\d{1,3}\.?\d{3}\.?\d{3}-[\dkK])/i);
-      return m ? m[1] : t;
-    }
-    if (campo === "nombre") {
-      return t
-        .replace(/^(no|nop)\s*[,.:]?\s*/i, "")
-        .replace(/^(me llamo|mi nombre es|mi nombre completo es|soy|me dicen)\s+/i, "")
-        .replace(/[.!,]+$/, "")
-        .trim();
-    }
-    if (campo === "empresa") {
-      return t
-        .replace(/^(no|nop)\s*[,.:]?\s*/i, "")
-        .replace(/^(se llama|la empresa es|mi empresa es|nuestra empresa es|somos|es|trabajo en|estoy en)\s+/i, "")
-        .replace(/[.!,]+$/, "")
-        .trim();
-    }
-    return t;
-  };
+  useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, [msgs, cargandoInicial, busy]);
 
   const addBot = (texto?: string, card?: Investigacion) => setMsgs(m => [...m, { rol: "bot", texto, card }]);
   const addUser = (texto: string) => setMsgs(m => [...m, { rol: "user", texto }]);
   const espera = (ms: number) => new Promise(r => setTimeout(r, ms));
-
-  const aplicar = (d: Investigacion) => {
-    setInv(d); setLogoIdx(0);
-    if (d.empresa) setEmpresa(d.empresa);
-    if (d.rut) setRut(d.rut);
-    if (d.categorias_compra_probables?.length) setCats(d.categorias_compra_probables);
-  };
 
   const investigar = useCallback(async (correo: string, nombre?: string): Promise<Investigacion> => {
     try {
@@ -112,285 +96,189 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     } catch { return { empresa: null }; }
   }, []);
 
-  // Guarda lo recolectado, mezclado con lo que ya existía en user_metadata
-  // (para no borrar datos de una sesión de onboarding anterior).
-  const guardar = useCallback(async (proceso?: string, overrides?: { rut?: string; nombreUsuario?: string }) => {
-    setFase("fin");
-    if (!floating) addBot(`¡Listo, ${nombreUsuario || ""}! Configuré tu cuenta de ${empresa || "tu empresa"}. Te llevo al dashboard…`);
-    const prev = metaExistenteRef.current;
-    const logoUrl = inv?.logo_candidatos?.[logoIdx] ?? null;
-    const logoSeguro = logoUrl && logoUrl.length < 500 && logoUrl.startsWith("http") ? logoUrl : null;
-    try {
-      const empresaFinal = empresa.trim() || (typeof prev.empresa === "string" ? prev.empresa : null);
-      const industriaFinal = inv?.industria ?? (typeof prev.industria === "string" ? prev.industria : null);
-      const paisFinal = inv?.pais ?? inv?.pais_tld ?? (typeof prev.pais === "string" ? prev.pais : null);
-      const categoriasFinal = cats.length ? cats.slice(0, 20) : (prev.categorias_default ?? []);
-      const rutFinal = overrides?.rut !== undefined
-        ? overrides.rut
-        : rut.trim() || (typeof prev.rut === "string" ? prev.rut : "");
-      const nombreFinal = overrides?.nombreUsuario !== undefined
-        ? overrides.nombreUsuario
-        : nombreUsuario.trim() || (typeof prev.nombre_usuario === "string" ? prev.nombre_usuario : "");
-      const { data, error } = await createClient().auth.updateUser({
-        data: {
-          ...prev,
-          onboarding_completo: true,
-          empresa: empresaFinal,
-          nombre_usuario: nombreFinal || null,
-          industria: industriaFinal,
-          rut: rutFinal || null,
-          logo_url: logoSeguro ?? (typeof prev.logo_url === "string" ? prev.logo_url : null),
-          sitio_web: inv?.sitio_web ?? (typeof prev.sitio_web === "string" ? prev.sitio_web : null),
-          pais: paisFinal,
-          categorias_default: categoriasFinal,
-          proceso_compra: (proceso ?? "").trim() || (typeof prev.proceso_compra === "string" ? prev.proceso_compra : null),
-        },
-      });
-      if (error) throw error;
-      if (rutFinal && data.user?.user_metadata?.rut !== rutFinal) {
-        throw new Error("Supabase no confirmó el RUT guardado");
-      }
-
-      // Genera/actualiza el perfil de procurement (prior inicial para búsqueda
-      // e identificación) — no bloquea el onboarding si falla.
-      if (data.user?.id) {
-        fetch(`${API_URL}/api/procurement-profile/generar`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user_id: data.user.id,
-            empresa: empresaFinal,
-            dominio: inv?.sitio_web ? inv.sitio_web.replace(/^https?:\/\//, "").replace(/^www\./, "") : null,
-            industria: industriaFinal,
-            pais: paisFinal,
-            categorias_probables: categoriasFinal,
-            descripcion_actividad: inv?.descripcion ?? null,
-            origen: "onboarding",
-          }),
-        }).catch(() => {});
-      }
-
-      router.refresh();
-      if (floating) { onDone?.(); return; }
-      await espera(600);
-      router.replace("/dashboard");
-    } catch (e) {
-      if (!floating) {
-        addBot(`Hubo un problema guardando tu configuración: ${(e as Error).message || "error desconocido"}. Igual te llevo al dashboard, puedes completar tus datos en Configuración.`);
-        await espera(1500);
-        router.replace("/dashboard");
-      } else {
-        addBot(`No pude guardar: ${(e as Error).message || "error desconocido"}. Puedes completarlo luego en Configuración.`);
-        await espera(1500);
-        onDone?.();
-      }
-    }
-  }, [empresa, nombreUsuario, rut, inv, logoIdx, cats, floating, onDone, router]);
-
-  // Decide el siguiente paso una vez que la empresa quedó determinada.
-  const siguienteTrasEmpresa = useCallback(async (empNombre: string) => {
-    if (faltanRef.current.includes("rut")) {
-      setFase("rut");
-      await espera(300);
-      preguntarRut(empNombre);
-    } else if (faltanRef.current.includes("nombre_usuario")) {
-      setFase("nombre_usuario");
-      await espera(300);
-      addBot(`¿Y tú cómo te llamas?${nombreUsuario ? ` (¿"${nombreUsuario}"?)` : ""}`);
-    } else if (modoCompleto) {
-      setFase("logo");
-      await espera(300);
-      addBot(`¿Este es el logo de tu empresa?`, inv ?? undefined);
-    } else {
-      await guardar();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nombreUsuario, modoCompleto, inv, guardar]);
-
-  // Muestra el reporte de la empresa encontrada y pasa a confirmar
-  const revelarEmpresa = async (d: Investigacion) => {
-    aplicar(d);
-    await espera(400); addBot(undefined, d);
-    await espera(600); addBot(`Se dedica a ${d.industria ?? "—"}${d.pais ? ` en ${d.pais}` : ""}. ¿Es tu empresa? Si el nombre no es exacto, corrígelo.`);
-    setFase("confirmar_empresa");
-  };
-
-  // Arranque
+  // Arranque: compatibilidad con cuentas legado (ya completas, sin sesión
+  // nueva) + creación/reanudación de la sesión conversacional persistida.
   useEffect(() => {
     createClient().auth.getUser().then(async ({ data }) => {
       const u = data.user;
       if (!u) { if (!floating) router.replace("/login"); return; }
       const m = (u.user_metadata ?? {}) as Record<string, unknown>;
-      metaExistenteRef.current = m;
       const faltan = camposFaltantes(m);
-      faltanRef.current = faltan;
 
       if (floating && faltan.length === 0) { onDone?.(); return; }
       if (!floating && u.user_metadata?.onboarding_completo && faltan.length === 0) { router.replace("/dashboard"); return; }
 
       const correo = u.email ?? "";
       setEmail(correo);
-      const nombreYaGuardado = typeof m.nombre_usuario === "string" ? m.nombre_usuario : "";
-      const primer = (nombreYaGuardado || u.user_metadata?.full_name || correo.split("@")[0] || "").split(/[.\s]/)[0];
-      setNombreUsuario(primer ? primer.charAt(0).toUpperCase() + primer.slice(1) : "");
-      if (typeof m.empresa === "string") setEmpresa(m.empresa);
-      if (typeof m.rut === "string") setRut(m.rut);
 
-      const necesitaEmpresa = faltan.includes("empresa") || faltan.includes("industria");
-      setModoCompleto(necesitaEmpresa);
-
-      if (necesitaEmpresa) {
-        addBot(floating
-          ? `¡Hola! Para terminar de configurar tu cuenta, dame un segundo, estoy revisando tu empresa a partir de tu correo (${correo})…`
-          : `¡Hola! Soy el asistente de Baiyer. Dame un segundo, estoy revisando tu empresa a partir de tu correo (${correo})…`);
-        const d = await investigar(correo);
-        if (d.es_empresa_conocida && d.empresa) {
-          await revelarEmpresa(d);
-        } else {
-          aplicar(d);
-          await espera(500);
-          addBot("Tu correo es genérico, así que no pude detectarla sola. ¿Cómo se llama tu empresa? La busco por ti.");
-          setFase("pedir_nombre");
-        }
-      } else if (faltan.includes("rut")) {
-        addBot(`¡Hola${nombreYaGuardado ? ` ${nombreYaGuardado}` : ""}! Antes de seguir, necesito un dato más de tu perfil.`);
-        await espera(300);
-        setFase("rut");
-        preguntarRut(m.empresa as string || "tu empresa");
-      } else if (faltan.includes("nombre_usuario")) {
-        addBot("¡Hola! Antes de seguir, ¿cómo te llamas?");
-        setFase("nombre_usuario");
-      } else {
-        onDone?.();
+      let sesion: { id: string; draft: Draft; mensajes: { rol: string; texto: string }[]; propuesta_workflow?: Propuesta | null };
+      try {
+        sesion = await authFetch(`${API_URL}/api/onboarding/sesion`, { method: "POST" }).then(r => r.json());
+      } catch {
+        addBot("No pude conectar con el servidor. Intenta recargar la página.");
+        setCargandoInicial(false);
+        return;
       }
+      setSessionId(sesion.id);
+      setDraft(sesion.draft || {});
+      setPropuestaWorkflow(sesion.propuesta_workflow ?? null);
+
+      if ((sesion.mensajes || []).length > 0) {
+        setMsgs(sesion.mensajes.map(mm => ({ rol: mm.rol === "usuario" ? "user" : "bot", texto: mm.texto })));
+        setCargandoInicial(false);
+        return;
+      }
+
+      // Sesión nueva: saludo + investigación automática de la empresa, igual
+      // que antes, pero ahora la confirmación/corrección se hace en lenguaje
+      // libre (el backend la interpreta), no con botones de fase fija.
+      addBot(`¡Hola! Soy el asistente de Baiyer. Dame un segundo, estoy revisando tu empresa a partir de tu correo (${correo})…`);
+      const d = await investigar(correo);
+      setInvestigacion(d);
+      if (d.es_empresa_conocida && d.empresa) {
+        await espera(300);
+        addBot(undefined, d);
+        await espera(200);
+        addBot("¿Es tu empresa? Cuéntame lo que haga falta corregir, o dime de una vez tu RUT, tu nombre y cómo funciona la compra en tu empresa — todo junto si quieres.");
+      } else {
+        await espera(300);
+        addBot("No reconocí tu empresa automáticamente. Cuéntame su nombre, tu RUT y cómo te llamas — puedes darlo todo en un solo mensaje.");
+      }
+      setCargandoInicial(false);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [investigar, router, floating]);
 
-  // Enviar (según fase)
   const enviar = async () => {
-    const val = input.trim();
-
-    if (fase === "pedir_nombre") {
-      if (!val) return;
-      addUser(val); setInput(""); setBusy(true);
-      const d = await investigar(email, val);
+    const mensaje = input.trim();
+    if (!mensaje || !sessionId || busy) return;
+    setInput("");
+    setBusy(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/onboarding/sesion/${sessionId}/turno`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mensaje }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setDraft(data.draft || {});
+      setCompleto(!!data.completo);
+      setPropuestaWorkflow(data.propuesta_workflow ?? null);
+      setMsgs((data.mensajes || []).map((mm: { rol: string; texto: string }) => ({ rol: mm.rol === "usuario" ? "user" : "bot", texto: mm.texto })));
+    } catch {
+      addUser(mensaje);
+      addBot("Tuve un problema procesando eso. Puedes intentarlo de nuevo.");
+    } finally {
       setBusy(false);
-      if (d.es_empresa_conocida && d.empresa) await revelarEmpresa(d);
-      else { const emp = extraer(val, "empresa"); setEmpresa(emp); addBot(`Anotado: ${emp}. No encontré más detalle, pero podemos seguir.`); await siguienteTrasEmpresa(emp); }
-      return;
     }
+  };
 
-    if (fase === "confirmar_empresa") {
-      // Si escribió algo, re-busca con ese nombre; si no, confirma
-      if (val) {
-        addUser(val); setInput(""); setBusy(true);
-        const d = await investigar(email, val);
-        setBusy(false);
-        if (d.es_empresa_conocida && d.empresa) await revelarEmpresa(d);
-        else { const emp = extraer(val, "empresa"); setEmpresa(emp); addBot(`Ok, usaré "${emp}".`); await siguienteTrasEmpresa(emp); }
-      }
-      return;
+  const usarLogoCandidato = async () => {
+    if (!investigacion?.logo_candidatos?.[logoIdx] || logoOcupado) return;
+    setLogoOcupado(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/onboarding/sesion/${sessionId}/logo/candidato`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: investigacion.logo_candidatos[logoIdx] }),
+      });
+      if (!res.ok) throw new Error();
+      const { logo_url } = await res.json();
+      setLogoUrlFinal(logo_url);
+      addBot("Logo guardado.");
+    } catch {
+      addBot("No pude guardar ese logo. Puedes subir el tuyo o seguir sin logo por ahora.");
+    } finally {
+      setLogoOcupado(false);
     }
+  };
 
-    if (fase === "rut") {
-      addUser(val || "No lo sé");
-      const rutIngresado = val && esConfirmacion(val) && rut ? rut : extraer(val, "rut");
-      const rutLimpio = rutIngresado ? normalizarRut(rutIngresado) : "";
-      if (rutIngresado && !rutChilenoValido(rutIngresado)) {
-        setInput("");
-        addBot("Ese RUT no parece válido. Revisa el número y el dígito verificador (por ejemplo, 76.123.456-7), o déjalo vacío para omitirlo por ahora.");
+  const subirLogoArchivo = async (archivo: File) => {
+    if (!sessionId || logoOcupado) return;
+    setLogoOcupado(true);
+    try {
+      const form = new FormData();
+      form.append("archivo", archivo);
+      const res = await authFetch(`${API_URL}/api/onboarding/sesion/${sessionId}/logo/subir`, { method: "POST", body: form });
+      if (!res.ok) throw new Error();
+      const { logo_url } = await res.json();
+      setLogoUrlFinal(logo_url);
+      addBot("Tu logo quedó guardado.");
+    } catch {
+      addBot("No pude subir ese archivo. Prueba con un PNG/JPG de menos de 3 MB.");
+    } finally {
+      setLogoOcupado(false);
+    }
+  };
+
+  // Confirma la sesión en el backend (perfil organizacional canónico) y
+  // además hace backfill de user_metadata para no romper el resto de la app
+  // que hoy lee empresa/rut/nombre_usuario/proceso_compra desde ahí.
+  const confirmarYGuardar = async () => {
+    if (!sessionId || finalizando) return;
+    setFinalizando(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/onboarding/sesion/${sessionId}/confirmar`, { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        addBot(body.detail || "No pude confirmar tu perfil. Intenta de nuevo.");
+        setFinalizando(false);
         return;
       }
-      setRut(rutLimpio); setInput("");
-      addBot(rutLimpio ? `Perfecto, guardaremos ${rutLimpio}.` : "De acuerdo, lo omitimos por ahora.");
-      if (faltanRef.current.includes("nombre_usuario")) {
-        setFase("nombre_usuario");
-        await espera(300);
-        addBot(`¿Y tú cómo te llamas?${nombreUsuario ? ` (¿"${nombreUsuario}"?)` : ""}`);
-      } else if (modoCompleto) {
-        setFase("nombre_usuario");
-        await espera(300);
-        addBot(`¿Y tú cómo te llamas?${nombreUsuario ? ` (¿"${nombreUsuario}"?)` : ""}`);
-      } else {
-        await guardar(undefined, { rut: rutLimpio });
+
+      const { data: userData } = await createClient().auth.getUser();
+      const prev = (userData.user?.user_metadata ?? {}) as Record<string, unknown>;
+      const procesoTexto = draft.proceso_compra_texto?.valor?.trim() || (typeof prev.proceso_compra === "string" ? prev.proceso_compra : null);
+      const { data, error } = await createClient().auth.updateUser({
+        data: {
+          ...prev,
+          onboarding_completo: true,
+          empresa: draft.empresa?.valor ?? prev.empresa ?? null,
+          nombre_usuario: draft.nombre_usuario?.valor ?? prev.nombre_usuario ?? null,
+          rut: draft.rut?.valor ?? prev.rut ?? null,
+          industria: investigacion?.industria ?? (typeof prev.industria === "string" ? prev.industria : null),
+          pais: investigacion?.pais ?? investigacion?.pais_tld ?? (typeof prev.pais === "string" ? prev.pais : null),
+          logo_url: logoUrlFinal ?? (typeof prev.logo_url === "string" ? prev.logo_url : null),
+          sitio_web: investigacion?.sitio_web ?? (typeof prev.sitio_web === "string" ? prev.sitio_web : null),
+          categorias_default: investigacion?.categorias_compra_probables?.length ? investigacion.categorias_compra_probables.slice(0, 20) : (prev.categorias_default ?? []),
+          proceso_compra: procesoTexto,
+        },
+      });
+      if (error) throw error;
+
+      if (data.user?.id) {
+        fetch(`${API_URL}/api/procurement-profile/generar`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: data.user.id,
+            empresa: draft.empresa?.valor ?? null,
+            dominio: investigacion?.sitio_web ? investigacion.sitio_web.replace(/^https?:\/\//, "").replace(/^www\./, "") : null,
+            industria: investigacion?.industria ?? null,
+            pais: investigacion?.pais ?? null,
+            categorias_probables: investigacion?.categorias_compra_probables ?? [],
+            descripcion_actividad: investigacion?.descripcion ?? null,
+            origen: "onboarding",
+          }),
+        }).catch(() => {});
       }
-      return;
-    }
 
-    if (fase === "nombre_usuario") {
-      const confirma = val && esConfirmacion(val) && nombreUsuario;
-      const nom = confirma ? nombreUsuario : extraer(val || nombreUsuario, "nombre");
-      if (!nom) return;
-      addUser(val || nombreUsuario); setNombreUsuario(nom); setInput("");
-      if (modoCompleto) {
-        setFase("logo");
-        await espera(300);
-        addBot(`Encantado, ${nom}. ¿Este es el logo de tu empresa?`, inv ?? undefined);
-      } else {
-        await guardar(undefined, { nombreUsuario: nom });
-      }
-      return;
-    }
-
-    if (fase === "proceso") {
-      addUser(val || "—"); setInput("");
-      await guardar(val);
-      return;
+      addBot(`¡Listo, ${draft.nombre_usuario?.valor || ""}! Configuré tu cuenta de ${draft.empresa?.valor || "tu empresa"}.`);
+      router.refresh();
+      if (floating) { onDone?.(); return; }
+      await espera(600);
+      router.replace("/dashboard");
+    } catch (e) {
+      addBot(`Hubo un problema guardando tu configuración: ${(e as Error).message || "error desconocido"}. Puedes completarlo luego en Configuración.`);
+      setFinalizando(false);
     }
   };
-
-  const preguntarRut = (emp: string) => {
-    addBot(`¿Cuál es el RUT de ${emp}?${rut ? ` (encontré ${rut}, confírmalo o corrígelo)` : " (si no lo tienes a mano, puedes omitirlo)"}`);
-  };
-
-  // Al confirmar empresa
-  const confirmarEmpresa = async () => {
-    addUser("Sí, es correcta");
-    await siguienteTrasEmpresa(empresa || inv?.empresa || "tu empresa");
-  };
-
-  // Cortar el ping-pong si el bot no encuentra la empresa: usa lo que haya
-  // tipeado el usuario (o el nombre ya anotado, o "Mi empresa") y sigue.
-  const saltarBusquedaEmpresa = async () => {
-    const val = input.trim();
-    const emp = val ? extraer(val, "empresa") : (empresa || "Mi empresa");
-    addUser(val ? `Es "${emp}", no busques más` : "Sigamos sin buscar la empresa");
-    setEmpresa(emp);
-    setInput("");
-    addBot(`Ok, uso "${emp}" tal cual. Podrás afinar los detalles después en Configuración.`);
-    await siguienteTrasEmpresa(emp);
-  };
-
-  // Logo
-  const respLogo = async (ok: boolean) => {
-    addUser(ok ? "Sí, es mi logo" : "Lo subo después");
-    setFase("proceso");
-    await espera(300);
-    addBot("Última pregunta 👇 ¿Cómo funciona la compra en tu empresa? Cuéntame quién cotiza, quién autoriza y cómo se decide. (Con tu ritmo, en una frase basta.)");
-  };
-
-  // ── Input activo según fase ──
-  const inputTexto = fase === "pedir_nombre" || fase === "confirmar_empresa" || fase === "rut" || fase === "nombre_usuario" || fase === "proceso";
-  const placeholder =
-    fase === "pedir_nombre" ? "Nombre de tu empresa…" :
-    fase === "confirmar_empresa" ? "Corrige el nombre (o pulsa Sí)…" :
-    fase === "rut" ? "99.999.999-9 (o deja vacío)…" :
-    fase === "nombre_usuario" ? (nombreUsuario || "Tu nombre…") :
-    fase === "proceso" ? "Ej: yo cotizo y mi jefe autoriza sobre $500.000…" : "";
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
-      {/* Chat */}
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: floating ? "16px 14px" : "28px 16px", minHeight: 0 }}>
         <div style={{ maxWidth: floating ? "100%" : 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
           {msgs.map((m, i) => (
-            <div key={i} style={{
-              display: "flex",
-              gap: 10,
-              justifyContent: m.rol === "user" ? "flex-end" : "flex-start",
-              alignItems: "flex-start",
-            }}>
+            <div key={i} style={{ display: "flex", gap: 10, justifyContent: m.rol === "user" ? "flex-end" : "flex-start", alignItems: "flex-start" }}>
               {m.rol === "bot" && (
                 <span style={{
                   width: 28, height: 28, borderRadius: 8, flexShrink: 0,
@@ -410,62 +298,84 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
                 fontSize: 14, lineHeight: 1.55,
               }}>
                 {m.texto}
-                {m.card && <EmpresaCard d={m.card} logoIdx={logoIdx} onLogoError={() => setLogoIdx(x => x + 1)} />}
+                {m.card && (
+                  <EmpresaCard
+                    d={m.card} logoIdx={logoIdx} logoUrlFinal={logoUrlFinal} logoOcupado={logoOcupado}
+                    onLogoError={() => setLogoIdx(x => x + 1)}
+                    onUsarLogo={usarLogoCandidato}
+                    onSubirArchivo={() => fileInputRef.current?.click()}
+                  />
+                )}
               </div>
             </div>
           ))}
-          {(fase === "cargando" || busy) && <TypingDots />}
+
+          {Object.keys(draft).length > 0 && (
+            <div style={{ marginLeft: 36, display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {Object.entries(draft).filter(([campo]) => ETIQUETAS_CAMPO[campo]).map(([campo, entrada]) => (
+                <span key={campo} style={{
+                  fontSize: 11.5, padding: "3px 9px", borderRadius: 999,
+                  background: entrada.confirmado ? "var(--brand-50)" : "var(--n-100)",
+                  color: entrada.confirmado ? "var(--brand)" : "var(--n-500)",
+                  border: `1px solid ${entrada.confirmado ? "var(--brand-100)" : "var(--n-200)"}`,
+                }}>
+                  {ETIQUETAS_CAMPO[campo]}: {entrada.valor}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {propuestaWorkflow && propuestaWorkflow.etapas?.length > 0 && (
+            <PropuestaWorkflowCard
+              propuesta={propuestaWorkflow}
+              aInvitar={new Set()}
+              onToggleInvitar={() => {}}
+              nombreWorkflow=""
+              onNombreWorkflowChange={() => {}}
+              onCorregir={() => {}}
+              onConfirmar={() => {}}
+              cargando={false}
+              soloPreview
+            />
+          )}
+
+          {completo && (
+            <div style={{ marginLeft: 36 }}>
+              <button onClick={confirmarYGuardar} disabled={finalizando} className="btn-swiss-primary">
+                {finalizando ? "Guardando…" : "Confirmar y continuar"}
+              </button>
+            </div>
+          )}
+
+          {(cargandoInicial || busy) && <TypingDots />}
         </div>
       </div>
 
-      {/* Barra de acción */}
-      <div style={{
-        borderTop: "1px solid var(--n-200)",
-        padding: floating ? "10px 12px" : "14px 16px",
-        background: "var(--surface)",
-        flexShrink: 0,
-      }}>
+      <input
+        ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" style={{ display: "none" }}
+        onChange={e => { const f = e.target.files?.[0]; if (f) subirLogoArchivo(f); e.target.value = ""; }}
+      />
+
+      <div style={{ borderTop: "1px solid var(--n-200)", padding: floating ? "10px 12px" : "14px 16px", background: "var(--surface)", flexShrink: 0 }}>
         <div style={{ maxWidth: floating ? "100%" : 640, margin: "0 auto", display: "flex", gap: 8, alignItems: "center", flexWrap: floating ? "wrap" : "nowrap" }}>
-          {fase === "confirmar_empresa" && (
-            <button onClick={confirmarEmpresa} disabled={busy} className="btn-swiss-primary" style={{ whiteSpace: "nowrap" }}>Sí, es correcta ✓</button>
-          )}
-          {fase === "logo" && (
-            <>
-              <button onClick={() => respLogo(true)} className="btn-swiss-primary" style={{ flex: 1 }}>Sí, es mi logo</button>
-              <button onClick={() => respLogo(false)} className="btn-swiss-secondary">Subir después</button>
-            </>
-          )}
-          {inputTexto && (
-            <>
-              <input
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !busy) enviar(); }}
-                placeholder={placeholder}
-                autoFocus
-                style={{
-                  flex: 1, minWidth: floating ? 120 : undefined, background: "var(--canvas)",
-                  border: "1px solid var(--n-300)", borderRadius: "var(--r-md)",
-                  padding: "10px 14px", fontSize: 14,
-                  color: "var(--n-900)", fontFamily: "var(--font-sans)",
-                  outline: "none",
-                }}
-              />
-              {(fase === "pedir_nombre" || fase === "confirmar_empresa") && (
-                <button onClick={saltarBusquedaEmpresa} disabled={busy} className="btn-swiss-secondary" style={{ whiteSpace: "nowrap" }}>
-                  Seguir sin buscar
-                </button>
-              )}
-              <button onClick={enviar} disabled={busy} className="btn-swiss-primary" style={{ whiteSpace: "nowrap" }}>
-                {busy ? "…" : (fase === "rut" || fase === "proceso") && !input.trim() ? "Omitir" : "Enviar"}
-              </button>
-            </>
-          )}
-          {floating && onSkip && fase !== "fin" && (
-            <button onClick={onSkip} style={{
-              fontSize: 12.5, color: "var(--n-500)", background: "none", border: "none",
-              cursor: "pointer", padding: "4px 2px", textDecoration: "underline",
-            }}>
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !busy) enviar(); }}
+            placeholder="Escribe lo que quieras contarme…"
+            autoFocus
+            disabled={cargandoInicial || completo}
+            style={{
+              flex: 1, minWidth: floating ? 120 : undefined, background: "var(--canvas)",
+              border: "1px solid var(--n-300)", borderRadius: "var(--r-md)",
+              padding: "10px 14px", fontSize: 14, color: "var(--n-900)", fontFamily: "var(--font-sans)", outline: "none",
+            }}
+          />
+          <button onClick={enviar} disabled={busy || cargandoInicial || completo || !input.trim()} className="btn-swiss-primary" style={{ whiteSpace: "nowrap" }}>
+            {busy ? "…" : "Enviar"}
+          </button>
+          {floating && onSkip && !completo && (
+            <button onClick={onSkip} style={{ fontSize: 12.5, color: "var(--n-500)", background: "none", border: "none", cursor: "pointer", padding: "4px 2px", textDecoration: "underline" }}>
               Omitir por ahora
             </button>
           )}
@@ -475,36 +385,47 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   );
 }
 
-function EmpresaCard({ d, logoIdx, onLogoError }: { d: Investigacion; logoIdx: number; onLogoError: () => void }) {
-  const logo = d.logo_candidatos?.[logoIdx];
+function EmpresaCard({ d, logoIdx, logoUrlFinal, logoOcupado, onLogoError, onUsarLogo, onSubirArchivo }: {
+  d: Investigacion; logoIdx: number; logoUrlFinal: string | null; logoOcupado: boolean;
+  onLogoError: () => void; onUsarLogo: () => void; onSubirArchivo: () => void;
+}) {
+  const logo = logoUrlFinal ?? d.logo_candidatos?.[logoIdx];
   return (
-    <div style={{
-      display: "flex", gap: 14, alignItems: "flex-start",
-      marginTop: 10, paddingTop: 12, borderTop: "1px solid var(--n-100)",
-    }}>
-      {logo ? (
-        <img src={logo} alt="logo" width={52} height={52} onError={onLogoError}
-          style={{ objectFit: "contain", borderRadius: 8, border: "1px solid var(--n-200)", background: "#fff", flexShrink: 0, padding: 4 }} />
-      ) : (
-        <div style={{
-          width: 52, height: 52, borderRadius: 8, flexShrink: 0,
-          background: "var(--brand-50)", color: "var(--brand)",
-          display: "inline-flex", alignItems: "center", justifyContent: "center",
-          fontSize: 22, fontWeight: 600,
-        }}>{d.empresa?.charAt(0).toUpperCase() ?? "?"}</div>
-      )}
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)" }}>{d.empresa}</div>
-        <div style={{ fontSize: 13, color: "var(--brand)", margin: "3px 0", fontWeight: 500 }}>
-          {d.industria}{d.pais ? ` · ${d.pais}` : ""}
-        </div>
-        {d.descripcion && <div style={{ fontSize: 12.5, color: "var(--n-600)", lineHeight: 1.55 }}>{d.descripcion}</div>}
-        {d.rut && (
-          <div style={{ fontSize: 12, color: "var(--n-500)", marginTop: 6, fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
-            RUT: {d.rut}
-          </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10, paddingTop: 12, borderTop: "1px solid var(--n-100)" }}>
+      <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+        {logo ? (
+          <img src={logo} alt="logo" width={52} height={52} onError={onLogoError}
+            style={{ objectFit: "contain", borderRadius: 8, border: "1px solid var(--n-200)", background: "#fff", flexShrink: 0, padding: 4 }} />
+        ) : (
+          <div style={{
+            width: 52, height: 52, borderRadius: 8, flexShrink: 0,
+            background: "var(--brand-50)", color: "var(--brand)",
+            display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 600,
+          }}>{d.empresa?.charAt(0).toUpperCase() ?? "?"}</div>
         )}
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)" }}>{d.empresa}</div>
+          <div style={{ fontSize: 13, color: "var(--brand)", margin: "3px 0", fontWeight: 500 }}>
+            {d.industria}{d.pais ? ` · ${d.pais}` : ""}
+          </div>
+          {d.descripcion && <div style={{ fontSize: 12.5, color: "var(--n-600)", lineHeight: 1.55 }}>{d.descripcion}</div>}
+          {d.rut && (
+            <div style={{ fontSize: 12, color: "var(--n-500)", marginTop: 6, fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
+              RUT: {d.rut}
+            </div>
+          )}
+        </div>
       </div>
+      {!logoUrlFinal && (
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onUsarLogo} disabled={logoOcupado || !d.logo_candidatos?.[logoIdx]} className="btn-swiss-secondary" style={{ fontSize: 12 }}>
+            {logoOcupado ? "…" : "Usar este logo"}
+          </button>
+          <button onClick={onSubirArchivo} disabled={logoOcupado} className="btn-swiss-secondary" style={{ fontSize: 12 }}>
+            Subir mi logo
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -515,20 +436,15 @@ function TypingDots() {
       <span style={{
         width: 28, height: 28, borderRadius: 8, flexShrink: 0,
         background: "var(--brand-50)", color: "var(--brand)",
-        display: "inline-flex", alignItems: "center", justifyContent: "center",
-        fontSize: 14, fontWeight: 700,
+        display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700,
       }}>B</span>
       <div style={{
         background: "var(--surface)", border: "1px solid var(--n-200)",
         borderRadius: "16px 16px 16px 4px", padding: "12px 16px",
-        display: "flex", gap: 5, alignItems: "center",
-        boxShadow: "var(--shadow-card)",
+        display: "flex", gap: 5, alignItems: "center", boxShadow: "var(--shadow-card)",
       }}>
         {[0, 1, 2].map(i => (
-          <span key={i} style={{
-            width: 7, height: 7, borderRadius: "50%", background: "var(--n-400)",
-            animation: `pulseDot 1.2s ease-in-out ${i * 0.15}s infinite`,
-          }} />
+          <span key={i} style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--n-400)", animation: `pulseDot 1.2s ease-in-out ${i * 0.15}s infinite` }} />
         ))}
         <style>{`@keyframes pulseDot { 0%,60%,100% { opacity:.3; transform: scale(.85) } 30% { opacity:1; transform: scale(1) } }`}</style>
       </div>

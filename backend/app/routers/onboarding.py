@@ -8,8 +8,10 @@ import json
 import re
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/onboarding", tags=["onboarding"])
 
@@ -242,3 +244,171 @@ async def investigar_empresa(req: InvestigarRequest):
     if not gem_res.get("direccion"):
         gem_res["direccion"] = scrape.get("direccion")
     return {**base, **gem_res}
+
+
+# ─── Sesión de onboarding conversacional (Fases 1-2) ───────────────────────
+# Reemplaza la máquina de fases con regex del frontend: el backend guarda la
+# sesión, extrae campos con tolerancia a lenguaje natural y decide cuándo
+# está realmente completa. Nunca confía en un `user_id` del cliente — todo
+# sale de `AuthContext` (token verificado contra Supabase).
+
+class TurnoRequest(BaseModel):
+    mensaje: str
+
+
+class LogoCandidatoRequest(BaseModel):
+    url: str
+
+
+def _sesion_o_404(session_id: str, ctx: AuthContext) -> dict:
+    from app.services import onboarding_session as sesiones
+    sesion = sesiones.obtener_sesion(session_id, ctx.actor_user_id)
+    if not sesion:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+    return sesion
+
+
+@router.post("/sesion")
+async def crear_sesion(ctx: AuthContext = Depends(get_auth_context)):
+    from app.services import onboarding_session as sesiones
+    sesion = sesiones.crear_o_reanudar_sesion(ctx.actor_user_id)
+    return sesion
+
+
+@router.get("/sesion/{session_id}")
+async def obtener_sesion_endpoint(session_id: str, ctx: AuthContext = Depends(get_auth_context)):
+    return _sesion_o_404(session_id, ctx)
+
+
+@router.post("/sesion/{session_id}/turno")
+async def turno(session_id: str, req: TurnoRequest, ctx: AuthContext = Depends(get_auth_context)):
+    from app.services import onboarding_conversational as conv
+    from app.services import onboarding_session as sesiones
+
+    sesion = _sesion_o_404(session_id, ctx)
+    if sesion.get("estado") in ("completado", "abandonado"):
+        raise HTTPException(status_code=400, detail="La sesión ya no está activa")
+
+    mensaje = (req.mensaje or "").strip()
+    if not mensaje:
+        raise HTTPException(status_code=400, detail="Mensaje vacío")
+
+    try:
+        resultado = conv.procesar_turno(sesion, mensaje)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    actualizada = sesiones.guardar_turno(
+        session_id=session_id,
+        user_id=ctx.actor_user_id,
+        mensaje_usuario=mensaje,
+        mensajes_asistente=resultado["mensajes_asistente"],
+        draft_nuevo=resultado["draft"],
+        preguntas_pendientes=resultado["preguntas_pendientes"],
+        propuesta_workflow=resultado["propuesta_workflow"],
+        estado=resultado["estado"],
+    )
+    return {**actualizada, "completo": resultado["completo"], "campos_rechazados": resultado["campos_rechazados"]}
+
+
+@router.post("/sesion/{session_id}/confirmar")
+async def confirmar_sesion(session_id: str, ctx: AuthContext = Depends(get_auth_context)):
+    """Cierra la sesión y escribe el perfil organizacional canónico. Solo se
+    puede confirmar si no faltan campos críticos — nunca se marca completa
+    por inferencia del modelo, solo por esta acción explícita del usuario."""
+    from app.services import onboarding_session as sesiones
+    from app.services.organizacion import resolver_organizacion
+
+    sesion = _sesion_o_404(session_id, ctx)
+    draft = sesion.get("draft") or {}
+    faltantes = sesiones.campos_faltantes(draft)
+    if faltantes:
+        raise HTTPException(status_code=400, detail=f"Faltan campos por confirmar: {', '.join(faltantes)}")
+
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+    ctx_org = resolver_organizacion(ctx.actor_user_id)
+    if not ctx_org:
+        raise HTTPException(status_code=403, detail="Usuario sin organización asignada")
+
+    valores = {
+        "nombre": draft["empresa"]["valor"],
+        "rut": draft["rut"]["valor"],
+    }
+    try:
+        sb.table("organizaciones").update(valores).eq("id", ctx_org.organizacion_id).execute()
+    except Exception as e:
+        # Violación del índice único de RUT (23505) → conflicto manual, no
+        # fusionar organizaciones automáticamente.
+        if "23505" in str(e) or "duplicate key" in str(e).lower():
+            raise HTTPException(status_code=409, detail="Ese RUT ya está registrado en otra organización — revisión manual requerida")
+        raise
+
+    sb.table("onboarding_sessions").update({
+        "estado": "completado", "organizacion_id": ctx_org.organizacion_id,
+    }).eq("id", session_id).execute()
+
+    return {"estado": "completado", "organizacion_id": ctx_org.organizacion_id}
+
+
+@router.post("/sesion/{session_id}/logo/candidato")
+async def confirmar_logo_candidato(session_id: str, req: LogoCandidatoRequest, ctx: AuthContext = Depends(get_auth_context)):
+    from app.services.logo_upload import descargar_y_validar_url, subir_logo
+    from app.services.organizacion import resolver_organizacion
+
+    _sesion_o_404(session_id, ctx)
+    ctx_org = resolver_organizacion(ctx.actor_user_id)
+    if not ctx_org:
+        raise HTTPException(status_code=403, detail="Usuario sin organización asignada")
+
+    try:
+        contenido = await descargar_y_validar_url(req.url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    content_type = "image/png"
+    for ext, tipo in (("svg", "image/svg+xml"), ("ico", "image/x-icon"), ("webp", "image/webp"), ("jpg", "image/jpeg"), ("jpeg", "image/jpeg")):
+        if req.url.lower().endswith(f".{ext}"):
+            content_type = tipo
+            break
+
+    try:
+        logo_url = subir_logo(ctx_org.organizacion_id, content_type, contenido)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"No se pudo subir el logo: {e}")
+
+    from app.services.supabase import get_supabase
+    get_supabase().table("organizaciones").update({
+        "logo_url": logo_url, "logo_origen": "investigado",
+    }).eq("id", ctx_org.organizacion_id).execute()
+
+    return {"logo_url": logo_url}
+
+
+@router.post("/sesion/{session_id}/logo/subir")
+async def subir_logo_endpoint(session_id: str, archivo: UploadFile = File(...), ctx: AuthContext = Depends(get_auth_context)):
+    from app.services.logo_upload import validar_archivo_subido, subir_logo
+    from app.services.organizacion import resolver_organizacion
+
+    _sesion_o_404(session_id, ctx)
+    ctx_org = resolver_organizacion(ctx.actor_user_id)
+    if not ctx_org:
+        raise HTTPException(status_code=403, detail="Usuario sin organización asignada")
+
+    contenido = await archivo.read()
+    try:
+        validar_archivo_subido(archivo.content_type or "", contenido)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        logo_url = subir_logo(ctx_org.organizacion_id, archivo.content_type, contenido)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"No se pudo subir el logo: {e}")
+
+    from app.services.supabase import get_supabase
+    get_supabase().table("organizaciones").update({
+        "logo_url": logo_url, "logo_origen": "subido",
+    }).eq("id", ctx_org.organizacion_id).execute()
+
+    return {"logo_url": logo_url}

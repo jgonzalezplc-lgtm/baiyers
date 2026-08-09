@@ -3,54 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Bot, Send, CheckCircle2, XCircle, LayoutGrid } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { BtnPrimary, BtnSecondary, Card, Input, TypingBubble, CascadeWrapper, SkeletonBox } from "@/components/ui";
+import { authFetch } from "@/lib/authFetch";
+import { BtnPrimary, BtnSecondary, Card, TypingBubble, CascadeWrapper, SkeletonBox } from "@/components/ui";
+import { ChatBubbles, type Mensaje } from "@/components/chat/ChatBubbles";
+import { PropuestaWorkflowCard, type Propuesta } from "@/components/workflow/PropuestaWorkflowCard";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-interface Mensaje {
-  rol: "bot" | "user";
-  texto: string;
-}
-
-interface Etapa {
-  nombre: string;
-  tipo: string;
-  roles: string[];
-}
-
-interface ReglaAutorizacion {
-  hasta: number | null;
-  desde: number | null;
-  descripcion: string;
-}
-
-interface ResponsableDetectado {
-  nombre: string;
-  email: string;
-  roles: string[];
-}
-
-interface Propuesta {
-  resumen: string;
-  etapas: Etapa[];
-  reglas_autorizacion: ReglaAutorizacion[];
-  requiere_aclaracion: boolean;
-  preguntas: string[];
-  nodos: Record<string, unknown>[];
-  conexiones: Record<string, unknown>[];
-  responsables_detectados: ResponsableDetectado[];
-}
-
-const TIPO_LABEL: Record<string, string> = {
-  tarea_humana: "Tarea", revision: "Revisión", autorizacion: "Autorización",
-  homologacion: "Homologación", emision_oc: "Emisión de OC",
-  compra_sin_oc: "Compra sin OC", espera_documento: "Espera de documento",
-  accion_automatica: "Acción automática",
-};
-
-function fmtCLP(n: number) {
-  return `$${Math.round(n).toLocaleString("es-CL")}`;
-}
 
 export default function ConfiguracionAutorizacionesPage() {
   const router = useRouter();
@@ -143,11 +101,10 @@ export default function ConfiguracionAutorizacionesPage() {
         invitar: !!r.email && aInvitar.has(r.email),
       }));
 
-      const creado = await fetch(`${API_URL}/api/workflows`, {
+      const creado = await authFetch(`${API_URL}/api/workflows`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: userId,
           nombre: nombreWorkflow.trim() || "Ciclo de compras",
           nodos: propuesta.nodos,
           conexiones: propuesta.conexiones,
@@ -156,7 +113,7 @@ export default function ConfiguracionAutorizacionesPage() {
         }),
       }).then(r => r.json());
 
-      const validacion = await fetch(`${API_URL}/api/workflows/${creado.id}/validar?user_id=${userId}`).then(r => r.json());
+      const validacion = await authFetch(`${API_URL}/api/workflows/${creado.id}/validar`).then(r => r.json());
       setErrores(validacion.errores || []);
       setWorkflowGuardado({ id: creado.id, estado: creado.estado });
       setPropuesta(null);
@@ -182,10 +139,8 @@ export default function ConfiguracionAutorizacionesPage() {
     if (!workflowGuardado || !userId) return;
     setActivando(true);
     try {
-      await fetch(`${API_URL}/api/workflows/${workflowGuardado.id}/activar`, {
+      await authFetch(`${API_URL}/api/workflows/${workflowGuardado.id}/activar`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId }),
       });
       setWorkflowGuardado(prev => prev ? { ...prev, estado: "activo" } : prev);
     } catch {
@@ -203,10 +158,10 @@ export default function ConfiguracionAutorizacionesPage() {
         { id: "inicio", tipo: "inicio", nombre: "Inicio", posicion: { x: 60, y: 40 } },
         { id: "fin", tipo: "fin", nombre: "Fin", posicion: { x: 60, y: 200 } },
       ];
-      const creado = await fetch(`${API_URL}/api/workflows`, {
+      const creado = await authFetch(`${API_URL}/api/workflows`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, nombre: "Ciclo de compras", nodos, conexiones: [], origen: "visual" }),
+        body: JSON.stringify({ nombre: "Ciclo de compras", nodos, conexiones: [], origen: "visual" }),
       }).then(r => r.json());
       router.push(`/settings/autorizaciones/canvas/${creado.id}`);
     } catch {
@@ -240,102 +195,25 @@ export default function ConfiguracionAutorizacionesPage() {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
-        {mensajes.map((m, i) => (
-          <div key={i} style={{ display: "flex", justifyContent: m.rol === "user" ? "flex-end" : "flex-start", gap: 8 }}>
-            {m.rol === "bot" && (
-              <span style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0, background: "var(--brand-50)", color: "var(--brand)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                <Bot size={16} strokeWidth={1.75} />
-              </span>
-            )}
-            <div style={{
-              maxWidth: "80%", padding: "10px 14px", fontSize: 14, lineHeight: 1.5,
-              background: m.rol === "user" ? "var(--brand)" : "var(--surface)",
-              color: m.rol === "user" ? "#fff" : "var(--n-900)",
-              border: m.rol === "user" ? "none" : "1px solid var(--n-200)",
-              borderRadius: m.rol === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-              boxShadow: m.rol === "bot" ? "var(--shadow-card)" : "none",
-            }}>
-              {m.texto}
-            </div>
-          </div>
-        ))}
+        <ChatBubbles mensajes={mensajes} />
 
         {propuesta && (
-          <Card padding={18} style={{ marginLeft: 36 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
-              {propuesta.etapas.map((e, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5 }}>
-                  <span style={{
-                    width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
-                    background: "var(--brand-50)", color: "var(--brand)", fontSize: 11, fontWeight: 600,
-                    display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  }}>{i + 1}</span>
-                  <div>
-                    <strong style={{ color: "var(--n-900)" }}>{e.nombre}</strong>
-                    <span style={{ color: "var(--n-500)" }}> · {TIPO_LABEL[e.tipo] ?? e.tipo} · {e.roles.join(", ")}</span>
-                  </div>
-                </div>
-              ))}
-              {propuesta.reglas_autorizacion.length > 1 && (
-                <div style={{ marginTop: 4, paddingTop: 10, borderTop: "1px dashed var(--n-200)" }}>
-                  <div style={{ fontSize: 12.5, color: "var(--n-500)", marginBottom: 6 }}>Reglas por monto:</div>
-                  {propuesta.reglas_autorizacion.map((r, i) => (
-                    <div key={i} style={{ fontSize: 13, color: "var(--n-700)", marginBottom: 3 }}>
-                      {r.hasta != null ? `Hasta ${fmtCLP(r.hasta)}` : `Desde ${fmtCLP(r.desde ?? 0)}`}: {r.descripcion}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {(propuesta.responsables_detectados || []).length > 0 && (
-                <div style={{ marginTop: 4, paddingTop: 10, borderTop: "1px dashed var(--n-200)" }}>
-                  <div style={{ fontSize: 12.5, color: "var(--n-500)", marginBottom: 6 }}>
-                    Personas detectadas · desmarca para no invitar
-                  </div>
-                  {(propuesta.responsables_detectados || []).map((r, i) => {
-                    const puedeInvitar = !!r.email;
-                    const activo = puedeInvitar && aInvitar.has(r.email);
-                    return (
-                      <label key={`${r.email || r.nombre}-${i}`} style={{
-                        display: "flex", alignItems: "center", gap: 8, padding: "5px 0",
-                        fontSize: 13, color: "var(--n-800)",
-                        cursor: puedeInvitar ? "pointer" : "default", opacity: puedeInvitar ? 1 : 0.65,
-                      }}>
-                        <input
-                          type="checkbox"
-                          checked={activo}
-                          disabled={!puedeInvitar}
-                          onChange={e => {
-                            if (!puedeInvitar) return;
-                            setAInvitar(prev => {
-                              const s = new Set(prev);
-                              if (e.target.checked) s.add(r.email); else s.delete(r.email);
-                              return s;
-                            });
-                          }}
-                        />
-                        <div style={{ flex: 1 }}>
-                          <div><strong style={{ color: "var(--n-900)" }}>{r.nombre || "(sin nombre)"}</strong>
-                            {r.email && <span style={{ color: "var(--n-500)" }}> · {r.email}</span>}
-                          </div>
-                          <div style={{ fontSize: 11.5, color: "var(--n-500)" }}>
-                            {r.roles.join(", ")}
-                            {!r.email && " · sin email, no se puede invitar"}
-                          </div>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            <Input label="Nombre de este ciclo" value={nombreWorkflow} onChange={e => setNombreWorkflow(e.target.value)} />
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <BtnSecondary onClick={corregir} style={{ flex: 1 }}>Quiero corregir</BtnSecondary>
-              <BtnPrimary onClick={confirmar} disabled={cargando} style={{ flex: 1 }}>
-                {cargando ? "Guardando…" : "Sí, guardar como borrador"}
-              </BtnPrimary>
-            </div>
-          </Card>
+          <PropuestaWorkflowCard
+            propuesta={propuesta}
+            aInvitar={aInvitar}
+            onToggleInvitar={(email, activo) => {
+              setAInvitar(prev => {
+                const s = new Set(prev);
+                if (activo) s.add(email); else s.delete(email);
+                return s;
+              });
+            }}
+            nombreWorkflow={nombreWorkflow}
+            onNombreWorkflowChange={setNombreWorkflow}
+            onCorregir={corregir}
+            onConfirmar={confirmar}
+            cargando={cargando}
+          />
         )}
 
         {workflowGuardado && (

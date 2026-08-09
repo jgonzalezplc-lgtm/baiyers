@@ -66,7 +66,7 @@ export default function OnboardingFloating() {
         </button>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         <OnboardingChat floating onDone={onDone} onSkip={omitir} />
       </div>
     </div>
