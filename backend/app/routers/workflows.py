@@ -154,6 +154,24 @@ async def actualizar_workflow(workflow_id: str, req: ActualizarWorkflowRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+class InterpretarCorreccionRequest(BaseModel):
+    descripcion: str
+    grafo_actual: dict
+    contexto: Optional[str] = None
+
+
+@router.post("/{workflow_id}/interpretar-correccion")
+async def interpretar_correccion_endpoint(workflow_id: str, req: InterpretarCorreccionRequest, ctx: AuthContext = Depends(get_auth_context)):
+    """Solo interpreta y propone operaciones sobre el grafo que manda el
+    frontend — no toca la base de datos ni el workflow persistido. El
+    canvas aplica las operaciones localmente y sigue necesitando
+    'Guardar' explícito para persistir, igual que una edición manual."""
+    import asyncio
+    from app.services.workflow_conversational import interpretar_correccion
+
+    return await asyncio.to_thread(interpretar_correccion, req.descripcion, req.grafo_actual, req.contexto or "")
+
+
 @router.get("/{workflow_id}/validar")
 async def validar_workflow(workflow_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.workflow_service import validar_workflow

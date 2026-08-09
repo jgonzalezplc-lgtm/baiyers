@@ -289,3 +289,140 @@ def compilar_a_grafo(etapas: list[dict], reglas_autorizacion: Optional[list[dict
 
     nodos.append({"id": "fin", "tipo": "fin", "nombre": "Fin"})
     return nodos, conexiones
+
+
+# ─── Correcciones sobre un grafo ya existente (canvas) ──────────────────────
+# A diferencia de interpretar_descripcion()/compilar_a_grafo(), que generan
+# un grafo NUEVO desde cero, esto propone una lista chica de operaciones
+# sobre un grafo que YA existe (con ediciones manuales del usuario) — el
+# LLM nunca produce el grafo completo de nuevo, solo identifica qué cambiar.
+
+OPERACIONES_VALIDAS = {
+    "renombrar_nodo", "cambiar_roles", "cambiar_entrada", "cambiar_proceso",
+    "cambiar_condicion_entrada", "agregar_nodo", "eliminar_nodo", "conectar", "desconectar",
+}
+
+PROMPT_CORRECCION = """Eres un asistente que ajusta un diagrama de proceso de compras ya
+existente, a partir de una corrección en lenguaje natural del usuario. NUNCA rediseñes el
+diagrama completo — identifica solo los cambios puntuales que pide el usuario, como una
+lista de operaciones.
+
+Responde SOLO JSON válido, sin markdown, con esta forma exacta:
+{
+  "resumen": "1-2 frases explicando qué vas a cambiar, para mostrárselo al usuario",
+  "operaciones": [
+    {"tipo": "renombrar_nodo", "nodo_id": "n1", "nombre": "nuevo nombre"},
+    {"tipo": "cambiar_roles", "nodo_id": "n1", "roles": ["autorizador"]},
+    {"tipo": "cambiar_entrada", "nodo_id": "n1", "entrada": "qué recibe esta etapa"},
+    {"tipo": "cambiar_proceso", "nodo_id": "n1", "proceso": "qué debe hacer esta etapa"},
+    {"tipo": "cambiar_condicion_entrada", "nodo_id": "n1", "condicion_entrada": {"campo": "monto_total", "operador": ">", "valor": 1000000}},
+    {"tipo": "agregar_nodo", "tipo_nodo": "autorizacion", "nombre": "nombre de la etapa nueva", "roles": ["autorizador"]},
+    {"tipo": "eliminar_nodo", "nodo_id": "n1"},
+    {"tipo": "conectar", "origen_nodo_id": "n1", "destino_nodo_id": "n2", "resultado": "aprobado"},
+    {"tipo": "desconectar", "origen_nodo_id": "n1", "destino_nodo_id": "n2", "resultado": "aprobado"}
+  ],
+  "requiere_aclaracion": false,
+  "preguntas": ["máximo 3 preguntas cortas si la corrección es ambigua"]
+}
+
+Reglas:
+- "nodo_id" en cualquier operación debe ser uno de los ids que aparecen en el grafo actual
+  que te paso abajo — JAMÁS inventes un id que no exista ahí.
+- "roles" solo puede tener valores de: cotizador, revisor, autorizador, comprador.
+- "tipo_nodo" (para agregar_nodo) solo puede ser uno de: tarea_humana, revision,
+  autorizacion, homologacion, emision_oc, compra_sin_oc, espera_documento, accion_automatica.
+- "resultado" en conectar/desconectar solo hace falta si el nodo origen tiene resultados
+  (ej: un nodo de autorización con "aprobado"/"rechazado") — si no, omite el campo.
+- Si el usuario pide algo que no tiene que ver con el grafo (agregar responsables, activar
+  el ciclo, etc.), no generes una operación para eso — son acciones separadas del canvas.
+- Si la corrección es ambigua o falta información para aplicarla con seguridad, pon
+  requiere_aclaracion=true y pregunta — no adivines."""
+
+
+def _operacion_valida(op: dict, ids_nodos: set[str]) -> bool:
+    from app.services.workflow_engine import CAMPOS_CONDICION_VALIDOS, OPERADORES_VALIDOS
+
+    tipo = op.get("tipo")
+    if tipo not in OPERACIONES_VALIDAS:
+        return False
+    if tipo == "renombrar_nodo":
+        return op.get("nodo_id") in ids_nodos and bool(op.get("nombre"))
+    if tipo == "cambiar_roles":
+        roles = op.get("roles")
+        return op.get("nodo_id") in ids_nodos and isinstance(roles, list) and bool(roles) and all(r in ROLES_VALIDOS for r in roles)
+    if tipo in ("cambiar_entrada", "cambiar_proceso"):
+        campo = "entrada" if tipo == "cambiar_entrada" else "proceso"
+        return op.get("nodo_id") in ids_nodos and isinstance(op.get(campo), str)
+    if tipo == "cambiar_condicion_entrada":
+        cond = op.get("condicion_entrada") or {}
+        return (
+            op.get("nodo_id") in ids_nodos
+            and cond.get("campo") in CAMPOS_CONDICION_VALIDOS
+            and cond.get("operador") in OPERADORES_VALIDOS
+            and cond.get("valor") is not None
+        )
+    if tipo == "agregar_nodo":
+        roles = op.get("roles") or []
+        return (
+            op.get("tipo_nodo") in TIPOS_ETAPA_VALIDOS
+            and bool(op.get("nombre"))
+            and all(r in ROLES_VALIDOS for r in roles)
+        )
+    if tipo == "eliminar_nodo":
+        return op.get("nodo_id") in ids_nodos
+    if tipo in ("conectar", "desconectar"):
+        return op.get("origen_nodo_id") in ids_nodos and op.get("destino_nodo_id") in ids_nodos
+    return False
+
+
+def interpretar_correccion(descripcion: str, grafo_actual: dict, contexto: str = "") -> dict:
+    """Traduce una corrección en lenguaje natural a operaciones sobre un
+    grafo YA EXISTENTE. Nunca lanza: ante cualquier falla devuelve
+    requiere_aclaracion=True sin operaciones, nunca inventa un cambio."""
+    from app.config import settings
+
+    vacio_seguro = {
+        "resumen": "", "operaciones": [],
+        "requiere_aclaracion": True,
+        "preguntas": ["La interpretación tardó más de lo esperado. Intenta de nuevo en unos segundos."],
+    }
+
+    texto = (descripcion or "").strip()
+    if not texto:
+        return vacio_seguro
+    if not settings.gemini_api_key:
+        return vacio_seguro
+
+    ids_nodos = {n.get("id") for n in (grafo_actual.get("nodos") or []) if n.get("id")}
+
+    import google.generativeai as genai
+    genai.configure(api_key=settings.gemini_api_key)
+    model = genai.GenerativeModel("gemini-2.5-flash")
+
+    prompt = (
+        PROMPT_CORRECCION
+        + f"\n\nGrafo actual:\n{json.dumps(grafo_actual, ensure_ascii=False)}"
+        + f"\n\nCorrección del usuario:\n{texto}"
+    )
+    if contexto:
+        prompt += f"\n\nConversación previa:\n{contexto}"
+
+    try:
+        resp = model.generate_content(prompt, request_options={"timeout": 25})
+        text = resp.text.strip()
+        if "```" in text:
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        data = json.loads(text.strip())
+    except Exception as e:
+        print(f"[WorkflowConversational] error interpretando corrección: {e}")
+        return vacio_seguro
+
+    operaciones = [op for op in (data.get("operaciones") or []) if _operacion_valida(op, ids_nodos)]
+    return {
+        "resumen": data.get("resumen") or "",
+        "operaciones": operaciones,
+        "requiere_aclaracion": bool(data.get("requiere_aclaracion")) and not operaciones,
+        "preguntas": (data.get("preguntas") or [])[:3],
+    }

@@ -1,6 +1,8 @@
+import json
 import unittest
+from unittest.mock import MagicMock, patch
 
-from app.services.workflow_conversational import compilar_a_grafo, deduplicar_responsables, interpretar_descripcion
+from app.services.workflow_conversational import compilar_a_grafo, deduplicar_responsables, interpretar_correccion, interpretar_descripcion
 from app.services.workflow_engine import validar_grafo, siguiente_nodo
 
 
@@ -151,6 +153,88 @@ class InterpretarDescripcionSinRedTest(unittest.TestCase):
             interpretar_descripcion("Yo cotizo, mi jefa revisa y autoriza todo.")
         except UnboundLocalError as e:
             self.fail(f"interpretar_descripcion no debe fallar por scope de 're': {e}")
+
+
+class InterpretarCorreccionTest(unittest.TestCase):
+    """Correcciones sobre un grafo ya existente — el LLM propone operaciones,
+    nunca el grafo completo. Todo mockeado, sin red real."""
+
+    GRAFO = {
+        "nodos": [
+            {"id": "inicio", "tipo": "inicio", "nombre": "Inicio"},
+            {"id": "n0", "tipo": "tarea_humana", "nombre": "Cotizar", "roles": ["cotizador"]},
+            {"id": "n1", "tipo": "autorizacion", "nombre": "Autorizar", "roles": ["autorizador"], "resultados": ["aprobado", "rechazado"]},
+            {"id": "fin", "tipo": "fin", "nombre": "Fin"},
+        ],
+        "conexiones": [
+            {"origen_nodo_id": "inicio", "destino_nodo_id": "n0"},
+            {"origen_nodo_id": "n0", "destino_nodo_id": "n1"},
+            {"origen_nodo_id": "n1", "destino_nodo_id": "fin", "resultado": "aprobado"},
+        ],
+    }
+
+    def test_sin_api_key_devuelve_vacio_seguro(self):
+        with patch("app.config.settings.gemini_api_key", ""):
+            r = interpretar_correccion("cambia el nombre", self.GRAFO)
+        self.assertEqual(r["operaciones"], [])
+        self.assertTrue(r["requiere_aclaracion"])
+
+    def test_descripcion_vacia_no_llama_a_gemini(self):
+        r = interpretar_correccion("   ", self.GRAFO)
+        self.assertEqual(r["operaciones"], [])
+
+    def test_operacion_con_nodo_id_inexistente_se_descarta(self):
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            instancia = MockModel.return_value
+            instancia.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "Renombro la etapa",
+                "operaciones": [{"tipo": "renombrar_nodo", "nodo_id": "n99-no-existe", "nombre": "X"}],
+                "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("cambia el nombre de la etapa inexistente", self.GRAFO)
+        self.assertEqual(r["operaciones"], [])
+
+    def test_agregar_nodo_con_tipo_invalido_se_descarta(self):
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            instancia = MockModel.return_value
+            instancia.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "", "operaciones": [{"tipo": "agregar_nodo", "tipo_nodo": "algo_inventado", "nombre": "X", "roles": ["autorizador"]}],
+                "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("agrega una etapa rara", self.GRAFO)
+        self.assertEqual(r["operaciones"], [])
+
+    def test_operacion_valida_se_mantiene(self):
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            instancia = MockModel.return_value
+            instancia.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "Agrego autorización de finanzas",
+                "operaciones": [
+                    {"tipo": "agregar_nodo", "tipo_nodo": "autorizacion", "nombre": "Autorizar Finanzas", "roles": ["autorizador"]},
+                    {"tipo": "renombrar_nodo", "nodo_id": "n1", "nombre": "Autorizar jefatura"},
+                ],
+                "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("agrega que finanzas también autorice y renombra la etapa n1", self.GRAFO)
+        self.assertEqual(len(r["operaciones"]), 2)
+
+    def test_roles_invalidos_se_descartan(self):
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            instancia = MockModel.return_value
+            instancia.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "", "operaciones": [{"tipo": "cambiar_roles", "nodo_id": "n1", "roles": ["rol_inventado"]}],
+                "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("cambia el rol", self.GRAFO)
+        self.assertEqual(r["operaciones"], [])
 
 
 if __name__ == "__main__":

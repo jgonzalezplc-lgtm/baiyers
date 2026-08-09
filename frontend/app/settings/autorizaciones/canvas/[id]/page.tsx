@@ -4,7 +4,8 @@ import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Trash2, Plus, Link2, CheckCircle2, XCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
-import { BtnPrimary, BtnSecondary, BtnGhost, Card, Input, SkeletonBox, CascadeWrapper } from "@/components/ui";
+import { BtnPrimary, BtnSecondary, BtnGhost, Card, Input, SkeletonBox, CascadeWrapper, TypingBubble } from "@/components/ui";
+import { ChatBubbles } from "@/components/chat/ChatBubbles";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -115,6 +116,16 @@ export default function CanvasWorkflowPage() {
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [nuevoEmail, setNuevoEmail] = useState("");
   const [guardandoResponsable, setGuardandoResponsable] = useState(false);
+
+  // Chat de correcciones: le pide al modelo una lista de operaciones sobre
+  // el grafo actual (nunca uno nuevo) y las aplica con las mismas funciones
+  // que usa la edición manual — nunca guarda solo, sigue haciendo falta
+  // apretar "Guardar" para persistir.
+  const [mensajesCorreccion, setMensajesCorreccion] = useState<{ rol: "bot" | "user"; texto: string }[]>([
+    { rol: "bot", texto: "Cuéntame qué corregir del ciclo — por ejemplo \"agrega que finanzas también autorice sobre 2 millones\"." },
+  ]);
+  const [entradaCorreccion, setEntradaCorreccion] = useState("");
+  const [enviandoCorreccion, setEnviandoCorreccion] = useState(false);
 
   const arrastre = useRef<{ id: string; offX: number; offY: number } | null>(null);
   const lienzoRef = useRef<HTMLDivElement>(null);
@@ -344,6 +355,77 @@ export default function CanvasWorkflowPage() {
       setTimeout(() => setToast(""), 2500);
     } finally {
       setActivando(false);
+    }
+  };
+
+  const aplicarOperacion = (op: Record<string, unknown>) => {
+    const tipo = op.tipo as string;
+    if (tipo === "renombrar_nodo") {
+      actualizarNodo(op.nodo_id as string, { nombre: op.nombre as string });
+    } else if (tipo === "cambiar_roles") {
+      actualizarNodo(op.nodo_id as string, { roles: op.roles as string[] });
+    } else if (tipo === "cambiar_entrada") {
+      actualizarNodo(op.nodo_id as string, { entrada: op.entrada as string });
+    } else if (tipo === "cambiar_proceso") {
+      actualizarNodo(op.nodo_id as string, { proceso: op.proceso as string });
+    } else if (tipo === "cambiar_condicion_entrada") {
+      actualizarNodo(op.nodo_id as string, { condicion_entrada: op.condicion_entrada as Condicion });
+    } else if (tipo === "agregar_nodo") {
+      const id = nuevoId(nodos);
+      const nuevo: Nodo = {
+        id, tipo: op.tipo_nodo as string, nombre: op.nombre as string,
+        posicion: { x: 60 + (nodos.length % 3) * 220, y: 40 + Math.floor(nodos.length / 3) * 130 },
+        ...(op.tipo_nodo === "decision" || op.tipo_nodo === "autorizacion" ? { resultados: ["aprobado", "rechazado"] } : {}),
+        ...(op.roles ? { roles: op.roles as string[] } : {}),
+      };
+      setNodos(prev => [...prev, nuevo]);
+    } else if (tipo === "eliminar_nodo") {
+      eliminarNodo(op.nodo_id as string);
+    } else if (tipo === "conectar") {
+      const resultado = op.resultado as string | undefined;
+      setConexiones(prev => [
+        ...prev.filter(c => !(c.origen_nodo_id === op.origen_nodo_id && (c.resultado || "default") === (resultado || "default"))),
+        { origen_nodo_id: op.origen_nodo_id as string, destino_nodo_id: op.destino_nodo_id as string, ...(resultado ? { resultado } : {}) },
+      ]);
+    } else if (tipo === "desconectar") {
+      const resultado = op.resultado as string | undefined;
+      setConexiones(prev => prev.filter(c => !(
+        c.origen_nodo_id === op.origen_nodo_id && c.destino_nodo_id === op.destino_nodo_id
+        && (resultado ? c.resultado === resultado : true)
+      )));
+    }
+  };
+
+  const enviarCorreccion = async () => {
+    const texto = entradaCorreccion.trim();
+    if (!texto || enviandoCorreccion || !userId) return;
+    setEntradaCorreccion("");
+    setMensajesCorreccion(prev => [...prev, { rol: "user", texto }]);
+    setEnviandoCorreccion(true);
+    try {
+      const contexto = mensajesCorreccion.map(m => `${m.rol === "bot" ? "ASISTENTE" : "USUARIO"}: ${m.texto}`).join("\n");
+      const res = await authFetch(`${API_URL}/api/workflows/${workflowId}/interpretar-correccion`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ descripcion: texto, grafo_actual: { nodos, conexiones }, contexto }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.requiere_aclaracion) {
+        const pregunta = (data.preguntas || []).join(" ") || "¿Puedes darme un poco más de detalle?";
+        setMensajesCorreccion(prev => [...prev, { rol: "bot", texto: pregunta }]);
+      } else {
+        (data.operaciones || []).forEach(aplicarOperacion);
+        setErrores(null);
+        setMensajesCorreccion(prev => [...prev, {
+          rol: "bot",
+          texto: (data.resumen || "Listo, apliqué el cambio.") + " Recuerda apretar \"Guardar\" para que quede persistido.",
+        }]);
+      }
+    } catch {
+      setMensajesCorreccion(prev => [...prev, { rol: "bot", texto: "Tuve un problema interpretando eso. No cambié nada; intenta de nuevo." }]);
+    } finally {
+      setEnviandoCorreccion(false);
     }
   };
 
@@ -681,6 +763,35 @@ export default function CanvasWorkflowPage() {
               <BtnGhost onClick={() => setSeleccionado(null)} size="sm">Cerrar</BtnGhost>
             </div>
           )}
+        </Card>
+
+        {/* Chat de correcciones */}
+        <Card padding={14} style={{ width: 260, flexShrink: 0, display: "flex", flexDirection: "column", height: 560 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.3 }}>
+            Corregir por chat
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
+            <ChatBubbles mensajes={mensajesCorreccion} />
+            {enviandoCorreccion && <TypingBubble />}
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <textarea
+              value={entradaCorreccion}
+              onChange={e => setEntradaCorreccion(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarCorreccion(); } }}
+              placeholder="Escribe una corrección…"
+              rows={2}
+              disabled={enviandoCorreccion}
+              style={{
+                flex: 1, resize: "none", background: "var(--surface)", color: "var(--n-900)",
+                border: "1px solid var(--n-300)", borderRadius: "var(--r-md)", padding: 8,
+                fontFamily: "inherit", fontSize: 12.5, lineHeight: 1.4, outline: "none",
+              }}
+            />
+            <BtnPrimary onClick={enviarCorreccion} disabled={!entradaCorreccion.trim() || enviandoCorreccion} style={{ alignSelf: "flex-end" }} size="sm">
+              Enviar
+            </BtnPrimary>
+          </div>
         </Card>
       </div>
     </div>
