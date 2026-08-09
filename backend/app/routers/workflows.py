@@ -5,8 +5,10 @@ correos ni reemplaza el flujo productivo de `aprobaciones.py`/`listas.py`.
 """
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
@@ -29,7 +31,6 @@ class ResponsableSemilla(BaseModel):
 
 
 class CrearWorkflowRequest(BaseModel):
-    user_id: str
     nombre: str
     nodos: list[dict] = Field(default_factory=list)
     conexiones: list[dict] = Field(default_factory=list)
@@ -61,14 +62,14 @@ async def interpretar_workflow(req: InterpretarRequest):
 
 
 @router.post("")
-async def crear_workflow(req: CrearWorkflowRequest):
+async def crear_workflow(req: CrearWorkflowRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.workflow_service import (
         crear_borrador, crear_responsable, asignar_rol,
     )
     if req.origen not in ("conversacional", "visual", "mixto"):
         raise HTTPException(status_code=400, detail="origen inválido")
     roles = [r.model_dump() for r in req.roles] if req.roles else None
-    workflow = crear_borrador(req.user_id, req.nombre, req.nodos, req.conexiones, req.origen, roles)
+    workflow = crear_borrador(ctx.actor_user_id, req.nombre, req.nodos, req.conexiones, req.origen, roles)
 
     # Responsables semilla del chat conversacional: crear, asignar a roles y
     # (si corresponde) disparar la invitación. Cada resultado se reporta al
@@ -83,20 +84,20 @@ async def crear_workflow(req: CrearWorkflowRequest):
             if not nombre and not email:
                 continue
             try:
-                nuevo = crear_responsable(req.user_id, nombre or email or "Sin nombre", email=email)
+                nuevo = crear_responsable(ctx.actor_user_id, nombre or email or "Sin nombre", email=email)
             except Exception as e:
                 invitaciones.append({"nombre": nombre, "email": email, "estado": "error", "detalle": f"crear responsable: {e}"})
                 continue
             for rol_clave in (r.roles or []):
                 try:
-                    asignar_rol(req.user_id, nuevo["id"], workflow["id"], rol_clave)
+                    asignar_rol(ctx.actor_user_id, nuevo["id"], workflow["id"], rol_clave)
                 except Exception as e:
                     print(f"[workflows] asignar_rol falló {rol_clave}: {e}")
             if not email or not r.invitar:
                 invitaciones.append({"nombre": nombre, "email": email, "estado": "responsable_creado_sin_invitar"})
                 continue
             try:
-                res = invitar_a_organizacion(req.user_id, email, "miembro", nuevo["id"])
+                res = invitar_a_organizacion(ctx.actor_user_id, email, "miembro", nuevo["id"])
                 invitaciones.append({"nombre": nombre, "email": email, "estado": res.get("estado", "invitado")})
             except ValueError as e:
                 invitaciones.append({"nombre": nombre, "email": email, "estado": "error", "detalle": str(e)})
@@ -119,13 +120,13 @@ async def estado_workflow(user_id: str):
 
 
 @router.get("/autorizadores-sugeridos")
-async def autorizadores_sugeridos(user_id: str, monto_total: float = 0):
+async def autorizadores_sugeridos(monto_total: float = 0, ctx: AuthContext = Depends(get_auth_context)):
     """Fase 4: a quién le llegaría la solicitud de autorización de una lista
     con este monto, según el ciclo activo del usuario — sin crear nada.
     Devuelve null si no hay ciclo activo o nadie asignado (el frontend cae
     al campo de email manual)."""
     from app.services.workflow_execution import previsualizar_autorizadores
-    return previsualizar_autorizadores(user_id, monto_total)
+    return previsualizar_autorizadores(ctx.actor_user_id, monto_total)
 
 
 @router.get("/{workflow_id}")
@@ -154,24 +155,20 @@ async def actualizar_workflow(workflow_id: str, req: ActualizarWorkflowRequest):
 
 
 @router.get("/{workflow_id}/validar")
-async def validar_workflow(workflow_id: str, user_id: str):
+async def validar_workflow(workflow_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.workflow_service import validar_workflow
     try:
-        errores = validar_workflow(user_id, workflow_id)
+        errores = validar_workflow(ctx.actor_user_id, workflow_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return {"valido": not errores, "errores": errores}
 
 
-class ActivarWorkflowRequest(BaseModel):
-    user_id: str
-
-
 @router.post("/{workflow_id}/activar")
-async def activar_workflow(workflow_id: str, req: ActivarWorkflowRequest):
+async def activar_workflow(workflow_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.workflow_service import activar_workflow
     try:
-        return activar_workflow(req.user_id, workflow_id)
+        return activar_workflow(ctx.actor_user_id, workflow_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

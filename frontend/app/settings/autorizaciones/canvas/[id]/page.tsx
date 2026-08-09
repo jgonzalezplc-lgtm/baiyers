@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Trash2, Plus, Link2, CheckCircle2, XCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 import { BtnPrimary, BtnSecondary, BtnGhost, Card, Input, SkeletonBox, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -314,7 +315,7 @@ export default function CanvasWorkflowPage() {
   const validar = async () => {
     if (!userId) return;
     await guardar();
-    const data = await fetch(`${API_URL}/api/workflows/${workflowId}/validar?user_id=${userId}`).then(r => r.json());
+    const data = await authFetch(`${API_URL}/api/workflows/${workflowId}/validar`).then(r => r.json());
     setErrores(data.errores || []);
   };
 
@@ -323,13 +324,11 @@ export default function CanvasWorkflowPage() {
     setActivando(true);
     await guardar();
     try {
-      const val = await fetch(`${API_URL}/api/workflows/${workflowId}/validar?user_id=${userId}`).then(r => r.json());
+      const val = await authFetch(`${API_URL}/api/workflows/${workflowId}/validar`).then(r => r.json());
       setErrores(val.errores || []);
       if (!val.valido) return;
-      await fetch(`${API_URL}/api/workflows/${workflowId}/activar`, {
+      await authFetch(`${API_URL}/api/workflows/${workflowId}/activar`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId }),
       });
       setWorkflow(prev => prev ? { ...prev, estado: "activo" } : prev);
       setToast("Ciclo activado");

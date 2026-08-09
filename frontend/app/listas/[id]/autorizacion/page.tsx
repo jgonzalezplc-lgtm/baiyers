@@ -36,7 +36,7 @@ export default function AutorizarListaPage() {
       const d = await r.json(); setLista(d);
       const automaticas = JSON.parse(sessionStorage.getItem(`baiyer:justificaciones:${id}`) || "{}"); setJustificaciones({ ...automaticas, ...(d.justificaciones || {}) }); sessionStorage.removeItem(`baiyer:justificaciones:${id}`);
       const total = (d.items || []).filter((i: Item) => i.definitivo).reduce((s: number, i: Item) => s + (i.definitivo?.precio_clp || 0) * (i.cantidad || 1), 0);
-      const sug = await fetch(`${API_URL}/api/workflows/autorizadores-sugeridos?user_id=${u.id}&monto_total=${total}`).then(x => x.json()).catch(() => null);
+      const sug = await authFetch(`${API_URL}/api/workflows/autorizadores-sugeridos?monto_total=${total}`).then(x => x.json()).catch(() => null);
       setSugerencia(sug || null);
     }
     else setError("No se pudo cargar la lista.");

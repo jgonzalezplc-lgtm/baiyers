@@ -201,10 +201,24 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS on_auth_user_created_create_personal_org ON auth.users;
-CREATE TRIGGER on_auth_user_created_create_personal_org
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.create_personal_organization_for_new_user();
+-- No reemplazamos ni eliminamos triggers existentes. Si la migración se vuelve a
+-- ejecutar, el trigger se conserva y esta sección queda como una operación nula.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger
+    WHERE tgname = 'on_auth_user_created_create_personal_org'
+      AND tgrelid = 'auth.users'::regclass
+      AND NOT tgisinternal
+  ) THEN
+    CREATE TRIGGER on_auth_user_created_create_personal_org
+      AFTER INSERT ON auth.users
+      FOR EACH ROW
+      EXECUTE FUNCTION public.create_personal_organization_for_new_user();
+  END IF;
+END;
+$$;
 
 -- Tarifas estándar vigentes al 2026-08-03. Se guarda el snapshot usado en
 -- cada evento para que cambios futuros no reescriban el costo histórico.
