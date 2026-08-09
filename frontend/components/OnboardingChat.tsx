@@ -17,6 +17,7 @@ import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
 import { camposFaltantes } from "@/lib/onboarding";
 import { PropuestaWorkflowCard, type Propuesta } from "@/components/workflow/PropuestaWorkflowCard";
+import { WorkflowGuardadoCard, type ErrorValidacion, type WorkflowGuardado } from "@/components/workflow/WorkflowGuardadoCard";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -78,6 +79,31 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   const [logoUrlFinal, setLogoUrlFinal] = useState<string | null>(null);
   const [logoOcupado, setLogoOcupado] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Ciclo de compras (Fase 3): mismo mecanismo real que /settings/autorizaciones,
+  // no una preview — crea el workflow, invita responsables y permite activarlo.
+  const [aInvitarWorkflow, setAInvitarWorkflow] = useState<Set<string>>(new Set());
+  const [nombreWorkflow, setNombreWorkflow] = useState("Ciclo de compras");
+  const [guardandoWorkflow, setGuardandoWorkflow] = useState(false);
+  const [workflowGuardado, setWorkflowGuardado] = useState<WorkflowGuardado | null>(null);
+  const [erroresWorkflow, setErroresWorkflow] = useState<ErrorValidacion[]>([]);
+  const [activandoWorkflow, setActivandoWorkflow] = useState(false);
+  const emailsVistosRef = useRef<Set<string>>(new Set());
+
+  // Los responsables recién detectados quedan marcados para invitar por
+  // defecto; los que el usuario ya desmarcó a mano no se vuelven a marcar
+  // solos en turnos siguientes.
+  useEffect(() => {
+    const detectados = propuestaWorkflow?.responsables_detectados || [];
+    const nuevos = detectados.filter(r => r.email && !emailsVistosRef.current.has(r.email));
+    if (nuevos.length === 0) return;
+    nuevos.forEach(r => emailsVistosRef.current.add(r.email));
+    setAInvitarWorkflow(prev => {
+      const s = new Set(prev);
+      nuevos.forEach(r => s.add(r.email));
+      return s;
+    });
+  }, [propuestaWorkflow]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, [msgs, cargandoInicial, busy]);
@@ -232,6 +258,68 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     }
   };
 
+  const corregirWorkflow = () => {
+    setPropuestaWorkflow(null);
+    addBot("Cuéntame qué cambiarías del proceso de compra.");
+  };
+
+  const confirmarWorkflow = async () => {
+    if (!propuestaWorkflow || guardandoWorkflow) return;
+    setGuardandoWorkflow(true);
+    try {
+      const responsables = (propuestaWorkflow.responsables_detectados || []).map(r => ({
+        nombre: r.nombre,
+        email: r.email || null,
+        roles: r.roles,
+        invitar: !!r.email && aInvitarWorkflow.has(r.email),
+      }));
+
+      const creado = await authFetch(`${API_URL}/api/workflows`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: nombreWorkflow.trim() || "Ciclo de compras",
+          nodos: propuestaWorkflow.nodos,
+          conexiones: propuestaWorkflow.conexiones,
+          origen: "conversacional",
+          responsables,
+        }),
+      }).then(r => r.json());
+
+      const validacion = await authFetch(`${API_URL}/api/workflows/${creado.id}/validar`).then(r => r.json());
+      setErroresWorkflow(validacion.errores || []);
+      setWorkflowGuardado({ id: creado.id, estado: creado.estado });
+      setPropuestaWorkflow(null);
+
+      const enviadas = (creado.invitaciones || []).filter((i: { estado: string }) => i.estado === "invitado");
+      const yaMiembro = (creado.invitaciones || []).filter((i: { estado: string }) => i.estado === "ya_miembro");
+      const errorInv = (creado.invitaciones || []).filter((i: { estado: string }) => i.estado === "error");
+      let extra = "";
+      if (enviadas.length) extra += ` Enviamos ${enviadas.length} invitación${enviadas.length === 1 ? "" : "es"} por correo.`;
+      if (yaMiembro.length) extra += ` ${yaMiembro.length} ya era miembro.`;
+      if (errorInv.length) extra += ` ${errorInv.length} invitación${errorInv.length === 1 ? "" : "es"} fallaron — revisa la lista de responsables.`;
+      addBot((validacion.valido
+        ? "Quedó guardado como borrador y validado correctamente."
+        : "Quedó guardado como borrador, pero hay algunos detalles que revisar antes de activarlo.") + extra);
+    } catch {
+      addBot("No pude guardar el ciclo de compras. Intenta de nuevo.");
+    } finally {
+      setGuardandoWorkflow(false);
+    }
+  };
+
+  const activarWorkflow = async () => {
+    if (!workflowGuardado || activandoWorkflow) return;
+    setActivandoWorkflow(true);
+    try {
+      await authFetch(`${API_URL}/api/workflows/${workflowGuardado.id}/activar`, { method: "POST" });
+      setWorkflowGuardado(prev => prev ? { ...prev, estado: "activo" } : prev);
+    } catch {
+      addBot("No se pudo activar el ciclo. Revisa la validación e intenta de nuevo.");
+    } finally {
+      setActivandoWorkflow(false);
+    }
+  };
+
   // Confirma la sesión en el backend (perfil organizacional canónico) y
   // además hace backfill de user_metadata para no romper el resto de la app
   // que hoy lee empresa/rut/nombre_usuario/proceso_compra desde ahí.
@@ -349,14 +437,29 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
           {propuestaWorkflow && propuestaWorkflow.etapas?.length > 0 && (
             <PropuestaWorkflowCard
               propuesta={propuestaWorkflow}
-              aInvitar={new Set()}
-              onToggleInvitar={() => {}}
-              nombreWorkflow=""
-              onNombreWorkflowChange={() => {}}
-              onCorregir={() => {}}
-              onConfirmar={() => {}}
-              cargando={false}
-              soloPreview
+              aInvitar={aInvitarWorkflow}
+              onToggleInvitar={(email, activo) => {
+                setAInvitarWorkflow(prev => {
+                  const s = new Set(prev);
+                  if (activo) s.add(email); else s.delete(email);
+                  return s;
+                });
+              }}
+              nombreWorkflow={nombreWorkflow}
+              onNombreWorkflowChange={setNombreWorkflow}
+              onCorregir={corregirWorkflow}
+              onConfirmar={confirmarWorkflow}
+              cargando={guardandoWorkflow}
+            />
+          )}
+
+          {workflowGuardado && (
+            <WorkflowGuardadoCard
+              workflow={workflowGuardado}
+              errores={erroresWorkflow}
+              activando={activandoWorkflow}
+              onActivar={activarWorkflow}
+              onAjustarVisualmente={() => router.push(`/settings/autorizaciones/canvas/${workflowGuardado.id}`)}
             />
           )}
 

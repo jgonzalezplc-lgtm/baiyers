@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Bot, Send, CheckCircle2, XCircle, LayoutGrid } from "lucide-react";
+import { ArrowLeft, Bot, Send, LayoutGrid } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
-import { BtnPrimary, BtnSecondary, Card, TypingBubble, CascadeWrapper, SkeletonBox } from "@/components/ui";
+import { BtnPrimary, Card, TypingBubble, CascadeWrapper, SkeletonBox } from "@/components/ui";
 import { ChatBubbles, type Mensaje } from "@/components/chat/ChatBubbles";
 import { PropuestaWorkflowCard, type Propuesta } from "@/components/workflow/PropuestaWorkflowCard";
+import { WorkflowGuardadoCard } from "@/components/workflow/WorkflowGuardadoCard";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -217,33 +218,13 @@ export default function ConfiguracionAutorizacionesPage() {
         )}
 
         {workflowGuardado && (
-          <Card padding={18} style={{ marginLeft: 36 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              {errores.length === 0 ? (
-                <CheckCircle2 size={18} color="var(--success)" />
-              ) : (
-                <XCircle size={18} color="var(--danger)" />
-              )}
-              <strong style={{ fontSize: 14, color: "var(--n-900)" }}>
-                {workflowGuardado.estado === "activo" ? "Ciclo activo" : "Guardado como borrador"}
-              </strong>
-            </div>
-            {errores.length > 0 && (
-              <ul style={{ margin: "0 0 12px", paddingLeft: 20, fontSize: 13, color: "var(--danger)" }}>
-                {errores.map((e, i) => <li key={i}>{e.mensaje}</li>)}
-              </ul>
-            )}
-            <div style={{ display: "flex", gap: 8 }}>
-              <BtnSecondary onClick={() => router.push(`/settings/autorizaciones/canvas/${workflowGuardado.id}`)} style={{ flex: 1 }}>
-                Ajustar visualmente
-              </BtnSecondary>
-              {workflowGuardado.estado !== "activo" && (
-                <BtnPrimary onClick={activar} disabled={activando || errores.length > 0} style={{ flex: 1 }}>
-                  {activando ? "Activando…" : "Activar este ciclo"}
-                </BtnPrimary>
-              )}
-            </div>
-          </Card>
+          <WorkflowGuardadoCard
+            workflow={workflowGuardado}
+            errores={errores}
+            activando={activando}
+            onActivar={activar}
+            onAjustarVisualmente={() => router.push(`/settings/autorizaciones/canvas/${workflowGuardado.id}`)}
+          />
         )}
 
         {cargando && !propuesta && (
