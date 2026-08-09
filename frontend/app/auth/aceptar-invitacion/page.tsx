@@ -2,10 +2,14 @@
 /**
  * Aceptar invitación (Fase C del multi-usuario).
  *
- * Supabase envía el correo con un magic link que redirige acá con un `?code=`.
- * Lo intercambiamos por sesión (mismo patrón que /auth/callback), y luego
- * pedimos a la persona que setee su contraseña. Al terminar, ya está lista
- * para entrar a la organización — su membresía ya fue creada por el
+ * Supabase envía el correo de invitación con los tokens en el FRAGMENTO de
+ * la URL (`#access_token=...&refresh_token=...`), no en el query string
+ * (`?code=`) — ese formato es el de OAuth/`/auth/callback`, no el de
+ * `invite_user_by_email()`. El fragmento nunca llega al servidor y
+ * `useSearchParams()` no lo lee, así que hay que parsearlo a mano y armar
+ * la sesión con `setSession()`. Se mantiene el camino `?code=` como
+ * respaldo por si algún día cambia el tipo de link. Luego pedimos a la
+ * persona que setee su contraseña — su membresía ya fue creada por el
  * backend cuando el admin la invitó.
  */
 import { Suspense, useEffect, useRef, useState } from "react";
@@ -29,10 +33,16 @@ function AceptarInner() {
     yaCorrio.current = true;
 
     const code = params.get("code");
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const accessToken = hash.get("access_token");
+    const refreshToken = hash.get("refresh_token");
     const supabase = createClient();
 
     (async () => {
-      if (code) {
+      if (accessToken && refreshToken) {
+        const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (error) { setFase("error"); setError("El enlace de invitación expiró o ya fue usado."); return; }
+      } else if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (error) {
           // Puede ser que el link ya se haya consumido; probamos la sesión igual.
