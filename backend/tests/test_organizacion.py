@@ -192,5 +192,38 @@ class ResolverOrganizacionExecuteNoneTest(unittest.TestCase):
         self.assertIsNone(ctx)
 
 
+class ObtenerPerfilOrganizacionTest(unittest.TestCase):
+    def test_devuelve_perfil_encontrado(self):
+        fake_exec = MagicMock(data={"nombre": "Acme", "rut": "76.123.456-0", "direccion": "Av. Siempre Viva 742", "logo_url": "https://x/y.png"})
+        fake = MagicMock()
+        fake.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = fake_exec
+        with patch("app.services.organizacion._sb", return_value=fake):
+            from app.services.organizacion import obtener_perfil_organizacion
+            perfil = obtener_perfil_organizacion("org-1")
+        self.assertEqual(perfil["nombre"], "Acme")
+        self.assertEqual(perfil["direccion"], "Av. Siempre Viva 742")
+
+    def test_sin_id_devuelve_diccionario_vacio(self):
+        from app.services.organizacion import obtener_perfil_organizacion
+        self.assertEqual(obtener_perfil_organizacion(""), {})
+        self.assertEqual(obtener_perfil_organizacion(None), {})
+
+    def test_execute_none_no_crashea(self):
+        fake = MagicMock()
+        fake.table.return_value = FakeQueryExecuteNone()
+        with patch("app.services.organizacion._sb", return_value=fake):
+            from app.services.organizacion import obtener_perfil_organizacion
+            perfil = obtener_perfil_organizacion("org-1")
+        self.assertEqual(perfil, {})
+
+    def test_excepcion_no_crashea(self):
+        fake = MagicMock()
+        fake.table.side_effect = Exception("boom")
+        with patch("app.services.organizacion._sb", return_value=fake):
+            from app.services.organizacion import obtener_perfil_organizacion
+            perfil = obtener_perfil_organizacion("org-1")
+        self.assertEqual(perfil, {})
+
+
 if __name__ == "__main__":
     unittest.main()

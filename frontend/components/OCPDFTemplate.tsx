@@ -1,5 +1,5 @@
 "use client";
-import { Document, Page, View, Text, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, View, Text, Image, StyleSheet } from "@react-pdf/renderer";
 
 export interface OCData {
   numero_oc: string;
@@ -16,12 +16,19 @@ export interface OCData {
   condiciones_pago: string;
   plazo_entrega: string;
   notas?: string | null;
+  /** Perfil de marca de la organización emisora — si falta, se usa el
+   * fallback genérico "Baiyer" (ej. cuentas legado sin onboarding nuevo). */
+  emisor_nombre?: string | null;
+  emisor_rut?: string | null;
+  emisor_direccion?: string | null;
+  emisor_logo_url?: string | null;
 }
 
 const s = StyleSheet.create({
   page: { fontFamily: "Helvetica", fontSize: 10, padding: 48, color: "#1e293b", backgroundColor: "#ffffff" },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32, paddingBottom: 16, borderBottomWidth: 2, borderBottomColor: "#6366f1" },
   logoText: { fontSize: 22, fontFamily: "Helvetica-Bold", color: "#6366f1", letterSpacing: 2 },
+  logoImg: { width: 100, height: 40, objectFit: "contain" as const, marginBottom: 4 },
   ocTitle: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginTop: 2 },
   ocNumero: { fontSize: 20, fontFamily: "Helvetica-Bold", color: "#1e293b", textAlign: "right" },
   ocFecha: { fontSize: 9, color: "#64748b", textAlign: "right", marginTop: 2 },
@@ -59,14 +66,20 @@ function fmt(n: number, moneda: string) {
 }
 
 export default function OCPDFTemplate({ oc }: { oc: OCData }) {
+  const emisorNombre = oc.emisor_nombre || "Baiyer";
+
   return (
-    <Document title={`OC ${oc.numero_oc}`} author="Claria">
+    <Document title={`OC ${oc.numero_oc}`} author={emisorNombre}>
       <Page size="A4" style={s.page}>
 
         {/* Header */}
         <View style={s.header}>
           <View>
-            <Text style={s.logoText}>Claria</Text>
+            {oc.emisor_logo_url ? (
+              <Image style={s.logoImg} src={oc.emisor_logo_url} />
+            ) : (
+              <Text style={s.logoText}>{emisorNombre}</Text>
+            )}
             <Text style={s.ocTitle}>Orden de Compra</Text>
           </View>
           <View>
@@ -79,9 +92,9 @@ export default function OCPDFTemplate({ oc }: { oc: OCData }) {
         <View style={s.partiesRow}>
           <View style={s.partyBox}>
             <Text style={s.partyLabel}>Emisor</Text>
-            <Text style={s.partyName}>Claria Procurement</Text>
-            <Text style={s.partyDetail}>hola@claria.cc</Text>
-            <Text style={s.partyDetail}>claria.cc</Text>
+            <Text style={s.partyName}>{emisorNombre}</Text>
+            {oc.emisor_rut && <Text style={s.partyDetail}>RUT: {oc.emisor_rut}</Text>}
+            {oc.emisor_direccion && <Text style={s.partyDetail}>{oc.emisor_direccion}</Text>}
           </View>
           <View style={s.partyBox}>
             <Text style={s.partyLabel}>Proveedor</Text>
@@ -141,7 +154,9 @@ export default function OCPDFTemplate({ oc }: { oc: OCData }) {
 
         {/* Footer */}
         <View style={s.footer} fixed>
-          <Text style={s.footerText}>Generado por Claria · claria.cc</Text>
+          <Text style={s.footerText}>
+            {oc.emisor_nombre ? `${oc.emisor_nombre} · generado vía Baiyer` : "Generado por Baiyer"}
+          </Text>
           <Text style={s.footerText}>{oc.numero_oc} · {oc.fecha}</Text>
         </View>
 

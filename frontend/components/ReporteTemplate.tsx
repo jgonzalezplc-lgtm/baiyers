@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { PDFDownloadLink, Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
+import { PDFDownloadLink, Document, Page, Text, View, Image, StyleSheet } from "@react-pdf/renderer";
 
 interface ReporteItem {
   item: string;
@@ -28,15 +28,21 @@ interface ReporteDatos {
     max_plazo_dias: number;
   };
   secciones: string[];
+  /** Perfil de marca de la organización — si falta, se usa el fallback
+   * genérico "Baiyer" (ej. cuentas legado sin onboarding nuevo). */
+  organizacion?: { nombre?: string | null; rut?: string | null; direccion?: string | null; logo_url?: string | null } | null;
 }
 
 // ── PDF Styles ──────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   page: { backgroundColor: "#FFFFFF", padding: 40, fontFamily: "Helvetica", fontSize: 10, color: "#1e1e3a" },
-  header: { marginBottom: 24, borderBottom: "2px solid #6366f1", paddingBottom: 12 },
+  header: { marginBottom: 24, borderBottom: "2px solid #6366f1", paddingBottom: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   headerTitle: { fontSize: 20, fontWeight: "bold", color: "#1e1e3a", marginBottom: 4 },
   headerSub: { fontSize: 9, color: "#64748b" },
+  headerLogoImg: { width: 90, height: 36, objectFit: "contain" as const },
+  headerOrgNombre: { fontSize: 11, fontWeight: "bold", color: "#1e1e3a", textAlign: "right" },
+  headerOrgDetalle: { fontSize: 8, color: "#64748b", textAlign: "right" },
   section: { marginBottom: 20 },
   sectionTitle: { fontSize: 12, fontWeight: "bold", color: "#6366f1", marginBottom: 10, textTransform: "uppercase", letterSpacing: 1 },
   kpiRow: { flexDirection: "row", gap: 10, marginBottom: 12 },
@@ -58,9 +64,27 @@ const styles = StyleSheet.create({
 
 // ── PDF Document ────────────────────────────────────────────────────────────
 
+function OrgHeaderBlock({ organizacion }: { organizacion: ReporteDatos["organizacion"] }) {
+  if (!organizacion?.nombre) return null;
+  return (
+    <View>
+      {organizacion.logo_url ? (
+        <Image style={styles.headerLogoImg} src={organizacion.logo_url} />
+      ) : (
+        <Text style={styles.headerOrgNombre}>{organizacion.nombre}</Text>
+      )}
+      {organizacion.rut && <Text style={styles.headerOrgDetalle}>RUT: {organizacion.rut}</Text>}
+      {organizacion.direccion && <Text style={styles.headerOrgDetalle}>{organizacion.direccion}</Text>}
+    </View>
+  );
+}
+
 function ReportePDF({ datos }: { datos: ReporteDatos }) {
   const fmt = (n: number | null | undefined) =>
     n != null ? `$${Math.round(n).toLocaleString("es-CL")}` : "—";
+  const pieTexto = datos.organizacion?.nombre
+    ? `${datos.organizacion.nombre} · generado vía Baiyer`
+    : "Generado por Baiyer";
 
   return (
     <Document title={datos.titulo}>
@@ -68,11 +92,14 @@ function ReportePDF({ datos }: { datos: ReporteDatos }) {
 
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>{datos.titulo}</Text>
-          <Text style={styles.headerSub}>
-            Generado el {datos.fecha}
-            {datos.proyecto ? ` · Proyecto: ${(datos.proyecto as Record<string, string>).nombre || ""}` : ""}
-          </Text>
+          <View>
+            <Text style={styles.headerTitle}>{datos.titulo}</Text>
+            <Text style={styles.headerSub}>
+              Generado el {datos.fecha}
+              {datos.proyecto ? ` · Proyecto: ${(datos.proyecto as Record<string, string>).nombre || ""}` : ""}
+            </Text>
+          </View>
+          <OrgHeaderBlock organizacion={datos.organizacion} />
         </View>
 
         {/* Resumen */}
@@ -149,15 +176,18 @@ function ReportePDF({ datos }: { datos: ReporteDatos }) {
         )}
 
         {/* Footer */}
-        <Text style={styles.footer} render={({ pageNumber, totalPages }) => `Claria · Cotizador Inteligente · Página ${pageNumber} de ${totalPages}`} fixed />
+        <Text style={styles.footer} render={({ pageNumber, totalPages }) => `${pieTexto} · Página ${pageNumber} de ${totalPages}`} fixed />
       </Page>
 
       {/* Proveedores page */}
       {datos.secciones.includes("proveedores") && Object.keys(datos.proveedores_detalle).length > 0 && (
         <Page size="A4" style={styles.page}>
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>{datos.titulo}</Text>
-            <Text style={styles.headerSub}>Ficha de proveedores</Text>
+            <View>
+              <Text style={styles.headerTitle}>{datos.titulo}</Text>
+              <Text style={styles.headerSub}>Ficha de proveedores</Text>
+            </View>
+            <OrgHeaderBlock organizacion={datos.organizacion} />
           </View>
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Proveedores evaluados</Text>
@@ -179,7 +209,7 @@ function ReportePDF({ datos }: { datos: ReporteDatos }) {
               );
             })}
           </View>
-          <Text style={styles.footer} render={({ pageNumber, totalPages }) => `Claria · Cotizador Inteligente · Página ${pageNumber} de ${totalPages}`} fixed />
+          <Text style={styles.footer} render={({ pageNumber, totalPages }) => `${pieTexto} · Página ${pageNumber} de ${totalPages}`} fixed />
         </Page>
       )}
     </Document>
@@ -193,6 +223,9 @@ export default function ReporteTemplate({ datos }: { datos: ReporteDatos }) {
 
   const fmt = (n: number | null | undefined) =>
     n != null ? `$${Math.round(n).toLocaleString("es-CL")}` : "—";
+  const pieTexto = datos.organizacion?.nombre
+    ? `${datos.organizacion.nombre} · generado vía Baiyer`
+    : "Generado por Baiyer";
 
   return (
     <div>
@@ -216,12 +249,26 @@ export default function ReporteTemplate({ datos }: { datos: ReporteDatos }) {
       <div style={{ background: "#fff", borderRadius: 12, padding: "40px 48px", color: "#1e1e3a", fontFamily: "Georgia, serif" }}>
 
         {/* Header */}
-        <div style={{ borderBottom: "3px solid #6366f1", paddingBottom: 16, marginBottom: 24 }}>
-          <div style={{ fontSize: 24, fontWeight: 800, color: "#1e1e3a", marginBottom: 4 }}>{datos.titulo}</div>
-          <div style={{ fontSize: 12, color: "#64748b" }}>
-            Generado el {datos.fecha}
-            {datos.proyecto ? ` · Proyecto: ${(datos.proyecto as Record<string, string>).nombre || ""}` : ""}
+        <div style={{ borderBottom: "3px solid #6366f1", paddingBottom: 16, marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+          <div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: "#1e1e3a", marginBottom: 4 }}>{datos.titulo}</div>
+            <div style={{ fontSize: 12, color: "#64748b" }}>
+              Generado el {datos.fecha}
+              {datos.proyecto ? ` · Proyecto: ${(datos.proyecto as Record<string, string>).nombre || ""}` : ""}
+            </div>
           </div>
+          {datos.organizacion?.nombre && (
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              {datos.organizacion.logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={datos.organizacion.logo_url} alt={datos.organizacion.nombre} style={{ maxWidth: 140, maxHeight: 48, objectFit: "contain" }} />
+              ) : (
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#1e1e3a" }}>{datos.organizacion.nombre}</div>
+              )}
+              {datos.organizacion.rut && <div style={{ fontSize: 10, color: "#64748b" }}>RUT: {datos.organizacion.rut}</div>}
+              {datos.organizacion.direccion && <div style={{ fontSize: 10, color: "#64748b" }}>{datos.organizacion.direccion}</div>}
+            </div>
+          )}
         </div>
 
         {/* Resumen */}
@@ -327,7 +374,7 @@ export default function ReporteTemplate({ datos }: { datos: ReporteDatos }) {
 
         {/* Footer */}
         <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 12, fontSize: 10, color: "#94a3b8", textAlign: "center" }}>
-          Claria · Cotizador Inteligente · {datos.fecha}
+          {pieTexto} · {datos.fecha}
         </div>
       </div>
     </div>

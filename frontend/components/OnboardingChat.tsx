@@ -57,7 +57,7 @@ interface Props {
 }
 
 const ETIQUETAS_CAMPO: Record<string, string> = {
-  empresa: "Empresa", rut: "RUT", nombre_usuario: "Tu nombre",
+  empresa: "Empresa", rut: "RUT", nombre_usuario: "Tu nombre", direccion: "Dirección",
 };
 
 export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
@@ -182,6 +182,9 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
         setLogoUrlFinal(null);
         if (d.empresa) {
           addBot(undefined, d);
+        }
+        if (d.direccion && !draft.direccion?.valor) {
+          addBot(`Encontré esta dirección: ${d.direccion}. ¿La confirmas o la corriges?`);
         }
       }
     } catch {

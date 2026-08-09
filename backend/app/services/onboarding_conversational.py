@@ -25,7 +25,7 @@ from typing import Optional
 from app.services import onboarding_session as sesiones
 from app.services.rut import validar_rut, formatear_rut, normalizar_rut
 
-CAMPOS_EXTRAIBLES = {"empresa", "rut", "nombre_usuario"}
+CAMPOS_EXTRAIBLES = {"empresa", "rut", "nombre_usuario", "direccion"}
 
 _RUT_MENCION_RE = re.compile(r"\b(\d{1,2}\.?\d{3}\.?\d{3}-?[\dkK])\b")
 
@@ -99,7 +99,8 @@ Responde SOLO JSON válido, sin markdown, con esta forma exacta:
   "campos": {{
     "empresa": {{"valor": "...", "confianza": "alta|media|baja"}},
     "rut": {{"valor": "99.999.999-9", "confianza": "alta|media|baja"}},
-    "nombre_usuario": {{"valor": "...", "confianza": "alta|media|baja"}}
+    "nombre_usuario": {{"valor": "...", "confianza": "alta|media|baja"}},
+    "direccion": {{"valor": "...", "confianza": "alta|media|baja"}}
   }},
   "proceso_compra_fragmento": "texto textual sobre cómo compra/quién participa/roles/personas/montos si lo mencionó, o vacío",
   "quiere_omitir": false,
@@ -113,7 +114,9 @@ Reglas:
 - Si el usuario corrige un dato anterior ("no, me llamo Antonia"), igual repórtalo en "campos" con
   el valor nuevo — el backend decide si es corrección, tú solo extraes.
 - Si el usuario usa un pronombre sin nombre concreto ("él", "mi jefe") para el proceso de compra,
-  inclúyelo tal cual en proceso_compra_fragmento sin inventar el nombre real."""
+  inclúyelo tal cual en proceso_compra_fragmento sin inventar el nombre real.
+- "direccion" es la dirección física de la empresa (para Órdenes de Compra e informes). Solo
+  repórtala si el usuario la confirma, corrige, o la menciona explícitamente — nunca la inventes."""
 
 
 def _llamar_gemini(prompt: str) -> Optional[dict]:
@@ -159,6 +162,10 @@ def _validar_campo(campo: str, valor: str) -> tuple[Optional[str], str]:
     if campo in ("empresa", "nombre_usuario"):
         if len(valor) > 200:
             return None, "demasiado largo"
+        return valor, ""
+    if campo == "direccion":
+        if len(valor) > 300:
+            return None, "demasiado larga"
         return valor, ""
     return None, "campo desconocido"
 

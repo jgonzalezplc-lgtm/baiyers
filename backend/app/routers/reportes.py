@@ -21,6 +21,11 @@ async def datos_reporte(req: ReporteDatosRequest):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
+    from app.services.organizacion import obtener_perfil_organizacion, resolver_organizacion
+
+    ctx_org = resolver_organizacion(req.user_id)
+    organizacion = obtener_perfil_organizacion(ctx_org.organizacion_id) if ctx_org else {}
+
     datos: dict = {
         "titulo": req.titulo,
         "secciones": req.secciones,
@@ -28,6 +33,7 @@ async def datos_reporte(req: ReporteDatosRequest):
         "items": [],
         "proveedores_detalle": {},
         "proyecto": None,
+        "organizacion": organizacion,
     }
 
     # ── Datos de proyecto ──────────────────────────────────────────────────────

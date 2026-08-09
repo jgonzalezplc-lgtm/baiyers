@@ -125,6 +125,9 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
         insert_res = sb.table("ordenes_compra").insert(row_base).execute()
         oc_id = insert_res.data[0]["id"]
 
+    from app.services.organizacion import obtener_perfil_organizacion
+    perfil = obtener_perfil_organizacion(ctx.organization_id)
+
     return {
         "id": oc_id,
         "numero_oc": numero_oc,
@@ -142,6 +145,10 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
         "plazo_entrega": req.plazo_entrega,
         "notas": req.notas,
         "fecha": datetime.now().strftime("%d/%m/%Y"),
+        "emisor_nombre": perfil.get("nombre"),
+        "emisor_rut": perfil.get("rut"),
+        "emisor_direccion": perfil.get("direccion"),
+        "emisor_logo_url": perfil.get("logo_url"),
     }
 
 

@@ -335,6 +335,8 @@ async def confirmar_sesion(session_id: str, ctx: AuthContext = Depends(get_auth_
         "nombre": draft["empresa"]["valor"],
         "rut": draft["rut"]["valor"],
     }
+    if draft.get("direccion", {}).get("valor"):
+        valores["direccion"] = draft["direccion"]["valor"]
     try:
         sb.table("organizaciones").update(valores).eq("id", ctx_org.organizacion_id).execute()
     except Exception as e:

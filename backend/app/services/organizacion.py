@@ -98,6 +98,23 @@ def obtener_organizacion(auth_uid: str) -> dict:
     return _contexto_a_dict(resolver_organizacion(auth_uid))
 
 
+def obtener_perfil_organizacion(organizacion_id: str) -> dict:
+    """Perfil de marca de la organización (nombre/rut/dirección/logo) para
+    personalizar documentos generados (OC, informes). Nunca lanza: si no
+    encuentra nada, devuelve {} y el llamador cae a su propio fallback de
+    marca genérica — nunca debe tumbar la generación de un documento."""
+    if not organizacion_id:
+        return {}
+    sb = _sb()
+    try:
+        resp = sb.table("organizaciones").select(
+            "nombre, rut, direccion, logo_url"
+        ).eq("id", organizacion_id).maybe_single().execute()
+        return (resp.data if resp else None) or {}
+    except Exception:
+        return {}
+
+
 def nombres_de_usuarios(auth_uids: list[str]) -> dict[str, str]:
     """Fase D — resuelve una lista de user_ids a nombres legibles para el
     'hecho por X'. Prioriza nombre_usuario del metadata → empresa → email.
