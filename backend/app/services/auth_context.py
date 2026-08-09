@@ -66,10 +66,19 @@ async def get_auth_context(authorization: Optional[str] = Header(default=None)) 
     resolutor que ya usa el resto de la Fase B — una sola fuente de verdad)
     y devuelve un contexto listo para usar en filtros `.in_("user_id", ...)`.
     """
-    from app.services.organizacion import resolver_organizacion
+    from app.services.organizacion import obtener_organizacion, resolver_organizacion
 
     actor_user_id = verificar_token(authorization)
     ctx = resolver_organizacion(actor_user_id)
+    if not ctx:
+        # Red de seguridad: un usuario sin fila en membresias_organizacion
+        # (ej. se registró después del backfill de la 030, y hoy no hay
+        # trigger que le cree su organización personal al firmar up) no
+        # debe quedar bloqueado de toda la app — se autocrea igual que ya
+        # hace `obtener_organizacion()` para el endpoint /mia, y recién si
+        # eso también falla se corta con 403.
+        obtener_organizacion(actor_user_id)
+        ctx = resolver_organizacion(actor_user_id)
     if not ctx:
         raise HTTPException(status_code=403, detail="Usuario sin organización asignada")
 

@@ -113,9 +113,12 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
 
       let sesion: { id: string; draft: Draft; mensajes: { rol: string; texto: string }[]; propuesta_workflow?: Propuesta | null };
       try {
-        sesion = await authFetch(`${API_URL}/api/onboarding/sesion`, { method: "POST" }).then(r => r.json());
+        const res = await authFetch(`${API_URL}/api/onboarding/sesion`, { method: "POST" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        sesion = await res.json();
+        if (!sesion?.id) throw new Error("respuesta sin id de sesión");
       } catch {
-        addBot("No pude conectar con el servidor. Intenta recargar la página.");
+        addBot("No pude iniciar tu sesión de configuración. Recarga la página o intenta de nuevo en un minuto.");
         setCargandoInicial(false);
         return;
       }

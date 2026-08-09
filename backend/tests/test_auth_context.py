@@ -59,12 +59,41 @@ class VerificarTokenTest(unittest.TestCase):
 
 
 class GetAuthContextTest(unittest.TestCase):
-    def test_usuario_verificado_sin_organizacion_lanza_403(self):
+    def test_usuario_verificado_sin_organizacion_lanza_403_si_autocreacion_tambien_falla(self):
         with patch("app.services.auth_context.verificar_token", return_value="u-huerfano"), \
-             patch("app.services.organizacion.resolver_organizacion", return_value=None):
+             patch("app.services.organizacion.resolver_organizacion", return_value=None), \
+             patch("app.services.organizacion.obtener_organizacion", return_value={}):
             with self.assertRaises(HTTPException) as cm:
                 asyncio.run(get_auth_context(authorization="Bearer x"))
         self.assertEqual(cm.exception.status_code, 403)
+
+    def test_usuario_sin_membresia_se_autocrea_organizacion_en_vez_de_403(self):
+        """Bug real encontrado en producción: un usuario que se registró
+        después del backfill de la migración 030 no tiene fila en
+        membresias_organizacion y quedaba bloqueado con 403 en TODO
+        endpoint protegido, incluido el arranque del onboarding. Debe
+        autocrearse la organización personal (misma red de seguridad que
+        ya usa el endpoint /api/organizacion/mia) en vez de cortar."""
+        class FakeCtx:
+            organizacion_id = "org-nueva"
+            nombre = "Recién creada"
+            user_ids_miembros = ["u-nuevo"]
+            es_admin = True
+
+        resolver_calls = {"n": 0}
+
+        def resolver_side_effect(_uid):
+            resolver_calls["n"] += 1
+            return None if resolver_calls["n"] == 1 else FakeCtx()
+
+        with patch("app.services.auth_context.verificar_token", return_value="u-nuevo"), \
+             patch("app.services.organizacion.resolver_organizacion", side_effect=resolver_side_effect), \
+             patch("app.services.organizacion.obtener_organizacion") as mock_obtener:
+            ctx = asyncio.run(get_auth_context(authorization="Bearer x"))
+
+        mock_obtener.assert_called_once_with("u-nuevo")
+        self.assertEqual(ctx.organization_id, "org-nueva")
+        self.assertEqual(resolver_calls["n"], 2)
 
     def test_contexto_completo_expone_organizacion_real(self):
         class FakeCtx:
