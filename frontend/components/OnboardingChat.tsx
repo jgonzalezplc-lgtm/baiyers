@@ -169,6 +169,21 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
       setCompleto(!!data.completo);
       setPropuestaWorkflow(data.propuesta_workflow ?? null);
       setMsgs((data.mensajes || []).map((mm: { rol: string; texto: string }) => ({ rol: mm.rol === "usuario" ? "user" : "bot", texto: mm.texto })));
+
+      // El usuario recién dio (o corrigió) el nombre de la empresa: la
+      // buscamos por nombre para traer RUT/logo — el turno de texto libre
+      // no pasa por /investigar-empresa, así que sin esto nunca se
+      // enriquecía con datos reales ni se ofrecía elegir logo.
+      const nombreEmpresa: string | undefined = data.draft?.empresa?.valor;
+      if (nombreEmpresa && nombreEmpresa !== investigacion?.empresa) {
+        const d = await investigar(email, nombreEmpresa);
+        setInvestigacion(d);
+        setLogoIdx(0);
+        setLogoUrlFinal(null);
+        if (d.empresa) {
+          addBot(undefined, d);
+        }
+      }
     } catch {
       addUser(mensaje);
       addBot("Tuve un problema procesando eso. Puedes intentarlo de nuevo.");
