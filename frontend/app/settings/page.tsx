@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { AlertCircle, Workflow } from "lucide-react";
+import { AlertCircle, Workflow, Mail } from "lucide-react";
 import { BtnPrimary, Input, PageHeader, Card, SkeletonBox, CascadeWrapper } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -227,6 +227,28 @@ export default function SettingsPage() {
                 </div>
               </div>
               <Link href="/settings/autorizaciones" className="btn-swiss-secondary" style={{ textDecoration: "none", whiteSpace: "nowrap" }}>
+                Configurar →
+              </Link>
+            </Card>
+
+            {/* Comunicaciones — plantillas de correo por evento (Fase 5). */}
+            <Card padding={20} style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{
+                width: 44, height: 44, flexShrink: 0, borderRadius: "var(--r-md)",
+                background: "var(--brand-50)", color: "var(--brand)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <Mail size={22} strokeWidth={1.75} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)" }}>
+                  Comunicaciones
+                </div>
+                <div style={{ fontSize: 13, color: "var(--n-600)", marginTop: 2 }}>
+                  Personaliza los correos que se envían a tu equipo y a tus proveedores.
+                </div>
+              </div>
+              <Link href="/settings/comunicaciones" className="btn-swiss-secondary" style={{ textDecoration: "none", whiteSpace: "nowrap" }}>
                 Configurar →
               </Link>
             </Card>
