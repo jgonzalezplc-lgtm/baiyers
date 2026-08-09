@@ -153,12 +153,21 @@ export default function CanvasWorkflowPage() {
     if (!userId) return;
     setGuardandoResponsable(true);
     try {
-      await fetch(`${API_URL}/api/workflows/responsables/${responsableId}/roles`, {
+      const res = await fetch(`${API_URL}/api/workflows/responsables/${responsableId}/roles`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userId, workflow_id: workflowId, rol_clave: rol }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setToast(body.detail || "No se pudo asignar el responsable");
+        setTimeout(() => setToast(""), 3500);
+        return;
+      }
       await cargarWorkflow(userId);
       setAsignandoRol(null);
+      const nombre = responsablesOrg.find(r => r.id === responsableId)?.nombre || "Responsable";
+      setToast(`${nombre} asignado a "${rol}"`);
+      setTimeout(() => setToast(""), 2500);
     } finally {
       setGuardandoResponsable(false);
     }
@@ -578,16 +587,20 @@ export default function CanvasWorkflowPage() {
                     {asignandoRol === rol ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                         {disponibles.length > 0 && (
-                          <select
-                            defaultValue=""
-                            onChange={e => { if (e.target.value) asignarExistente(rol, e.target.value); }}
-                            style={{ width: "100%", padding: "5px 6px", fontSize: 11.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }}
-                          >
-                            <option value="">Elegir existente…</option>
-                            {disponibles.map(r => <option key={r.id} value={r.id}>{r.nombre} · {r.email}</option>)}
-                          </select>
+                          <>
+                            <select
+                              defaultValue=""
+                              disabled={guardandoResponsable}
+                              onChange={e => { if (e.target.value) asignarExistente(rol, e.target.value); }}
+                              style={{ width: "100%", padding: "5px 6px", fontSize: 11.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }}
+                            >
+                              <option value="">Elegir existente…</option>
+                              {disponibles.map(r => <option key={r.id} value={r.id}>{r.nombre} · {r.email}</option>)}
+                            </select>
+                            <div style={{ fontSize: 10, color: "var(--n-500)", marginTop: -2 }}>Se asigna al instante, no hace falta llenar nada más abajo.</div>
+                          </>
                         )}
-                        <div style={{ fontSize: 10.5, color: "var(--n-500)" }}>o crear uno nuevo:</div>
+                        <div style={{ fontSize: 10.5, color: "var(--n-500)", marginTop: 4 }}>o crear uno nuevo:</div>
                         <input placeholder="Nombre" value={nuevoNombre} onChange={e => setNuevoNombre(e.target.value)} style={{ padding: "5px 6px", fontSize: 11.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }} />
                         <input placeholder="Email" type="email" value={nuevoEmail} onChange={e => setNuevoEmail(e.target.value)} style={{ padding: "5px 6px", fontSize: 11.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }} />
                         <div style={{ display: "flex", gap: 5 }}>
