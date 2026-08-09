@@ -38,7 +38,8 @@ cd frontend && npx tsc --noEmit
 ## Arquitectura del backend (routers clave en `backend/app/routers/`)
 - `identificar.py` — IA (Gemini) separa el prompt en ítems, asigna **categoría por ítem**, genera términos ES/EN. Detecta proyectos (`es_proyecto`) → lista de materiales. Acepta `industria_empresa` como contexto.
 - `buscar.py` — orquesta búsqueda en paralelo: `_ml_query` (MercadoLibre), `_google_query` (→ Serper.dev si `SERPER_API_KEY`, sino SerpAPI), scrapers de tiendas, electrónica. `_marcar_relevancia` filtra basura. `/buscar` (batch) y `/buscar/stream` (SSE, lo usa el frontend). `/buscar/prefetch` para listas.
-- `onboarding.py` — `investigar-empresa`: desde dominio o nombre, con Gemini + scraping, devuelve empresa/industria/país/logo/RUT/categorías.
+- `onboarding.py` — `investigar-empresa`: desde dominio o nombre, con Gemini + scraping, devuelve empresa/industria/país/logo/RUT/dirección/categorías. Además, sesión conversacional persistida (`POST /api/onboarding/sesion`, `/turno`, `/confirmar`, `/logo/candidato`, `/logo/subir`) — ver sección "Onboarding conversacional" más abajo.
+- `mail_templates.py` — API de plantillas de correo versionadas por organización (ver sección "Plantillas de correo" más abajo).
 - `contacto.py` + `services/contacto_scraper.py` — al cotizar, scrapea email + WhatsApp del proveedor y arma mensaje pre-hecho (`wa.me`).
 - `cuenta.py` — `/api/cuenta/eliminar` (darse de baja; verifica token, borra usuario auth).
 - `listas.py` — listas de cotización multi-ítem (guardadas como JSON en `proyectos.descripcion`; lock por lista). **Es el sistema real y en uso** para proyectos multi-ítem — no confundir con `proyectos.py` (Gantt, tablas `items_proyecto`/`cotizaciones_proyecto`, existen pero con 0 filas reales) ni con `procurement.py` (`quote_items`/`quote_suppliers`/`purchase_events`, **tablas que no existen en producción** — ver Gotchas). Cada ítem de una lista ya tiene identidad estable real: `it.cotizacion_id` es una fila propia de `cotizaciones`, no depende de su posición en el JSON.
@@ -68,24 +69,90 @@ Evolución hacia "qué proveedor abastece qué categoría", auditable y por usua
 - `services/procurement_profile.py` — perfil de compra por usuario, generado al completar el onboarding, con señales de uso que descubren categorías nuevas.
 - **Pendiente real:** probar Fase 1 con datos de producción de punta a punta (perfil/sesiones/feedback nunca se verificaron con un usuario real, solo con fake in-memory).
 
-### Workflow Builder de compras/autorizaciones — Fases 1-2 (fundación + conversacional, migración 027 aplicada y confirmada)
-Nuevo, distinto de lo anterior: reemplaza gradualmente el "Proceso de compra" (texto libre) + "Email del autorizador" (un solo email fijo) de `/settings` por un motor de reglas real (roles, responsables, condiciones por monto, secuencial/paralelo). **No reemplaza `approval_workflows`/`approval_requests`** (siguen siendo la fuente real del magic link de autorización) — este workflow decide CUÁNDO y A QUIÉN corresponde disparar esa autorización, no la reemplaza. Diagnóstico completo (qué se reutiliza, deuda encontrada, modelo canónico) solo en el historial de la conversación que lo diseñó, no está en un archivo.
-- **Migración `027_workflow_builder.sql` — aplicada y confirmada en producción.** Tablas nuevas: `workflow_definitions` (versionado borrador→activo→archivado, `nodos`/`conexiones` en JSONB), `workflow_roles`, `responsables` (personas reales, con suplente opcional), `responsable_roles` (N:M — una persona puede tener varios roles; un rol puede tener varias personas para autorización paralela, u orden explícito para secuencial), `workflow_instances`, `workflow_events` (log inmutable, mismo patrón que `supplier_capability_events`).
-- `services/workflow_engine.py` — motor puro, sin DB: `validar_grafo()` (único inicio, ≥1 fin, sin nodos inaccesibles, sin decisiones sin salida, todo nodo humano con responsable, **sin ciclos que no lleguen a un fin** — una devolución para corrección SÍ es válida porque desde ahí hay camino de vuelta), `siguiente_nodo()` (determinista), `evaluar_condicion()` (condiciones estructuradas campo/operador/valor, **sin `eval`**), `resolver_autorizadores()` (secuencial/paralela), `procesar_evento()` (idempotente).
-- `services/workflow_conversational.py` — `interpretar_descripcion()` (Gemini traduce texto libre a una lista simple de ETAPAS, nunca arma el grafo directamente) + `compilar_a_grafo()` (compilador puro y determinístico que sí arma nodos/conexiones reales, reutilizando `validar_grafo`). **Ojo:** la primera versión de este compilador tenía un bug real (el tramo de monto bajo aprobado quedaba apuntando al tramo de monto alto en vez de seguir al siguiente paso) — se corrigió calculando los destinos antes de construir, sin resolución diferida; queda cubierto por tests (`test_workflow_conversational.py`).
-- `services/workflow_service.py` — persistencia: crear/editar borrador, listar, `activar_workflow()` (valida antes de activar, archiva la versión anterior con el mismo nombre), CRUD de responsables y asignación de roles.
-- Endpoints en `routers/workflows.py`: `POST /api/workflows/interpretar` (solo interpreta, no guarda — mismo patrón que `onboarding.investigar-empresa`), `POST/GET /api/workflows`, `GET/PUT /api/workflows/{id}`, `GET /api/workflows/{id}/validar`, `POST /api/workflows/{id}/activar`, más `/api/workflows/responsables*`.
-- Frontend: `/settings/autorizaciones` — chat conversacional (mismo patrón que `OnboardingChat.tsx`), muestra resumen y etapas en lenguaje llano antes de guardar. Link agregado desde `/settings` sin tocar los campos existentes de "Proceso de compra"/"Email del autorizador" (siguen funcionando igual que siempre).
-- **Pendiente:** Fase 3 (Visual Workflow Builder, canvas de nodos y conexiones — no existe ningún canvas/drag-and-drop hoy en Baiyer, es la pieza más grande y nueva), Fase 4 (motor de ejecución conectado de verdad a `solicitar_aprobacion`/`aprobaciones.decidir` — hoy el workflow se puede crear/activar pero todavía NO decide nada en el flujo real), ficha visual de responsables, homologación de proveedores.
+### Workflow Builder de compras/autorizaciones (fundación + conversacional + canvas + motor real conectado — completo)
+Reemplaza gradualmente el "Proceso de compra" (texto libre) + "Email del autorizador" (un solo email fijo) de `/settings` por un motor de reglas real (roles, responsables, condiciones por monto, secuencial/paralelo). **No reemplaza `approval_workflows`/`approval_requests`** (siguen siendo la fuente real del magic link de autorización) — este workflow decide CUÁNDO y A QUIÉN corresponde disparar esa autorización. Diagnóstico completo (qué se reutiliza, deuda encontrada, modelo canónico) solo en el historial de la conversación que lo diseñó, no está en un archivo.
+- **Migraciones `027_workflow_builder.sql`, `029_workflow_autorizacion_real.sql`, `030_organizaciones.sql`, `031_rls_organizacion.sql` — aplicadas y confirmadas.** `workflow_definitions` (versionado borrador→activo→archivado, `nodos`/`conexiones` en JSONB), `workflow_roles`, `responsables` (personas reales, con suplente opcional), `responsable_roles` (N:M), `workflow_instances`, `workflow_events` (log inmutable); 029 conecta `approval_requests` al workflow real (`workflow_instance_id`/`workflow_nodo_id`/`responsable_id`); 030/031 son la fundación de organizaciones multi-usuario (`organizaciones`, `membresias_organizacion`) de la que depende todo lo de acá.
+- `services/workflow_engine.py` — motor puro, sin DB: `validar_grafo()`, `siguiente_nodo()` (determinista), `evaluar_condicion()` (**sin `eval`**), `resolver_autorizadores()` (secuencial/paralela), `procesar_evento()` (idempotente).
+- `services/workflow_conversational.py` — `interpretar_descripcion()` (Gemini traduce texto libre a ETAPAS, nunca arma el grafo directamente) + `compilar_a_grafo()` (compilador puro y determinístico, reutiliza `validar_grafo`).
+- `services/workflow_service.py` — persistencia de borradores/versiones/responsables. `services/workflow_execution.py` — **el puente real**: `iniciar_autorizacion_workflow()` (llamado desde `listas.py` en `solicitar_aprobacion`) resuelve autorizadores reales del ciclo activo y decide a quién notificar; si no hay ciclo activo, cae al flujo legado de un solo `aprobador_email`. **Esto ya está conectado en producción** — no es un pendiente.
+- **`/settings/autorizaciones/canvas/[id]/page.tsx` — el canvas visual SÍ existe** (drag-and-drop de nodos, SVG para conexiones, panel de propiedades, asignación de responsables por rol con dropdown "elegir existente" que asigna al instante + toast de confirmación). No es un pendiente.
+- Endpoints en `routers/workflows.py`: `POST /api/workflows/interpretar`, `POST/GET /api/workflows`, `GET/PUT /api/workflows/{id}`, `GET /api/workflows/{id}/validar`, `POST /api/workflows/{id}/activar`, `/api/workflows/responsables*`. Migrados a `Depends(get_auth_context)` (ya no confían en `user_id` del body/query).
+- **Pendiente real:** ficha visual de responsables más rica, homologación de proveedores.
 
 ## Auth & Onboarding (frontend)
 - Login/registro: **email/password + Google OAuth** (funcionan). Outlook **oculto** (`{false && ...}` en login/register) — Azure AD requiere cuenta Microsoft de trabajo.
 - Callback OAuth: `frontend/app/auth/callback/page.tsx` es **client-side** (evita el host interno `localhost:8080` del proxy). Signout: `app/auth/signout/route.ts`.
-- Onboarding: `frontend/app/onboarding/page.tsx` — **chat conversacional** que revela empresa/logo/rubro, pregunta RUT, nombre del usuario, logo y proceso de compra. Guarda perfil en **`user_metadata`** (empresa, industria, rut, logo_url, pais, categorias_default, nombre_usuario, proceso_compra, onboarding_completo).
+- Onboarding: `frontend/components/OnboardingChat.tsx` (usado en `/onboarding` y flotando en `OnboardingFloating.tsx`) — chat conversacional NLP (ver sección dedicada abajo), ya no es una máquina de fases con regex.
 - Dashboard saluda con logo+nombre; búsquedas usan `industria` como contexto.
 
+## Onboarding conversacional (Fases 1-3 del proyecto de onboarding/workflow/mailing — completo)
+Reemplazó la máquina de fases con regex (pedir_nombre → rut → nombre_usuario → logo → proceso) por
+extracción tolerante a lenguaje natural, fuera de orden y con correcciones. **Migraciones `034_onboarding_organizacion_perfil.sql` y `035_organizacion_direccion.sql` — aplicadas y confirmadas.**
+- Perfil organizacional real en `organizaciones` (`rut`, `rut_confianza`, `logo_url`, `logo_storage_path`,
+  `logo_origen`, `sitio_web`, `industria`, `pais`, `direccion`) — ya no vive solo en `user_metadata`
+  (se mantiene un backfill no destructivo hacia `user_metadata` para no romper el resto de la app que
+  todavía lee de ahí). RUT único vía índice parcial; un RUT duplicado es conflicto manual, nunca fusión
+  automática de organizaciones.
+- `onboarding_sessions` — sesión persistida y reanudable (`draft` por campo con
+  valor/confianza/origen/confirmado, `mensajes`, `propuesta_workflow`). Se puede recargar la página a
+  mitad de la conversación sin perder el progreso.
+- `services/onboarding_conversational.py` — Gemini SOLO propone valores para los campos mencionados en
+  el turno; toda decisión (qué queda confirmado, validación de RUT módulo 11, montos coloquiales tipo
+  "500 lucas") es código Python determinístico, nunca el modelo. Reusa
+  `workflow_conversational.interpretar_descripcion()` tal cual sobre el texto acumulado del proceso de
+  compra — no lo reimplementa.
+- `services/rut.py` — validador chileno real (dígito verificador módulo 11), sin dependencias.
+- `services/logo_upload.py` — protección SSRF real al descargar un logo candidato (sin redirects,
+  resuelve DNS y rechaza IPs privadas/loopback antes de conectar, valida `content-type`/tamaño).
+- El onboarding, una vez que interpreta el proceso de compra, **crea el workflow real** (no solo
+  preview): reusa `PropuestaWorkflowCard`/`WorkflowGuardadoCard` (`frontend/components/workflow/`,
+  compartidos con `/settings/autorizaciones`) para crear el borrador, invitar responsables (solo si el
+  usuario deja el checkbox marcado) y activar — mismos endpoints de `workflows.py`, ningún endpoint
+  nuevo hizo falta para esto.
+- **Pendiente:** `onboarding_sessions` no guarda el `workflow_id` creado a mitad de camino (deuda
+  menor); overrides de plantilla por nodo del canvas no expuestos en la UI de onboarding.
+
+## Plantillas de correo (Fases 4-6 del mismo proyecto — completo, ver también sección de arriba)
+Antes cada correo transaccional (RFQ, aprobación, OC, seguimientos) tenía asunto/cuerpo hardcodeado
+con f-strings repartidos en 5 archivos — sin versionado, sin override por organización. **Migración
+`036_mail_templates.sql` — aplicada y confirmada.**
+- `mail_template_definitions`/`mail_template_versions`/`mail_delivery_events` guardan SOLO overrides
+  — el contenido default de cada uno de los **16 eventos** (7 internos de autorización + 9 externos de
+  proveedores) vive en Python (`services/mail_events.py`), así que una organización sin overrides sigue
+  recibiendo el correo de siempre. Precedencia nodo > workflow > organización > default.
+- `services/mail_template_service.py` — reemplazo de placeholders `{{variable}}` por regex con
+  allowlist por evento, **deliberadamente sin Jinja2 ni `eval`** (no hace falta lógica condicional para
+  asunto/cuerpo de correo). Variable no declarada no se puede guardar; variable faltante al renderizar
+  lanza antes de "enviar"; `preview()` nunca escribe en DB; `restaurar_default()` crea una versión
+  nueva, nunca borra historial; `registrar_envio()` es idempotente por `idempotency_key`.
+- `routers/mail_templates.py` — CRUD con `Depends(get_auth_context)`; editar/restaurar exige
+  `ctx.es_admin`.
+- `/settings/comunicaciones` (frontend) — lista los 16 eventos por audiencia, editor con variables
+  insertables por clic, preview con datos de ejemplo, guardar/restaurar. Sin generación de borradores
+  por IA (fuera de alcance a propósito).
+- **Emisores reales migrados (5 de 8 sitios candidatos):** `listas.py` (2 sitios, `approval_requested`),
+  `oc.py` (`enviar_oc`, solo el correo al proveedor, `purchase_order_sent`),
+  `recurrencia_service.py` (`rfq_requested`), `gmail_conversation_agent.py` (`rfq_received_thanks`/
+  `rfq_missing_information`, con fallback al texto exacto de antes si el renderer falla, porque es un
+  envío automático sin revisión humana). **3 sitios quedaron fuera a propósito** (no forzar mal
+  mapeo): la copia interna de "OC enviada" y el aviso de "proveedor confirmó recepción" en `oc.py`, y
+  la encuesta de satisfacción post-compra en `cron.py` — ninguno de los 16 eventos les queda bien.
+- **Pendiente:** lógica de bloqueo/dedup pre-envío (hoy `registrar_envio()` es solo auditoría, un
+  reintento todavía puede duplicar un correo); overrides de plantilla a nivel workflow/nodo sin UI
+  (el modelo ya lo soporta); eventos de recordatorio (`approval_reminder`,
+  `purchase_order_ack_reminder`, etc.) sin ningún cron/scheduler que los dispare todavía.
+
+## Branding organizacional en documentos (OC e informes)
+`OCPDFTemplate.tsx` y `ReporteTemplate.tsx` (ambos con `@react-pdf/renderer`, 100% frontend, no hay
+generación de PDF en el backend) mostraban "Claria" hardcodeado. Ahora leen el perfil real de la
+organización (`obtener_perfil_organizacion()` en `services/organizacion.py`, reusado por
+`POST /api/oc/crear` y `POST /api/reportes/datos`): logo (imagen si existe, texto si no), nombre, RUT y
+dirección, con fallback genérico "Baiyer" solo si la organización todavía no tiene perfil configurado.
+
 ## Gotchas importantes
-- **Migraciones = manuales.** El service key de Supabase NO hace DDL, y no hay `DATABASE_URL` para conexión directa — Claude Code prepara el `.sql` y lo copia al portapapeles (`pbcopy`), pero el usuario lo pega y ejecuta en el SQL Editor de Supabase. Aplicadas y **confirmadas contra la DB real hasta la 024**: 019–021 agente Gmail, 022 notificaciones, 023 seguimiento de OC por correo (`ordenes_compra.recibido_conforme_at/despacho_at/despacho_detalle`, `gmail_conversations.oc_id`), 024 Supplier Capability Intelligence (`procurement_profiles`, `procurement_profile_categories`, `search_sessions`, `search_feedback`, `supplier_capability_events`, `supplier_capabilities`).
+- **Migraciones = manuales.** El service key de Supabase NO hace DDL, y no hay `DATABASE_URL` para conexión directa — Claude Code prepara el `.sql` y lo copia al portapapeles (`pbcopy`), pero el usuario lo pega y ejecuta en el SQL Editor de Supabase. Aplicadas y **confirmadas contra la DB real**: 019–021 agente Gmail, 022 notificaciones, 023 seguimiento de OC por correo, 024 Supplier Capability Intelligence, 025 ficha de proveedores, 026 `rfq_batches`, 027 Workflow Builder, 029 workflow↔aprobación real, 030 organizaciones, 031 RLS organizacional, **034 perfil organizacional + `onboarding_sessions`, 035 `direccion`, 036 plantillas de correo** (estas 3 confirmadas en esta sesión). Estado de 028 (capo control plane, de otra sesión), 032 (mcp oauth state) y 033 (supplier_ratings) no reverificado en esta sesión — no asumir sin chequear.
+- **Bug real de `postgrest-py` 2.x encontrado en producción:** `.maybe_single().execute()` devuelve `None` directamente (no un objeto con `.data = None`) cuando la consulta no matchea ninguna fila — cualquier `.execute().data` sin chequear `None` antes crashea con `AttributeError`. Encontrado en `resolver_organizacion()` (rompía dashboard/listas/gmail/workflows enteros para cualquier usuario sin fila en `membresias_organizacion`) y corregido ahí y en `onboarding_session.obtener_sesion()`. **Quedan ~50 ocurrencias más del mismo patrón sin auditar** en `gmail.py`, `listas.py`, `cotizaciones.py`, `rfq.py`, `proveedores.py`, `workflow_service.py`, etc. — antes de escribir `.maybe_single().execute().data`, envolver en un chequeo de `None` (ver `_maybe_single()` en `mail_template_service.py` como ejemplo del patrón correcto).
+- **`get_auth_context` ahora autocrea la organización si falta** (usuarios registrados después del backfill de la 030 no tenían fila en `membresias_organizacion` y quedaban bloqueados con 403 en TODO endpoint protegido) — usa la misma red de seguridad que ya tenía `obtener_organizacion()` para `/api/organizacion/mia`.
 - **Tablas referenciadas en código que NO EXISTEN en producción (confirmado con `sb.table(x).select('*').limit(1)` contra la DB real, no contra los `.sql`):** `supplier_categories` y `procurement_ledger` (de `014_smart_procurement.sql`, migración numerada pero aplicada solo a medias — `approval_workflows`/`approval_requests`/`recurrencia_logs` de ese mismo archivo sí existen), `quote_items`/`quote_suppliers`/`purchase_events` (de `013_procurement_flow.sql`, usadas por `procurement.py` — **el botón "+ Lista" en `/cotizar/[id]/resultados` llama a `POST /api/procurement/eventos` y hoy tira 500**), `supplier_ratings`/`rating_pendiente` (usadas por `supplier_intelligence.py` y `POST /api/suppliers/rating` — fallan en silencio o 500). Ningún numero de migración garantiza que esté realmente en prod: **antes de asumir que una tabla existe, verificar con una query real**, no solo mirar `backend/migrations/`.
 - **Orden de auto-aplicación Gmail:** hoy `item_field_updates` se inserta como `aplicado` antes de actualizar `resultados`. Si el segundo paso falla, la auditoría puede decir “Aplicada” sin que el dato exista. Esto ocurrió en datos antiguos y sigue siendo un riesgo del código actual; conviene hacer la escritura atómica o marcar `aplicado` sólo después del update exitoso.
 - **Estado de conexión Gmail:** el dashboard debe consultar `/api/gmail/status`; no inferir la conexión desde `?gmail=conectado`, porque ese query param sólo existe inmediatamente después del callback OAuth. Al reconectar, conservar el `refresh_token` persistente si Google no devuelve uno nuevo.
@@ -101,7 +168,7 @@ Nuevo, distinto de lo anterior: reemplaza gradualmente el "Proceso de compra" (t
 ## Costos infra
 Railway ~$5-10/mes · Supabase free · Serper 2.500 gratis→$50/50k · Gemini free tier. WhatsApp y SII (futuros) sí cuestan.
 
-## Estado verificado (30-jul-2026)
+## Estado verificado (10-ago-2026)
 - `frontend/next-env.d.ts` sigue siendo el único cambio preexistente del worktree — se conserva sin commitear (es autogenerado por Next.js en dev).
 - Sesión larga de fixes ya en `main`/deployados: campanita de notificaciones (migración 022 aplicada), correo de autorización con un solo link, envío de OC por Gmail con seguimiento de acuse de recibo/despacho por correo (**migración 023 aplicada y confirmada**), fix de selección de ofertas duplicadas en el comparador (bug real: elegir una oferta de Vitel con `url` vacía marcaba varias como seleccionadas — corregido con un id propio `_uid` por resultado en vez de usar `url`, más la causa raíz en el scraper), limpieza de markdown en el correo de cotización generado por Gemini, migración de `OCModal` al design system actual.
 - **Supplier Capability Intelligence, Fase 1**: código completo, **migración 024 aplicada y confirmada**. Probado con fake in-memory; falta probar los endpoints reales end-to-end con datos de producción.
@@ -110,16 +177,20 @@ Railway ~$5-10/mes · Supabase free · Serper 2.500 gratis→$50/50k · Gemini f
 - **Supplier Capability Intelligence, Fase 5**: migración 026 crea `rfq_batches`/`rfq_batch_items` (**aplicada y confirmada en producción**); preparación idempotente desde la matriz, revisión editable en `/listas/[id]/rfq`, un correo Gmail por proveedor con varios ítems, una conversación asociada a múltiples resultados y protección `delivery_uncertain` para no duplicar envíos ambiguos. El agente Gmail resuelve el batch a todos sus resultados y marca cada ítem respondido. Commit `6e26b6c` en `main`.
 - **Supplier Capability Intelligence, Fase 6**: `/listas/[id]/busqueda-complementaria` separa ítems sin cobertura de los ya cubiertos, prioriza los primeros y exige acción explícita para buscar alternativas de los segundos. El buscador existente acepta `busqueda_expandida`, consulta todas las fuentes, crea una sesión `expanded` enlazada a la última dirigida y registra feedback idempotente `missing_suppliers`. No requiere migración. Commit `983c79d` en `main`.
 - **Supplier Capability Intelligence, Fase 7**: continuidad completa sobre el flujo existente. Las respuestas Gmail (autoaplicadas o aprobadas manualmente), selección definitiva, aprobación limpia y compra completada generan evidencia idempotente; RFQs agrupadas resuelven resultado→proveedor; la aprobación inicia una sola conversación de compra por proveedor con sólo los ítems definitivos seleccionados; comparador, autorización, OC y lista de compra siguen siendo los existentes. No requiere migración. Commit `9b91094` en `main`.
-- **Workflow Builder, Fases 1-2**: fundación (modelo de datos, motor de validación de grafo, API de borrador) + configuración conversacional (chat en `/settings/autorizaciones`). **Migración 027 aplicada y confirmada.** 50/50 tests pasan (incluye `test_workflow_engine.py` y `test_workflow_conversational.py`). Commit `0a50792` en `main`. Todavía no decide nada en el flujo real de aprobación — se puede crear/activar un workflow, pero `aprobaciones.py`/`listas.py` no lo consultan todavía (eso es la Fase 4 de este sub-proyecto).
-- **Trabajo en paralelo detectado, no documentado acá porque no es mío y sigue en curso**: "cubicación conversacional" (`identificar.py`, `cotizar/page.tsx`, `CUBICACION.md` — ver su propia sección abajo) y algo llamado "control plane" (`admin_control_plane.py`, `control_plane_telemetry.py`, migración `028_capo_control_plane.sql` — sin aplicar la última vez que se revisó). Antes de tocar cualquiera de esos archivos, confirmar con el usuario en qué quedó esa sesión.
+- **Workflow Builder**: completo — fundación, conversacional, canvas visual y motor conectado de verdad al flujo real de aprobación (`listas.py` ya usa `iniciar_autorizacion_workflow()`). Ver sección dedicada arriba.
+- **Onboarding conversacional + Workflow desde onboarding + Plantillas de correo (Fases 1-6 de ese proyecto)**: completas. Migraciones 034, 035, 036 aplicadas y confirmadas. Ver las tres secciones dedicadas arriba ("Onboarding conversacional", "Plantillas de correo", "Branding organizacional en documentos"). Commits `4bf2a79` → `d2b159a` en `main` (2026-08-09/10).
+- **Trabajo en paralelo detectado, no documentado acá porque no es mío y sigue en curso**: "cubicación conversacional" (`identificar.py`, `cotizar/page.tsx`, `CUBICACION.md` — ver su propia sección abajo) y algo llamado "control plane" (`admin_control_plane.py`, `control_plane_telemetry.py`, migración `028_capo_control_plane.sql` — estado no reverificado esta sesión). Antes de tocar cualquiera de esos archivos, confirmar con el usuario en qué quedó esa sesión.
 - `PROJECT_STATUS.md` y `handoff.md` son handoffs **viejos** — según instrucción explícita del usuario, **la continuidad vive solo en este archivo**, no confiar en esos dos para el estado actual.
 
 ## Próximos pasos
-1. Probar en producción el seguimiento de OC por correo (023): responder "recibido, gracias" desde otra cuenta y verificar que `ordenes_compra.estado` pasa a `recibido_conforme` solo, vía el cron de 1 min.
-2. Probar Supplier Capability Intelligence (024) con datos reales: completar un onboarding y confirmar que aparece la fila en `procurement_profiles`; hacer una búsqueda y confirmar que se crea `search_sessions`; usar "Rebuscar con contexto" y confirmar que cae en `search_feedback`.
-3. Verificar visualmente Fases 4–6 de Supplier Capability Intelligence con proveedores categorizados, enviar una RFQ agrupada de prueba desde Gmail y recorrer una búsqueda complementaria hasta el comparador.
-4. Workflow Builder Fase 3 (Visual Workflow Builder — canvas de nodos/conexiones, no existe hoy en Baiyer) y Fase 4 (conectar el motor a `solicitar_aprobacion`/`aprobaciones.decidir` de verdad, sin reemplazar el magic link existente).
-5. Considerar si vale la pena arreglar o eliminar `procurement.py` (endpoint roto usado por el botón "+ Lista") y el sistema de Gantt sin uso (`proyectos.py`) — no tocado, solo detectado.
+1. **`CLAUDE.md` se actualizó recién** (2026-08-10) — la próxima sesión debería partir de acá, no de `PROJECT_STATUS.md`.
+2. Auditar las ~50 ocurrencias restantes del bug de `.maybe_single().execute()` sin chequear `None` (ver Gotchas) — hay un chip de tarea en background pendiente de que el usuario lo inicie.
+3. Probar el onboarding conversacional de punta a punta con una segunda cuenta invitada real: aceptar la invitación, confirmar que queda como responsable y que puede iniciar sesión.
+4. Migrar los 3 sitios de correo que quedaron fuera de la Fase 6 (copia interna de OC, aviso de proveedor confirmó recepción, encuesta de satisfacción) si se decide agregar eventos nuevos al catálogo para ellos.
+5. Probar en producción el seguimiento de OC por correo (023): responder "recibido, gracias" desde otra cuenta y verificar que `ordenes_compra.estado` pasa a `recibido_conforme` solo, vía el cron de 1 min.
+6. Probar Supplier Capability Intelligence (024) con datos reales: completar un onboarding y confirmar que aparece la fila en `procurement_profiles`; hacer una búsqueda y confirmar que se crea `search_sessions`; usar "Rebuscar con contexto" y confirmar que cae en `search_feedback`.
+7. Verificar visualmente Fases 4–6 de Supplier Capability Intelligence con proveedores categorizados, enviar una RFQ agrupada de prueba desde Gmail y recorrer una búsqueda complementaria hasta el comparador.
+8. Considerar si vale la pena arreglar o eliminar `procurement.py` (endpoint roto usado por el botón "+ Lista") y el sistema de Gantt sin uso (`proyectos.py`) — no tocado, solo detectado.
 
 ## Cubicación conversacional (primer corte)
 - Motor puro en `backend/app/services/cubicacion.py`: unidades/dimensiones, conversiones, merma,
