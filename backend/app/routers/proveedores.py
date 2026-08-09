@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.services.auth_context import AuthContext, get_auth_context
+from app.services.supabase import ejecutar_maybe_single
 
 router = APIRouter(prefix="/api/proveedores", tags=["proveedores"])
 
@@ -200,7 +201,7 @@ async def ficha_proveedor(proveedor_id: str, ctx: AuthContext = Depends(get_auth
 
     sb = get_supabase()
     ids = ctx.user_ids_organizacion
-    proveedor = sb.table("proveedores").select("*").eq("id", proveedor_id).in_("user_id", ids).maybe_single().execute().data
+    proveedor = ejecutar_maybe_single(sb.table("proveedores").select("*").eq("id", proveedor_id).in_("user_id", ids).maybe_single()).data
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
@@ -236,7 +237,7 @@ async def editar_proveedor(proveedor_id: str, req: EditarProveedorRequest, ctx: 
     from app.services.proveedores_matching import normalizar_rut
 
     sb = get_supabase()
-    existente = sb.table("proveedores").select("id").eq("id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+    existente = ejecutar_maybe_single(sb.table("proveedores").select("id").eq("id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
     if not existente:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
@@ -267,7 +268,7 @@ async def confirmar_categorias(proveedor_id: str, req: ConfirmarCategoriasReques
     from app.services.supplier_capability_intelligence import registrar_evento
 
     sb = get_supabase()
-    proveedor = sb.table("proveedores").select("id").eq("id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+    proveedor = ejecutar_maybe_single(sb.table("proveedores").select("id").eq("id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
@@ -285,7 +286,7 @@ async def quitar_categoria(proveedor_id: str, categoria: str, ctx: AuthContext =
     from app.services.supplier_capability_intelligence import rechazar_capacidad
 
     sb = get_supabase()
-    proveedor = sb.table("proveedores").select("id").eq("id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+    proveedor = ejecutar_maybe_single(sb.table("proveedores").select("id").eq("id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
     if not proveedor:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 

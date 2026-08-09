@@ -13,6 +13,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from app.services.auth_context import AuthContext, get_auth_context
+from app.services.supabase import ejecutar_maybe_single
 
 router = APIRouter(prefix="/api/gmail", tags=["gmail"])
 
@@ -446,7 +447,7 @@ def _extraer_email(header_from: str) -> str:
 
 def _nombre_cotizacion(sb, cotizacion_id: str) -> str:
     try:
-        cot = sb.table("cotizaciones").select("nombre_identificado,descripcion").eq("id", cotizacion_id).maybe_single().execute()
+        cot = ejecutar_maybe_single(sb.table("cotizaciones").select("nombre_identificado,descripcion").eq("id", cotizacion_id).maybe_single())
         if cot.data:
             return cot.data.get("nombre_identificado") or cot.data.get("descripcion") or "ítem cotizado"
     except Exception:
@@ -458,7 +459,7 @@ def _nombre_lista(sb, lista_proyecto_id: str | None) -> str | None:
     if not lista_proyecto_id:
         return None
     try:
-        proy = sb.table("proyectos").select("nombre").eq("id", lista_proyecto_id).maybe_single().execute()
+        proy = ejecutar_maybe_single(sb.table("proyectos").select("nombre").eq("id", lista_proyecto_id).maybe_single())
         return (proy.data or {}).get("nombre")
     except Exception:
         return None
@@ -472,7 +473,7 @@ async def _procesar_respuesta_oc(sb, service, conv: dict, mi_email: str, cuerpo:
     from app.services.email_understanding import clasificar_respuesta_oc
     from app.services import gmail_conversation_agent
 
-    oc = sb.table("ordenes_compra").select("id, estado").eq("id", conv["oc_id"]).maybe_single().execute().data
+    oc = ejecutar_maybe_single(sb.table("ordenes_compra").select("id, estado").eq("id", conv["oc_id"]).maybe_single()).data
     if not oc:
         return "human_review_required"
 
@@ -517,7 +518,7 @@ def _items_contexto(sb, conv: dict) -> list[dict]:
     # RFQ agrupada: una conversación representa varios resultados/ítems.
     # Se intenta primero y se tolera que la migración 026 aún no exista.
     try:
-        batch = sb.table("rfq_batches").select("id").eq("conversation_id", conv["id"]).maybe_single().execute().data
+        batch = ejecutar_maybe_single(sb.table("rfq_batches").select("id").eq("conversation_id", conv["id"]).maybe_single()).data
         if batch:
             batch_items = sb.table("rfq_batch_items").select("resultado_id,cotizacion_id").eq("rfq_batch_id", batch["id"]).execute().data or []
             for item in batch_items:
@@ -531,7 +532,7 @@ def _items_contexto(sb, conv: dict) -> list[dict]:
     except Exception:
         pass
     if conv.get("resultado_id"):
-        r = sb.table("resultados").select("id,proveedor_nombre,cotizacion_id").eq("id", conv["resultado_id"]).maybe_single().execute()
+        r = ejecutar_maybe_single(sb.table("resultados").select("id,proveedor_nombre,cotizacion_id").eq("id", conv["resultado_id"]).maybe_single())
         if r.data:
             nombre_item = _nombre_cotizacion(sb, r.data["cotizacion_id"])
             items.append({"entity_id": r.data["id"], "nombre": nombre_item, "proveedor": r.data.get("proveedor_nombre")})
@@ -564,7 +565,7 @@ def _aplicar_campo_resultado(sb, entity_id: str, field: str, valor, cuando_iso: 
     if columna:
         cambios[columna] = valor
     else:
-        actual = sb.table("resultados").select("notas_respuesta").eq("id", entity_id).maybe_single().execute()
+        actual = ejecutar_maybe_single(sb.table("resultados").select("notas_respuesta").eq("id", entity_id).maybe_single())
         previa = (actual.data or {}).get("notas_respuesta") or ""
         cambios["notas_respuesta"] = (previa + f"\n{field}: {valor}").strip()
     sb.table("resultados").update(cambios).eq("id", entity_id).execute()
@@ -726,7 +727,7 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                         columna = _FIELD_MAP_RESULTADOS.get(p["field"])
                         previo = None
                         if columna:
-                            r = sb.table("resultados").select(columna).eq("id", entity_id).maybe_single().execute()
+                            r = ejecutar_maybe_single(sb.table("resultados").select(columna).eq("id", entity_id).maybe_single())
                             previo = r.data.get(columna) if r.data else None
 
                         auto_aplicar = campo_seguimiento in CAMPOS_SEGUIMIENTO and p["confidence"] >= UMBRAL_AUTO_APLICAR
@@ -819,7 +820,7 @@ async def _sincronizar_usuario(user_id: str) -> dict:
             sb.table("gmail_messages").update({"procesado": True}).eq("id", row["id"]).execute()
             # seguimiento_automatico ya actualiza estado+last_message_at cuando
             # envía; si no se llamó (o falló el envío), lo hacemos acá.
-            conv_actual = sb.table("gmail_conversations").select("estado").eq("id", conv["id"]).maybe_single().execute().data
+            conv_actual = ejecutar_maybe_single(sb.table("gmail_conversations").select("estado").eq("id", conv["id"]).maybe_single()).data
             if not conv_actual or conv_actual.get("estado") not in ("closed", "compra_iniciada"):
                 sb.table("gmail_conversations").update({
                     "estado": nuevo_estado, "last_message_at": recibido_iso,
@@ -880,7 +881,7 @@ async def listar_conversaciones(ctx: AuthContext = Depends(get_auth_context)):
 async def detalle_conversacion(conversation_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    conv = sb.table("gmail_conversations").select("*").eq("id", conversation_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+    conv = ejecutar_maybe_single(sb.table("gmail_conversations").select("*").eq("id", conversation_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
     if not conv:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
     conv["gmail_url"] = f"https://mail.google.com/mail/u/0/#all/{conv['gmail_thread_id']}"
@@ -908,7 +909,7 @@ async def aplicar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest, ctx
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    p = sb.table("item_field_updates").select("*").eq("id", propuesta_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+    p = ejecutar_maybe_single(sb.table("item_field_updates").select("*").eq("id", propuesta_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
     if not p:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
     if p["estado"] != "propuesta":
@@ -942,7 +943,7 @@ async def aplicar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest, ctx
 async def rechazar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    p = sb.table("item_field_updates").select("id,estado").eq("id", propuesta_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+    p = ejecutar_maybe_single(sb.table("item_field_updates").select("id,estado").eq("id", propuesta_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
     if not p:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
     sb.table("item_field_updates").update({

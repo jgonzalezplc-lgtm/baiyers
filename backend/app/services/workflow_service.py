@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from app.services.workflow_engine import ROLES_BASE, validar_grafo
+from app.services.supabase import ejecutar_maybe_single
 
 
 def _sb():
@@ -45,7 +46,7 @@ def crear_borrador(
 
 def actualizar_borrador(user_id: str, workflow_id: str, nodos: list[dict], conexiones: list[dict], nombre: Optional[str] = None) -> dict:
     sb = _sb()
-    existente = sb.table("workflow_definitions").select("id,estado").eq("id", workflow_id).eq("user_id", user_id).maybe_single().execute().data
+    existente = ejecutar_maybe_single(sb.table("workflow_definitions").select("id,estado").eq("id", workflow_id).eq("user_id", user_id).maybe_single()).data
     if not existente:
         raise ValueError("Workflow no encontrado")
     if existente["estado"] != "borrador":
@@ -67,9 +68,9 @@ def listar_workflows(user_id: str) -> list[dict]:
 
 def obtener_workflow(user_id: str, workflow_id: str) -> Optional[dict]:
     sb = _sb()
-    workflow = sb.table("workflow_definitions").select("*").eq("id", workflow_id).in_(
+    workflow = ejecutar_maybe_single(sb.table("workflow_definitions").select("*").eq("id", workflow_id).in_(
         "user_id", _ids_organizacion(user_id)
-    ).maybe_single().execute().data
+    ).maybe_single()).data
     if not workflow:
         return None
     roles = sb.table("workflow_roles").select("*").eq("workflow_id", workflow_id).execute().data or []
@@ -194,7 +195,7 @@ def listar_responsables(user_id: str, incluir_inactivos: bool = False) -> list[d
 
 def actualizar_responsable(user_id: str, responsable_id: str, cambios: dict) -> dict:
     sb = _sb()
-    existente = sb.table("responsables").select("id").eq("id", responsable_id).eq("user_id", user_id).maybe_single().execute().data
+    existente = ejecutar_maybe_single(sb.table("responsables").select("id").eq("id", responsable_id).eq("user_id", user_id).maybe_single()).data
     if not existente:
         raise ValueError("Responsable no encontrado")
     campos_validos = {"nombre", "cargo", "email", "telefono", "suplente_id", "activo"}
@@ -207,14 +208,14 @@ def actualizar_responsable(user_id: str, responsable_id: str, cambios: dict) -> 
 
 def asignar_rol(user_id: str, responsable_id: str, workflow_id: str, rol_clave: str, orden_autorizacion: Optional[int] = None) -> dict:
     sb = _sb()
-    responsable = sb.table("responsables").select("id").eq("id", responsable_id).eq("user_id", user_id).maybe_single().execute().data
-    workflow = sb.table("workflow_definitions").select("id").eq("id", workflow_id).eq("user_id", user_id).maybe_single().execute().data
+    responsable = ejecutar_maybe_single(sb.table("responsables").select("id").eq("id", responsable_id).eq("user_id", user_id).maybe_single()).data
+    workflow = ejecutar_maybe_single(sb.table("workflow_definitions").select("id").eq("id", workflow_id).eq("user_id", user_id).maybe_single()).data
     if not responsable or not workflow:
         raise ValueError("Responsable o workflow no encontrado")
 
-    existente = sb.table("responsable_roles").select("id").eq("responsable_id", responsable_id).eq(
+    existente = ejecutar_maybe_single(sb.table("responsable_roles").select("id").eq("responsable_id", responsable_id).eq(
         "workflow_id", workflow_id
-    ).eq("rol_clave", rol_clave).maybe_single().execute().data
+    ).eq("rol_clave", rol_clave).maybe_single()).data
     if existente:
         sb.table("responsable_roles").update({"orden_autorizacion": orden_autorizacion}).eq("id", existente["id"]).execute()
         return sb.table("responsable_roles").select("*").eq("id", existente["id"]).single().execute().data
@@ -228,7 +229,7 @@ def asignar_rol(user_id: str, responsable_id: str, workflow_id: str, rol_clave: 
 
 def quitar_rol(user_id: str, responsable_id: str, workflow_id: str, rol_clave: str) -> None:
     sb = _sb()
-    workflow = sb.table("workflow_definitions").select("id").eq("id", workflow_id).eq("user_id", user_id).maybe_single().execute().data
+    workflow = ejecutar_maybe_single(sb.table("workflow_definitions").select("id").eq("id", workflow_id).eq("user_id", user_id).maybe_single()).data
     if not workflow:
         raise ValueError("Workflow no encontrado")
     sb.table("responsable_roles").delete().eq("responsable_id", responsable_id).eq(

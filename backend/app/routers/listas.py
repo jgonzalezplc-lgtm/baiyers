@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.services.auth_context import AuthContext, get_auth_context
+from app.services.supabase import ejecutar_maybe_single
 
 router = APIRouter(prefix="/api/listas", tags=["listas"])
 
@@ -392,7 +393,7 @@ async def seleccionar_proveedor_item(lista_id: str, req: SeleccionarProveedorIte
     from app.services.proveedores_sugeridos import buscar_sugerido
     sb = get_supabase()
     async with _lock_de(lista_id):
-        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+        proy = ejecutar_maybe_single(sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
         data = _parse_lista(proy or {})
         if not data or req.cotizacion_id not in {it["cotizacion_id"] for it in data.get("items", [])}:
             raise HTTPException(status_code=404, detail="Lista o ítem no encontrado")
@@ -419,7 +420,7 @@ async def seleccionar_proveedor_item(lista_id: str, req: SeleccionarProveedorIte
                     "sitio_web": banco.get("website"), "telefono": banco.get("phone")
                 }).eq("id", proveedor_id).execute()
         elif proveedor_id:
-            proveedor = sb.table("proveedores").select("id,nombre,email").eq("id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+            proveedor = ejecutar_maybe_single(sb.table("proveedores").select("id,nombre,email").eq("id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
             if not proveedor:
                 raise HTTPException(status_code=400, detail="Proveedor privado inválido")
             nombre, email = proveedor.get("nombre"), proveedor.get("email")
@@ -573,7 +574,7 @@ def _matriz_proveedores_confianza(sb, user_id: str, items: list[dict], borrador:
 async def matriz_proveedores_confianza(lista_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+    proy = ejecutar_maybe_single(sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
     data = _parse_lista(proy or {})
     if not data:
         raise HTTPException(status_code=404, detail="Lista no encontrada")
@@ -585,7 +586,7 @@ async def guardar_matriz_proveedores_confianza(lista_id: str, req: GuardarMatriz
     from app.services.supabase import get_supabase
     sb = get_supabase()
     async with _lock_de(lista_id):
-        proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+        proy = ejecutar_maybe_single(sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
         data = _parse_lista(proy or {})
         if not data:
             raise HTTPException(status_code=404, detail="Lista no encontrada")
@@ -616,7 +617,7 @@ async def estado_busqueda_complementaria(lista_id: str, ctx: AuthContext = Depen
     búsquedas: los cubiertos sólo se buscan si el usuario lo pide."""
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    proy = sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+    proy = ejecutar_maybe_single(sb.table("proyectos").select("*").eq("id", lista_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
     data = _parse_lista(proy or {})
     if not data:
         raise HTTPException(status_code=404, detail="Lista no encontrada")

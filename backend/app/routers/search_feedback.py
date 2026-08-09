@@ -8,6 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+from app.services.supabase import ejecutar_maybe_single
 
 router = APIRouter(prefix="/api/buscar/sesiones", tags=["search-feedback"])
 
@@ -126,7 +127,7 @@ async def registrar_feedback(session_id: str, req: FeedbackRequest):
     if req.tipo not in _TIPOS_VALIDOS:
         raise HTTPException(status_code=400, detail=f"tipo inválido: {req.tipo}")
 
-    sesion = sb.table("search_sessions").select("id, user_id, categoria_predicha").eq("id", session_id).maybe_single().execute().data
+    sesion = ejecutar_maybe_single(sb.table("search_sessions").select("id, user_id, categoria_predicha").eq("id", session_id).maybe_single()).data
     if not sesion or sesion["user_id"] != req.user_id:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
 

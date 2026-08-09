@@ -7,6 +7,7 @@ automáticos — es intencional: un correo que sale solo, sin revisión humana,
 no debe depender de que un modelo no alucine.
 """
 from datetime import datetime, timezone
+from app.services.supabase import ejecutar_maybe_single
 
 # Los 4 datos que se le pide a todo proveedor al cotizar (ver PROMPT en
 # gmail.py /generar-correo). Si llegan los 4, la conversación se cierra sola.
@@ -146,11 +147,11 @@ def iniciar_proceso_compra_resultados(user_id: str, resultado_ids: list[str]) ->
         batch_item = None
         if not conv:
             try:
-                batch_item = sb.table("rfq_batch_items").select("id,rfq_batch_id,cotizacion_id,resultado_id,cantidad,unidad").eq("resultado_id", resultado_id).maybe_single().execute().data
+                batch_item = ejecutar_maybe_single(sb.table("rfq_batch_items").select("id,rfq_batch_id,cotizacion_id,resultado_id,cantidad,unidad").eq("resultado_id", resultado_id).maybe_single()).data
                 if batch_item:
-                    batch = sb.table("rfq_batches").select("conversation_id,user_id").eq("id", batch_item["rfq_batch_id"]).eq("user_id", user_id).maybe_single().execute().data
+                    batch = ejecutar_maybe_single(sb.table("rfq_batches").select("conversation_id,user_id").eq("id", batch_item["rfq_batch_id"]).eq("user_id", user_id).maybe_single()).data
                     if batch and batch.get("conversation_id"):
-                        conv = sb.table("gmail_conversations").select("*").eq("id", batch["conversation_id"]).eq("user_id", user_id).maybe_single().execute().data
+                        conv = ejecutar_maybe_single(sb.table("gmail_conversations").select("*").eq("id", batch["conversation_id"]).eq("user_id", user_id).maybe_single()).data
             except Exception:
                 conv = None
         if not conv:
@@ -159,14 +160,14 @@ def iniciar_proceso_compra_resultados(user_id: str, resultado_ids: list[str]) ->
         if batch_item:
             nombre = "Ítem"
             try:
-                cot = sb.table("cotizaciones").select("nombre_identificado").eq("id", batch_item["cotizacion_id"]).maybe_single().execute().data or {}
+                cot = ejecutar_maybe_single(sb.table("cotizaciones").select("nombre_identificado").eq("id", batch_item["cotizacion_id"]).maybe_single()).data or {}
                 nombre = cot.get("nombre_identificado") or nombre
             except Exception:
                 pass
             entrada["items"].append(f"{batch_item.get('cantidad') or 1:g} {batch_item.get('unidad') or 'un'} · {nombre}")
             entrada["batch_items"].append(batch_item["id"])
 
-    integ = sb.table("user_integrations").select("*").eq("user_id", user_id).eq("provider", "gmail").maybe_single().execute().data
+    integ = ejecutar_maybe_single(sb.table("user_integrations").select("*").eq("user_id", user_id).eq("provider", "gmail").maybe_single()).data
     if not integ:
         return 0
 

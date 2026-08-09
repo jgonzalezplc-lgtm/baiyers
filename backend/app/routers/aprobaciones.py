@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from app.services.auth_context import AuthContext, get_auth_context
+from app.services.supabase import ejecutar_maybe_single
 
 router = APIRouter(prefix="/api/aprobaciones", tags=["aprobaciones"])
 
@@ -226,11 +227,11 @@ async def decidir(token: str, req: DecisionRequest):
         qs_id = row["referencia"].split(":", 1)[1]
         try:
             sb.table("quote_suppliers").update({"estado": "seleccionado", "updated_at": _now()}).eq("id", qs_id).execute()
-            qs = sb.table("quote_suppliers").select("proveedor_nombre, quote_item_id").eq("id", qs_id).maybe_single().execute()
+            qs = ejecutar_maybe_single(sb.table("quote_suppliers").select("proveedor_nombre, quote_item_id").eq("id", qs_id).maybe_single())
             if qs.data and row.get("user_id"):
                 item_nombre = qs.data.get("proveedor_nombre") or "ítem"
                 if qs.data.get("quote_item_id"):
-                    it = sb.table("quote_items").select("nombre").eq("id", qs.data["quote_item_id"]).maybe_single().execute()
+                    it = ejecutar_maybe_single(sb.table("quote_items").select("nombre").eq("id", qs.data["quote_item_id"]).maybe_single())
                     item_nombre = (it.data or {}).get("nombre") or item_nombre
                 proveedor_nombre = qs.data.get("proveedor_nombre") or "proveedor"
                 crear_notificacion(
@@ -284,7 +285,7 @@ async def decidir(token: str, req: DecisionRequest):
                     # el email al que se le envió (flujo legado).
                     decidido_por = row.get("aprobador_email")
                     if row.get("responsable_id"):
-                        resp = sb.table("responsables").select("nombre").eq("id", row["responsable_id"]).maybe_single().execute().data
+                        resp = ejecutar_maybe_single(sb.table("responsables").select("nombre").eq("id", row["responsable_id"]).maybe_single()).data
                         if resp and resp.get("nombre"):
                             decidido_por = resp["nombre"]
                     aprobacion["decidido_por"] = decidido_por

@@ -15,6 +15,7 @@ nunca rompe la compatibilidad existente.
 from typing import Optional
 
 from app.services.workflow_engine import evaluar_condicion, resolver_autorizadores, siguiente_nodo
+from app.services.supabase import ejecutar_maybe_single
 
 
 def _sb():
@@ -64,7 +65,7 @@ def _monto_de_lista(lista_id: Optional[str]) -> float:
         return 0
     from app.routers.listas import _monto_total, _parse_lista
     sb = _sb()
-    proy = sb.table("proyectos").select("descripcion").eq("id", lista_id).maybe_single().execute().data
+    proy = ejecutar_maybe_single(sb.table("proyectos").select("descripcion").eq("id", lista_id).maybe_single()).data
     data = _parse_lista(proy or {}) if proy else None
     return _monto_total(data) if data else 0
 

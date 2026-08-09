@@ -15,6 +15,7 @@ una suma determinística y explicable.
 """
 from datetime import datetime, timezone
 from typing import Optional
+from app.services.supabase import ejecutar_maybe_single
 
 # Pesos iniciales por tipo de evento (ver PROMPT_CLAUDE_CODE_SUPPLIER_INTELLIGENCE.md).
 # Ajustables sin tocar la lógica de cálculo.
@@ -262,15 +263,15 @@ def registrar_evento_para_resultado(
     multiítem. Si el resultado externo aún no está asociado al directorio, no
     inventa identidad y retorna None."""
     sb = _sb()
-    resultado = sb.table("resultados").select("id,cotizacion_id").eq("id", resultado_id).maybe_single().execute().data
+    resultado = ejecutar_maybe_single(sb.table("resultados").select("id,cotizacion_id").eq("id", resultado_id).maybe_single()).data
     if not resultado:
         return None
-    cot = sb.table("cotizaciones").select("categoria").eq("id", resultado["cotizacion_id"]).maybe_single().execute().data or {}
+    cot = ejecutar_maybe_single(sb.table("cotizaciones").select("categoria").eq("id", resultado["cotizacion_id"]).maybe_single()).data or {}
     proveedor_id = None
     try:
-        item = sb.table("rfq_batch_items").select("rfq_batch_id").eq("resultado_id", resultado_id).maybe_single().execute().data
+        item = ejecutar_maybe_single(sb.table("rfq_batch_items").select("rfq_batch_id").eq("resultado_id", resultado_id).maybe_single()).data
         if item:
-            batch = sb.table("rfq_batches").select("proveedor_id,user_id").eq("id", item["rfq_batch_id"]).eq("user_id", user_id).maybe_single().execute().data
+            batch = ejecutar_maybe_single(sb.table("rfq_batches").select("proveedor_id,user_id").eq("id", item["rfq_batch_id"]).eq("user_id", user_id).maybe_single()).data
             proveedor_id = (batch or {}).get("proveedor_id")
     except Exception:
         pass

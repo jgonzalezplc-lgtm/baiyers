@@ -12,6 +12,7 @@ Precedencia (nunca se invierte acá — este perfil es solo un prior, no un filt
 """
 from datetime import datetime, timezone
 from typing import Optional
+from app.services.supabase import ejecutar_maybe_single
 
 CONFIANZA_INICIAL_ONBOARDING = 0.6
 CONFIANZA_SENAL_USO = 0.05  # cuánto sube una categoría al verla en una búsqueda real
@@ -41,7 +42,7 @@ def crear_o_actualizar_perfil(
     (ej: el usuario corrigió el nombre en el onboarding). Las categorías se
     fusionan con las que ya había — nunca se pisan confianzas ya ganadas por uso."""
     sb = _sb()
-    existente = sb.table("procurement_profiles").select("*").eq("user_id", user_id).maybe_single().execute().data
+    existente = ejecutar_maybe_single(sb.table("procurement_profiles").select("*").eq("user_id", user_id).maybe_single()).data
 
     datos = {
         "user_id": user_id,
@@ -68,10 +69,10 @@ def crear_o_actualizar_perfil(
 def _upsert_categoria(sb, profile_id: str, categoria: str, origen: str, confianza_si_nueva: float) -> None:
     if not categoria:
         return
-    existente = (
+    existente = ejecutar_maybe_single(
         sb.table("procurement_profile_categories").select("*")
-        .eq("profile_id", profile_id).eq("categoria", categoria).maybe_single().execute().data
-    )
+        .eq("profile_id", profile_id).eq("categoria", categoria).maybe_single()
+    ).data
     if existente:
         origenes = set(existente.get("origenes") or [])
         if origen in origenes:
@@ -93,7 +94,7 @@ def _upsert_categoria(sb, profile_id: str, categoria: str, origen: str, confianz
 
 def listar_perfil(user_id: str) -> Optional[dict]:
     sb = _sb()
-    perfil = sb.table("procurement_profiles").select("*").eq("user_id", user_id).maybe_single().execute().data
+    perfil = ejecutar_maybe_single(sb.table("procurement_profiles").select("*").eq("user_id", user_id).maybe_single()).data
     if not perfil:
         return None
     categorias = (
@@ -107,7 +108,7 @@ def confirmar_categoria(user_id: str, categoria_row_id: str, confirmar: bool = T
     """El usuario confirma (o desconfirma) una categoría sugerida. Confirmar es
     una señal fuerte y explícita — sube la confianza al máximo."""
     sb = _sb()
-    fila = sb.table("procurement_profile_categories").select("*, procurement_profiles(user_id)").eq("id", categoria_row_id).maybe_single().execute().data
+    fila = ejecutar_maybe_single(sb.table("procurement_profile_categories").select("*, procurement_profiles(user_id)").eq("id", categoria_row_id).maybe_single()).data
     if not fila or not fila.get("procurement_profiles") or fila["procurement_profiles"]["user_id"] != user_id:
         raise ValueError("Categoría no encontrada para este usuario")
 
@@ -123,7 +124,7 @@ def confirmar_categoria(user_id: str, categoria_row_id: str, confirmar: bool = T
 
 def agregar_categoria_manual(user_id: str, categoria: str) -> dict:
     sb = _sb()
-    perfil = sb.table("procurement_profiles").select("id").eq("user_id", user_id).maybe_single().execute().data
+    perfil = ejecutar_maybe_single(sb.table("procurement_profiles").select("id").eq("user_id", user_id).maybe_single()).data
     if not perfil:
         perfil_completo = crear_o_actualizar_perfil(user_id)
         profile_id = perfil_completo["id"]
@@ -131,10 +132,10 @@ def agregar_categoria_manual(user_id: str, categoria: str) -> dict:
         profile_id = perfil["id"]
 
     categoria = categoria.lower().strip()
-    existente = (
+    existente = ejecutar_maybe_single(
         sb.table("procurement_profile_categories").select("*")
-        .eq("profile_id", profile_id).eq("categoria", categoria).maybe_single().execute().data
-    )
+        .eq("profile_id", profile_id).eq("categoria", categoria).maybe_single()
+    ).data
     if existente:
         return confirmar_categoria(user_id, existente["id"], confirmar=True)
 
@@ -150,7 +151,7 @@ def agregar_categoria_manual(user_id: str, categoria: str) -> dict:
 
 def eliminar_categoria(user_id: str, categoria_row_id: str) -> None:
     sb = _sb()
-    fila = sb.table("procurement_profile_categories").select("*, procurement_profiles(user_id)").eq("id", categoria_row_id).maybe_single().execute().data
+    fila = ejecutar_maybe_single(sb.table("procurement_profile_categories").select("*, procurement_profiles(user_id)").eq("id", categoria_row_id).maybe_single()).data
     if not fila or not fila.get("procurement_profiles") or fila["procurement_profiles"]["user_id"] != user_id:
         raise ValueError("Categoría no encontrada para este usuario")
     sb.table("procurement_profile_categories").delete().eq("id", categoria_row_id).execute()
@@ -165,14 +166,14 @@ def registrar_senal_uso(user_id: str, categoria: str, origen: str = "search_hist
     if not categoria:
         return
     sb = _sb()
-    perfil = sb.table("procurement_profiles").select("id").eq("user_id", user_id).maybe_single().execute().data
+    perfil = ejecutar_maybe_single(sb.table("procurement_profiles").select("id").eq("user_id", user_id).maybe_single()).data
     profile_id = perfil["id"] if perfil else crear_o_actualizar_perfil(user_id)["id"]
 
     categoria = categoria.lower().strip()
-    existente = (
+    existente = ejecutar_maybe_single(
         sb.table("procurement_profile_categories").select("*")
-        .eq("profile_id", profile_id).eq("categoria", categoria).maybe_single().execute().data
-    )
+        .eq("profile_id", profile_id).eq("categoria", categoria).maybe_single()
+    ).data
     if existente:
         if existente.get("confirmado_por_usuario"):
             return  # ya está en el techo, no hace falta reforzar

@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.services.auth_context import AuthContext, get_auth_context
+from app.services.supabase import ejecutar_maybe_single
 
 router = APIRouter(prefix="/api", tags=["cotizaciones"])
 
@@ -274,13 +275,13 @@ async def agregar_proveedor_directorio(cotizacion_id: str, req: AgregarProveedor
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    prov = sb.table("proveedores").select("*").eq("id", req.proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+    prov = ejecutar_maybe_single(sb.table("proveedores").select("*").eq("id", req.proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
     if not prov:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
     contacto = None
     if req.contacto_id:
-        contacto = sb.table("proveedor_contactos").select("*").eq("id", req.contacto_id).eq("proveedor_id", req.proveedor_id).maybe_single().execute().data
+        contacto = ejecutar_maybe_single(sb.table("proveedor_contactos").select("*").eq("id", req.contacto_id).eq("proveedor_id", req.proveedor_id).maybe_single()).data
     if not contacto:
         principal = sb.table("proveedor_contactos").select("*").eq("proveedor_id", req.proveedor_id).eq("es_principal", True).limit(1).execute().data
         contacto = principal[0] if principal else None
@@ -319,7 +320,7 @@ async def seleccionar_comparador(cotizacion_id: str, req: SeleccionComparadorReq
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    cot = sb.table("cotizaciones").select("id").eq("id", cotizacion_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+    cot = ejecutar_maybe_single(sb.table("cotizaciones").select("id").eq("id", cotizacion_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
     if not cot:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
 
@@ -356,10 +357,10 @@ async def seleccionar_comparador(cotizacion_id: str, req: SeleccionComparadorReq
 def _verificar_dueno_resultado(sb, resultado_id: str, ids_organizacion: list[str]) -> dict:
     """Los `resultados` no tienen user_id propio: la propiedad se verifica a
     través de la cotización a la que pertenecen."""
-    resultado = sb.table("resultados").select("id, cotizacion_id").eq("id", resultado_id).maybe_single().execute().data
+    resultado = ejecutar_maybe_single(sb.table("resultados").select("id, cotizacion_id").eq("id", resultado_id).maybe_single()).data
     if not resultado:
         raise HTTPException(status_code=404, detail="Resultado no encontrado")
-    cot = sb.table("cotizaciones").select("id").eq("id", resultado["cotizacion_id"]).in_("user_id", ids_organizacion).maybe_single().execute().data
+    cot = ejecutar_maybe_single(sb.table("cotizaciones").select("id").eq("id", resultado["cotizacion_id"]).in_("user_id", ids_organizacion).maybe_single()).data
     if not cot:
         raise HTTPException(status_code=404, detail="Resultado no encontrado")
     return resultado
@@ -542,7 +543,7 @@ class EstadoRequest(BaseModel):
 async def actualizar_estado(cotizacion_id: str, req: EstadoRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    cot = sb.table("cotizaciones").select("id").eq("id", cotizacion_id).in_("user_id", ctx.user_ids_organizacion).maybe_single().execute().data
+    cot = ejecutar_maybe_single(sb.table("cotizaciones").select("id").eq("id", cotizacion_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
     if not cot:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
     sb.table("cotizaciones").update({"estado": req.estado}).eq("id", cotizacion_id).execute()
