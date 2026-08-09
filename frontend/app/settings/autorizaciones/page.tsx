@@ -7,7 +7,6 @@ import { authFetch } from "@/lib/authFetch";
 import { BtnPrimary, Card, TypingBubble, CascadeWrapper, SkeletonBox } from "@/components/ui";
 import { ChatBubbles, type Mensaje } from "@/components/chat/ChatBubbles";
 import { PropuestaWorkflowCard, type Propuesta } from "@/components/workflow/PropuestaWorkflowCard";
-import { WorkflowGuardadoCard } from "@/components/workflow/WorkflowGuardadoCard";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -22,8 +21,6 @@ export default function ConfiguracionAutorizacionesPage() {
   const [cargando, setCargando] = useState(false);
   const [propuesta, setPropuesta] = useState<Propuesta | null>(null);
   const [nombreWorkflow, setNombreWorkflow] = useState("Ciclo de compras");
-  const [workflowGuardado, setWorkflowGuardado] = useState<{ id: string; estado: string } | null>(null);
-  const [errores, setErrores] = useState<{ codigo: string; mensaje: string }[]>([]);
   const [creandoEnBlanco, setCreandoEnBlanco] = useState(false);
   // Emails de responsables detectados que el usuario deja marcados para
   // invitar al confirmar. Un email vacío nunca entra acá (los responsables
@@ -113,32 +110,16 @@ export default function ConfiguracionAutorizacionesPage() {
         }),
       }).then(r => r.json());
 
-      const validacion = await authFetch(`${API_URL}/api/workflows/${creado.id}/validar`).then(r => r.json());
-      setErrores(validacion.errores || []);
-      setWorkflowGuardado({ id: creado.id, estado: creado.estado });
-      setPropuesta(null);
-
-      const enviadas = (creado.invitaciones || []).filter((i: { estado: string }) => i.estado === "invitado");
-      const yaMiembro = (creado.invitaciones || []).filter((i: { estado: string }) => i.estado === "ya_miembro");
-      const errorInv = (creado.invitaciones || []).filter((i: { estado: string }) => i.estado === "error");
-      let extra = "";
-      if (enviadas.length) extra += ` Enviamos ${enviadas.length} invitación${enviadas.length === 1 ? "" : "es"} por correo.`;
-      if (yaMiembro.length) extra += ` ${yaMiembro.length} ya era miembro.`;
-      if (errorInv.length) extra += ` ${errorInv.length} invitación${errorInv.length === 1 ? "" : "es"} fallaron — revisa la lista de responsables.`;
-      setMensajes(prev => [...prev, { rol: "bot", texto: (validacion.valido
-        ? "Quedó guardado como borrador y validado correctamente."
-        : "Quedó guardado como borrador, pero hay algunos detalles que revisar antes de activarlo.") + extra }]);
+      // Sin pantalla intermedia: apenas queda guardado como borrador, se
+      // pasa directo al canvas — ahí se ve la validación real y se puede
+      // ajustar/activar. El resumen de invitaciones se resuelve solo con
+      // mirar los responsables asignados en el canvas.
+      router.push(`/settings/autorizaciones/canvas/${creado.id}`);
     } catch {
       setMensajes(prev => [...prev, { rol: "bot", texto: "No pude guardar el workflow. Intenta de nuevo." }]);
     } finally {
       setCargando(false);
     }
-  };
-
-  const modificar = () => {
-    setWorkflowGuardado(null);
-    setErrores([]);
-    setMensajes(prev => [...prev, { rol: "bot", texto: "Dale, cuéntame de nuevo cómo funciona tu proceso de compras." }]);
   };
 
   const empezarEnBlanco = async () => {
@@ -207,22 +188,13 @@ export default function ConfiguracionAutorizacionesPage() {
           />
         )}
 
-        {workflowGuardado && (
-          <WorkflowGuardadoCard
-            workflow={workflowGuardado}
-            errores={errores}
-            onAceptar={() => router.push(`/settings/autorizaciones/canvas/${workflowGuardado.id}`)}
-            onModificar={modificar}
-          />
-        )}
-
         {cargando && !propuesta && (
           <div style={{ marginLeft: 36 }}><TypingBubble icon={Bot} /></div>
         )}
         <div ref={finRef} />
       </div>
 
-      {!workflowGuardado && mensajes.length === 1 && (
+      {mensajes.length === 1 && (
         <button
           onClick={empezarEnBlanco}
           disabled={creandoEnBlanco || !userId}
@@ -235,26 +207,24 @@ export default function ConfiguracionAutorizacionesPage() {
         </button>
       )}
 
-      {!workflowGuardado && (
-        <div style={{ display: "flex", gap: 10 }}>
-          <textarea
-            value={entrada}
-            onChange={e => setEntrada(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }}
-            placeholder="Escribe acá…"
-            rows={2}
-            disabled={cargando}
-            style={{
-              flex: 1, resize: "none", background: "var(--surface)", color: "var(--n-900)",
-              border: "1px solid var(--n-300)", borderRadius: "var(--r-md)", padding: 12,
-              fontFamily: "inherit", fontSize: 14, lineHeight: 1.5, outline: "none",
-            }}
-          />
-          <BtnPrimary onClick={enviar} disabled={!entrada.trim() || cargando} style={{ alignSelf: "flex-end" }}>
-            <Send size={16} />
-          </BtnPrimary>
-        </div>
-      )}
+      <div style={{ display: "flex", gap: 10 }}>
+        <textarea
+          value={entrada}
+          onChange={e => setEntrada(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }}
+          placeholder="Escribe acá…"
+          rows={2}
+          disabled={cargando}
+          style={{
+            flex: 1, resize: "none", background: "var(--surface)", color: "var(--n-900)",
+            border: "1px solid var(--n-300)", borderRadius: "var(--r-md)", padding: 12,
+            fontFamily: "inherit", fontSize: 14, lineHeight: 1.5, outline: "none",
+          }}
+        />
+        <BtnPrimary onClick={enviar} disabled={!entrada.trim() || cargando} style={{ alignSelf: "flex-end" }}>
+          <Send size={16} />
+        </BtnPrimary>
+      </div>
     </div>
   );
 }

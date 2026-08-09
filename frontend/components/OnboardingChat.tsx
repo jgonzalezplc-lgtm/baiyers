@@ -17,7 +17,6 @@ import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
 import { camposFaltantes } from "@/lib/onboarding";
 import { PropuestaWorkflowCard, type Propuesta } from "@/components/workflow/PropuestaWorkflowCard";
-import { WorkflowGuardadoCard, type ErrorValidacion, type WorkflowGuardado } from "@/components/workflow/WorkflowGuardadoCard";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -85,8 +84,6 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   const [aInvitarWorkflow, setAInvitarWorkflow] = useState<Set<string>>(new Set());
   const [nombreWorkflow, setNombreWorkflow] = useState("Ciclo de compras");
   const [guardandoWorkflow, setGuardandoWorkflow] = useState(false);
-  const [workflowGuardado, setWorkflowGuardado] = useState<WorkflowGuardado | null>(null);
-  const [erroresWorkflow, setErroresWorkflow] = useState<ErrorValidacion[]>([]);
   const emailsVistosRef = useRef<Set<string>>(new Set());
 
   // Los responsables recién detectados quedan marcados para invitar por
@@ -284,32 +281,15 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
         }),
       }).then(r => r.json());
 
-      const validacion = await authFetch(`${API_URL}/api/workflows/${creado.id}/validar`).then(r => r.json());
-      setErroresWorkflow(validacion.errores || []);
-      setWorkflowGuardado({ id: creado.id, estado: creado.estado });
-      setPropuestaWorkflow(null);
-
-      const enviadas = (creado.invitaciones || []).filter((i: { estado: string }) => i.estado === "invitado");
-      const yaMiembro = (creado.invitaciones || []).filter((i: { estado: string }) => i.estado === "ya_miembro");
-      const errorInv = (creado.invitaciones || []).filter((i: { estado: string }) => i.estado === "error");
-      let extra = "";
-      if (enviadas.length) extra += ` Enviamos ${enviadas.length} invitación${enviadas.length === 1 ? "" : "es"} por correo.`;
-      if (yaMiembro.length) extra += ` ${yaMiembro.length} ya era miembro.`;
-      if (errorInv.length) extra += ` ${errorInv.length} invitación${errorInv.length === 1 ? "" : "es"} fallaron — revisa la lista de responsables.`;
-      addBot((validacion.valido
-        ? "Quedó guardado como borrador y validado correctamente."
-        : "Quedó guardado como borrador, pero hay algunos detalles que revisar antes de activarlo.") + extra);
+      // Sin pantalla intermedia: apenas queda guardado como borrador, se
+      // pasa directo al canvas — ahí se ve la validación real y se puede
+      // ajustar/activar (misma decisión que en /settings/autorizaciones).
+      router.push(`/settings/autorizaciones/canvas/${creado.id}`);
     } catch {
       addBot("No pude guardar el ciclo de compras. Intenta de nuevo.");
     } finally {
       setGuardandoWorkflow(false);
     }
-  };
-
-  const modificarWorkflow = () => {
-    setWorkflowGuardado(null);
-    setErroresWorkflow([]);
-    addBot("Dale, cuéntame de nuevo cómo funciona tu proceso de compra.");
   };
 
   // Confirma la sesión en el backend (perfil organizacional canónico) y
@@ -442,15 +422,6 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
               onCorregir={corregirWorkflow}
               onConfirmar={confirmarWorkflow}
               cargando={guardandoWorkflow}
-            />
-          )}
-
-          {workflowGuardado && (
-            <WorkflowGuardadoCard
-              workflow={workflowGuardado}
-              errores={erroresWorkflow}
-              onAceptar={() => router.push(`/settings/autorizaciones/canvas/${workflowGuardado.id}`)}
-              onModificar={modificarWorkflow}
             />
           )}
 
