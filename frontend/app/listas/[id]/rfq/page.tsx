@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Check, ChevronRight, Mail, Save, Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
-import { Badge, BtnPrimary, BtnSecondary, Card, CategoryChip, EmptyState, Input, PageHeader, SkeletonBox, CascadeWrapper, Textarea } from "@/components/ui";
+import { Badge, BtnPrimary, BtnSecondary, Card, EmptyState, Input, PageHeader, SkeletonBox, CascadeWrapper, Textarea } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -127,11 +127,30 @@ export default function RevisarRFQPage() {
     {batches.length === 0 ? <Card><EmptyState icon={Mail} title="No hay correos preparados" description="Vuelve a la matriz, selecciona al menos un proveedor y prepara los borradores." /></Card> : <>
       <Card style={{ marginBottom: 16 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}><div><strong style={{ color: "var(--n-900)" }}>{batches.length} correos agrupados</strong><div style={{ color: "var(--n-500)", fontSize: 12.5, marginTop: 3 }}>{enviados} enviados · {batches.length - enviados} pendientes</div></div><div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}><Badge status={enviados === batches.length ? "aprobada" : "cotizando"}>{enviados === batches.length ? "Completado" : "En revisión"}</Badge>{enviados > 0 && <BtnPrimary onClick={() => router.push(`/listas/${id}`)}>Ir al comparador</BtnPrimary>}<BtnSecondary onClick={() => router.push(`/listas/${id}/busqueda-complementaria`)}>Búsqueda complementaria</BtnSecondary><BtnSecondary icon={Save} disabled={!pendientes.length || accionMasiva !== null} onClick={() => void guardarTodos()}>{accionMasiva === "guardar" ? "Guardando…" : `Guardar todos (${pendientes.length})`}</BtnSecondary><BtnPrimary icon={Send} disabled={!pendientes.length || accionMasiva !== null} onClick={() => void enviarTodos()}>{accionMasiva === "enviar" ? "Enviando…" : `Enviar todos (${pendientes.length})`}</BtnPrimary></div></div></Card>
       <div style={{ display: "grid", gap: 10 }}>{batches.map(batch => { const bloqueado = ["sent", "sending", "delivery_uncertain"].includes(batch.estado); const abierto = abiertos.has(batch.id); return <Card key={batch.id} padding={0}>
-        <button type="button" aria-expanded={abierto} onClick={() => alternarAbierto(batch.id)} style={{ width: "100%", border: "none", background: "transparent", padding: "14px 16px", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-sans)" }}><div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}><ChevronRight size={17} style={{ flexShrink: 0, color: "var(--n-400)", transform: abierto ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .3s cubic-bezier(.4,0,.2,1)" }} /><div><h2 style={{ margin: 0, fontSize: 16, color: "var(--n-900)" }}>{batch.proveedor.nombre || "Proveedor"}</h2><div style={{ color: "var(--n-500)", fontSize: 12.5, marginTop: 3 }}>Score {batch.proveedor.score ?? "—"} · {batch.items.length} ítem(s)</div></div></div><Badge status={batch.estado === "sent" ? "aprobada" : batch.estado === "delivery_uncertain" ? "rechazada" : "cotizando"}>{batch.estado.replaceAll("_", " ")}</Badge></button>
+        <button type="button" aria-expanded={abierto} onClick={() => alternarAbierto(batch.id)} style={{ width: "100%", border: "none", background: "transparent", padding: "14px 16px", display: "flex", justifyContent: "space-between", gap: 14, alignItems: "center", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-sans)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0, flex: 1, flexWrap: "wrap" }}>
+            <ChevronRight size={17} style={{ flexShrink: 0, color: "var(--n-400)", transform: abierto ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .3s cubic-bezier(.4,0,.2,1)" }} />
+            <div style={{ minWidth: 180, marginRight: 4 }}>
+              <h2 style={{ margin: 0, fontSize: 16, color: "var(--n-900)" }}>{batch.proveedor.nombre || "Proveedor"}</h2>
+              <div style={{ color: "var(--n-500)", fontSize: 12.5, marginTop: 3 }}>Score {batch.proveedor.score ?? "—"} · {batch.items.length} ítem(s)</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0, flex: 1 }}>
+              {batch.items.map(it => <span key={it.id} title={`${it.nombre} · ${Number(it.cantidad).toLocaleString("es-CL")} ${it.unidad}`} style={{
+                display: "inline-flex", alignItems: "center", gap: 5,
+                maxWidth: 260, padding: "4px 8px", border: "1px solid var(--n-200)",
+                borderRadius: "var(--r-sm)", background: "var(--surface-2)",
+                color: "var(--n-700)", fontSize: 11.5, lineHeight: 1.2,
+              }}>
+                <strong style={{ color: "var(--n-900)", whiteSpace: "nowrap" }}>{Number(it.cantidad).toLocaleString("es-CL")} {it.unidad}</strong>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.nombre}</span>
+              </span>)}
+            </div>
+          </div>
+          <Badge status={batch.estado === "sent" ? "aprobada" : batch.estado === "delivery_uncertain" ? "rechazada" : "cotizando"}>{batch.estado.replaceAll("_", " ")}</Badge>
+        </button>
         <div className={`acc-panel${abierto ? " open" : ""}`}><div className="acc-inner"><div style={{ padding: "0 16px 16px", borderTop: "1px solid var(--n-200)" }}>
         {batch.estado === "delivery_uncertain" && <div style={{ display: "flex", gap: 8, padding: 10, marginBottom: 12, borderRadius: "var(--r-md)", background: "var(--st-rechazada-bg)", color: "var(--danger)", fontSize: 12.5 }}><AlertTriangle size={17} /> Revisa la carpeta Enviados de Gmail antes de hacer cualquier reintento. {batch.error_detalle}</div>}
         <div style={{ display: "grid", gap: 11, paddingTop: 14 }}><Input label="Destinatario" type="email" disabled={bloqueado} value={batch.destinatario_email} onChange={e => editarLocal(batch.id, "destinatario_email", e.target.value)} /><Input label="Asunto" disabled={bloqueado} value={batch.subject} onChange={e => editarLocal(batch.id, "subject", e.target.value)} /><Textarea label="Cuerpo del correo" rows={10} value={batch.body} onChange={e => { if (!bloqueado) editarLocal(batch.id, "body", e.target.value); }} style={bloqueado ? { opacity: .65, pointerEvents: "none" } : undefined} /></div>
-        <div style={{ marginTop: 14, padding: 12, borderRadius: "var(--r-md)", background: "var(--surface-2)" }}><div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-700)", marginBottom: 8 }}>Ítems incluidos</div>{batch.items.map(it => <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", color: "var(--n-800)", fontSize: 13 }}><CategoryChip categoria={it.categoria} size={28} /><span style={{ flex: 1 }}>{it.nombre}</span><span>{Number(it.cantidad).toLocaleString("es-CL")} {it.unidad}</span></div>)}</div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>{!bloqueado && <BtnSecondary disabled={ocupado === batch.id} onClick={() => void guardar(batch)}>Guardar borrador</BtnSecondary>}<BtnPrimary icon={batch.estado === "sent" ? Check : Send} disabled={bloqueado || ocupado === batch.id} onClick={() => void enviar(batch)}>{batch.estado === "sent" ? "Enviado" : ocupado === batch.id ? "Enviando…" : "Enviar por Gmail"}</BtnPrimary></div>
         </div></div></div>
       </Card>; })}</div>
