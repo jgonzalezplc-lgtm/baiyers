@@ -211,6 +211,7 @@ Filas:
                     user_id, proveedor_id, "manual_category_assigned",
                     categoria_confirmada=categoria,
                     metadata={"origen": "excel"},
+                    estricto=True,
                 )
 
             if es_nuevo:

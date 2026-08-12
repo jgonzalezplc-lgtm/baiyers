@@ -75,6 +75,7 @@ def registrar_evento(
     categoria_confirmada: Optional[str] = None,
     concepto_normalizado: str = "",
     metadata: Optional[dict] = None,
+    estricto: bool = False,
 ) -> Optional[dict]:
     """Registra un evento de evidencia y recalcula la capacidad afectada.
     Idempotente: si el mismo evento (misma ancla + tipo + categoría) ya se
@@ -117,6 +118,8 @@ def registrar_evento(
             pass
         else:
             print(f"[SupplierCapability] Error registrando evento: {e}")
+            if estricto:
+                raise
             return None
 
     if not categoria:

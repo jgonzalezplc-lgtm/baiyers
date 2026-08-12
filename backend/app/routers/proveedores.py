@@ -189,6 +189,7 @@ async def crear_proveedor(req: CrearProveedorRequest, ctx: AuthContext = Depends
         registrar_evento(
             ctx.actor_user_id, proveedor_id, "manual_category_assigned",
             categoria_confirmada=categoria,
+            estricto=True,
         )
 
     return sb.table("proveedores").select("*").eq("id", proveedor_id).single().execute().data
@@ -276,7 +277,10 @@ async def confirmar_categorias(proveedor_id: str, req: ConfirmarCategoriasReques
     if not categorias:
         raise HTTPException(status_code=400, detail="Ninguna categoría válida")
 
-    resultado = [registrar_evento(ctx.actor_user_id, proveedor_id, "manual_category_assigned", categoria_confirmada=c) for c in categorias]
+    resultado = [registrar_evento(
+        ctx.actor_user_id, proveedor_id, "manual_category_assigned",
+        categoria_confirmada=c, estricto=True,
+    ) for c in categorias]
     return {"capacidades": resultado}
 
 
