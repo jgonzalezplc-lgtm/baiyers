@@ -148,6 +148,22 @@ function categoriaItem(categoria: string | null | undefined) {
   };
 }
 
+function urlBusquedaProducto(item: ItemLista, proveedor: ProveedorRecomendado) {
+  const productoMatch = proveedor.match_label.startsWith("Match por producto:")
+    ? proveedor.match_label.replace("Match por producto:", "").trim()
+    : "";
+  let dominio = "";
+  try {
+    dominio = proveedor.sitio_web ? new URL(proveedor.sitio_web).hostname.replace(/^www\./, "") : "";
+  } catch { /* el sitio es contexto opcional */ }
+  const consulta = [
+    dominio ? `site:${dominio}` : proveedor.nombre,
+    `"${productoMatch || item.nombre}"`,
+    productoMatch && productoMatch.toLowerCase() !== item.nombre.toLowerCase() ? item.nombre : "",
+  ].filter(Boolean).join(" ");
+  return `https://www.google.com/search?q=${encodeURIComponent(consulta)}`;
+}
+
 export default function ListaDetallePage() {
   const { id: idUrl } = useParams<{ id: string }>();
   const router = useRouter();
@@ -829,13 +845,17 @@ export default function ListaDetallePage() {
                   <div className={`acc-panel${grupoAbierto ? " open" : ""}`}>
                     <div className="acc-inner">
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                        {proveedores.map(proveedor => {
+                    {proveedores.map(proveedor => {
                       const clave = `${it.cotizacion_id}:${proveedor.id}`;
                       const detalleAbierto = proveedoresAbiertos.has(clave);
+                      const matchPorProducto = proveedor.match_label.startsWith("Match por producto:");
                       return <div key={proveedor.id} style={{
-                        border: `1px solid ${proveedor.seleccionado ? "var(--brand)" : "var(--n-200)"}`,
-                        borderRadius: "var(--r-md)", background: proveedor.seleccionado ? "var(--brand-50)" : "var(--canvas)",
+                        border: `1px solid ${proveedor.seleccionado ? "var(--brand)" : matchPorProducto ? "var(--success)" : "var(--n-200)"}`,
+                        borderRadius: "var(--r-md)",
+                        background: proveedor.seleccionado ? "var(--brand-50)" : matchPorProducto ? "var(--st-aprobada-bg)" : "var(--canvas)",
+                        boxShadow: matchPorProducto ? "0 0 0 1px color-mix(in srgb, var(--success) 22%, transparent), 0 0 18px color-mix(in srgb, var(--success) 22%, transparent)" : undefined,
                         minWidth: 280, flex: "1 1 320px", maxWidth: 460,
+                        transition: "border-color .2s ease, box-shadow .2s ease, background .2s ease",
                       }}>
                         <div
                           role="button" tabIndex={0} aria-expanded={detalleAbierto}
@@ -853,12 +873,29 @@ export default function ListaDetallePage() {
                               <Mail size={12} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{proveedor.email || "Sin correo"}</span>
                             </div>
                           </div>
-                          <button onClick={e => { e.stopPropagation(); void alternarProveedor(it, proveedor); }} disabled={guardandoProveedor === clave || !proveedor.email} style={{
-                            border: `1px solid ${proveedor.seleccionado ? "var(--brand)" : "var(--n-300)"}`,
-                            background: proveedor.seleccionado ? "var(--brand)" : "var(--surface)",
-                            color: proveedor.seleccionado ? "white" : "var(--brand)", borderRadius: "var(--r-md)",
-                            padding: "6px 9px", fontSize: 12, fontWeight: 600, cursor: proveedor.email ? "pointer" : "not-allowed",
-                          }}>{proveedor.seleccionado ? "Seleccionado" : "Agregar"}</button>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                            {matchPorProducto && <a
+                              href={urlBusquedaProducto(it, proveedor)}
+                              target="_blank" rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              title={`Buscar ${it.nombre} en el sitio de ${proveedor.nombre}`}
+                              style={{
+                                display: "inline-flex", alignItems: "center", gap: 5,
+                                border: "1px solid var(--success)", background: "var(--surface)",
+                                color: "var(--success)", borderRadius: "var(--r-md)",
+                                padding: "6px 9px", fontSize: 12, fontWeight: 600,
+                                textDecoration: "none",
+                              }}
+                            >
+                              Ver <ExternalLink size={12} strokeWidth={2} />
+                            </a>}
+                            <button onClick={e => { e.stopPropagation(); void alternarProveedor(it, proveedor); }} disabled={guardandoProveedor === clave || !proveedor.email} style={{
+                              border: `1px solid ${proveedor.seleccionado ? "var(--brand)" : "var(--n-300)"}`,
+                              background: proveedor.seleccionado ? "var(--brand)" : "var(--surface)",
+                              color: proveedor.seleccionado ? "white" : "var(--brand)", borderRadius: "var(--r-md)",
+                              padding: "6px 9px", fontSize: 12, fontWeight: 600, cursor: proveedor.email ? "pointer" : "not-allowed",
+                            }}>{proveedor.seleccionado ? "Seleccionado" : "Agregar"}</button>
+                          </div>
                         </div>
                         <div className={`acc-panel${detalleAbierto ? " open" : ""}`}>
                           <div className="acc-inner">
