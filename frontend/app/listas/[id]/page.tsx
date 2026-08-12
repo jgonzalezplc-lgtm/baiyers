@@ -160,6 +160,7 @@ export default function ListaDetallePage() {
   const [guardandoDef, setGuardandoDef] = useState<string | null>(null);
   const [guardandoProveedor, setGuardandoProveedor] = useState<string | null>(null);
   const [sugeridosAbiertos, setSugeridosAbiertos] = useState<Set<string>>(new Set());
+  const [empresaAbiertos, setEmpresaAbiertos] = useState<Set<string>>(new Set());
   const [proveedoresAbiertos, setProveedoresAbiertos] = useState<Set<string>>(new Set());
   const [preparandoComparacion, setPreparandoComparacion] = useState(false);
   const [justificaciones, setJustificaciones] = useState<Record<string, string>>({});
@@ -181,6 +182,15 @@ export default function ListaDetallePage() {
 
   const alternarSugeridos = (cotizacionId: string) => {
     setSugeridosAbiertos(actual => {
+      const siguiente = new Set(actual);
+      if (siguiente.has(cotizacionId)) siguiente.delete(cotizacionId);
+      else siguiente.add(cotizacionId);
+      return siguiente;
+    });
+  };
+
+  const alternarProveedoresEmpresa = (cotizacionId: string) => {
+    setEmpresaAbiertos(actual => {
       const siguiente = new Set(actual);
       if (siguiente.has(cotizacionId)) siguiente.delete(cotizacionId);
       else siguiente.add(cotizacionId);
@@ -797,35 +807,31 @@ export default function ListaDetallePage() {
                   .sort((a, b) => (b.match_score ?? 0) - (a.match_score ?? 0));
                 if (!proveedores.length) return null;
                 const esSugerido = origen === "sugerido";
-                const grupoAbierto = !esSugerido || sugeridosAbiertos.has(it.cotizacion_id);
+                const grupoAbierto = esSugerido
+                  ? sugeridosAbiertos.has(it.cotizacion_id)
+                  : empresaAbiertos.has(it.cotizacion_id);
                 return <div key={origen} style={{ marginBottom: origen === "proveedor" ? 14 : 0 }}>
-                  {esSugerido ? (
-                    <button
-                      type="button"
-                      aria-expanded={grupoAbierto}
-                      onClick={() => alternarSugeridos(it.cotizacion_id)}
-                      style={{
-                        width: "100%", display: "flex", alignItems: "center", gap: 7,
-                        border: "none", background: "transparent", padding: "3px 0 8px",
-                        color: "var(--n-700)", cursor: "pointer", textAlign: "left",
-                        fontFamily: "var(--font-sans)", fontSize: 12, fontWeight: 600,
-                        textTransform: "uppercase", letterSpacing: ".04em",
-                      }}
-                    >
-                      <ChevronRight size={15} strokeWidth={2} style={{
-                        flexShrink: 0, transition: "transform .3s cubic-bezier(.4,0,.2,1)",
-                        transform: grupoAbierto ? "rotate(90deg)" : "rotate(0deg)",
-                      }} />
-                      Sugeridos por Baiyer
-                      <span style={{ color: "var(--n-400)", fontWeight: 500, letterSpacing: 0, textTransform: "none" }}>
-                        ({proveedores.length})
-                      </span>
-                    </button>
-                  ) : (
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 7, textTransform: "uppercase", letterSpacing: ".04em" }}>
-                      Proveedores de tu empresa
-                    </div>
-                  )}
+                  <button
+                    type="button"
+                    aria-expanded={grupoAbierto}
+                    onClick={() => esSugerido ? alternarSugeridos(it.cotizacion_id) : alternarProveedoresEmpresa(it.cotizacion_id)}
+                    style={{
+                      width: "100%", display: "flex", alignItems: "center", gap: 7,
+                      border: "none", background: "transparent", padding: "3px 0 8px",
+                      color: "var(--n-700)", cursor: "pointer", textAlign: "left",
+                      fontFamily: "var(--font-sans)", fontSize: 12, fontWeight: 600,
+                      textTransform: "uppercase", letterSpacing: ".04em",
+                    }}
+                  >
+                    <ChevronRight size={15} strokeWidth={2} style={{
+                      flexShrink: 0, transition: "transform .3s cubic-bezier(.4,0,.2,1)",
+                      transform: grupoAbierto ? "rotate(90deg)" : "rotate(0deg)",
+                    }} />
+                    {esSugerido ? "Sugeridos por Baiyer" : "Proveedores de tu empresa"}
+                    <span style={{ color: "var(--n-400)", fontWeight: 500, letterSpacing: 0, textTransform: "none" }}>
+                      ({proveedores.length})
+                    </span>
+                  </button>
                   <div className={`acc-panel${grupoAbierto ? " open" : ""}`}>
                     <div className="acc-inner">
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>

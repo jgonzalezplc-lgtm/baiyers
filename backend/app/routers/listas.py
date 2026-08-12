@@ -294,7 +294,8 @@ async def detalle_lista(lista_id: str, ctx: AuthContext = Depends(get_auth_conte
                 "id": proveedor["proveedor_id"], "nombre": proveedor["nombre"],
                 "email": (proveedor.get("contacto") or {}).get("email"),
                 "sitio_web": None, "telefono": None, "origen": "proveedor",
-                "origen_label": "Proveedor de tu empresa", "match_label": "Match por historial",
+                "origen_label": "Proveedor de tu empresa", "match_label": "Match por categoría",
+                "match_score": round(float(candidato.get("ranking") or 0) * 100, 2),
             })
     from app.services.proveedores_sugeridos import sugeridos_para_categoria
     categorias_por_item = {it["cotizacion_id"]: it.get("categoria") for it in matriz_privada["items"]}

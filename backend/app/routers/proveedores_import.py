@@ -37,6 +37,35 @@ def _tiene_columnas_reconocidas(columnas) -> bool:
     }))
 
 
+# Inverso del mapeo usado por el banco sugerido: una categoría comercial del
+# proveedor puede abastecer varias categorías técnicas de ítems.
+CATEGORIAS_PROVEEDOR_A_ITEMS: dict[str, set[str]] = {
+    "electronico": {"electronica", "neumatico"},
+    "electronica": {"electronica", "neumatico"},
+    "electrico": {"electrico"},
+    "construccion": {"construccion", "tuberias_valvulas"},
+    "madera": {"carpinteria"},
+    "carpinteria": {"carpinteria"},
+    "mecanico": {"mecanico", "industrial", "hidraulico", "neumatico", "tuberias_valvulas"},
+    "ferreteria": {"mecanico", "industrial", "consumible"},
+    "retail": {"consumible"},
+}
+
+
+def _categorias_items(valor) -> set[str]:
+    if not valor:
+        return set()
+    if isinstance(valor, list):
+        partes = valor
+    else:
+        partes = str(valor).replace(";", ",").replace("|", ",").split(",")
+    salida: set[str] = set()
+    for parte in partes:
+        categoria = str(parte).lower().strip().replace(" ", "_")
+        salida.update(CATEGORIAS_PROVEEDOR_A_ITEMS.get(categoria, {categoria} if categoria else set()))
+    return salida
+
+
 @router.get("/plantilla")
 async def descargar_plantilla():
     """Retorna plantilla Excel con el formato sugerido."""
@@ -133,6 +162,7 @@ Filas:
         proveedores_norm = [_mapear_fila(fila) for fila in filas]
 
     from app.services.proveedores_matching import resolver_o_crear_proveedor, resolver_o_crear_contacto, normalizar_rut
+    from app.services.supplier_capability_intelligence import registrar_evento
 
     sb = get_supabase()
     importados = 0
@@ -172,6 +202,16 @@ Filas:
             contacto_email = (p.get("contacto_email") or "").strip()
             if contacto_email:
                 resolver_o_crear_contacto(sb, user_id, proveedor_id, contacto_email, nombre=p.get("contacto_nombre"), origen="excel")
+
+            # La categoría declarada en el Excel es evidencia explícita del
+            # usuario. Se registra en el motor canónico y queda idempotente:
+            # reimportar actualiza al proveedor sin duplicar capacidades.
+            for categoria in _categorias_items(p.get("categoria")):
+                registrar_evento(
+                    user_id, proveedor_id, "manual_category_assigned",
+                    categoria_confirmada=categoria,
+                    metadata={"origen": "excel"},
+                )
 
             if es_nuevo:
                 importados += 1
