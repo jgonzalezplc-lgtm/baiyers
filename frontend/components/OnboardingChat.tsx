@@ -8,14 +8,25 @@
  * verdad de la conversación vive en `onboarding_sessions`, no en este
  * componente, así que se puede recargar la página sin perder el progreso.
  *
+ * Una vez que el perfil queda completo, la MISMA conversación pasa a una
+ * segunda fase — configurar el proceso de compras — con exactamente la
+ * misma mecánica que usa `/settings/autorizaciones` (POST
+ * /api/workflows/interpretar + PropuestaWorkflowCard), en vez de mezclar la
+ * extracción de perfil y de proceso en una sola cosa. Mismos componentes
+ * visuales (ChatBubbles, TypingBubble) en los tres chats de Baiyer
+ * (onboarding, configuración de autorizaciones, correcciones del canvas).
+ *
  * Se usa tanto en /onboarding (página completa, primera vez) como flotando
  * sobre el dashboard (OnboardingFloating) para retomar sólo lo que falte.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Bot, Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
 import { camposFaltantes } from "@/lib/onboarding";
+import { BtnPrimary, BtnGhost, TypingBubble } from "@/components/ui";
+import { ChatBubbles, type Mensaje } from "@/components/chat/ChatBubbles";
 import { PropuestaWorkflowCard, type Propuesta } from "@/components/workflow/PropuestaWorkflowCard";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -47,6 +58,12 @@ type Draft = Record<string, DraftCampo>;
 type Rol = "bot" | "user";
 interface Msg { rol: Rol; texto?: string; card?: Investigacion; }
 
+/** perfil: preguntas de empresa/RUT/nombre. transicion: perfil ya
+ * confirmado, esperando que el usuario decida si configura el proceso de
+ * compras ahora. proceso: misma conversación, ahora hablando de ETAPAS del
+ * proceso de compras (idéntico a /settings/autorizaciones). */
+type Fase = "perfil" | "transicion" | "proceso";
+
 interface Props {
   /** Estilo compacto para panel flotante (sin header de página completa). */
   floating?: boolean;
@@ -67,6 +84,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [draft, setDraft] = useState<Draft>({});
   const [completo, setCompleto] = useState(false);
+  const [fase, setFase] = useState<Fase>("perfil");
   const [propuestaWorkflow, setPropuestaWorkflow] = useState<Propuesta | null>(null);
   const [cargandoInicial, setCargandoInicial] = useState(true);
   const [input, setInput] = useState("");
@@ -78,13 +96,17 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   const [logoUrlFinal, setLogoUrlFinal] = useState<string | null>(null);
   const [logoOcupado, setLogoOcupado] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const userIdRef = useRef<string | null>(null);
 
-  // Ciclo de compras (Fase 3): mismo mecanismo real que /settings/autorizaciones,
-  // no una preview — crea el workflow, invita responsables y permite activarlo.
+  // Ciclo de compras: mismo mecanismo real que /settings/autorizaciones, no
+  // una preview — crea el workflow, invita responsables y permite activarlo.
   const [aInvitarWorkflow, setAInvitarWorkflow] = useState<Set<string>>(new Set());
   const [nombreWorkflow, setNombreWorkflow] = useState("Ciclo de compras");
   const [guardandoWorkflow, setGuardandoWorkflow] = useState(false);
   const emailsVistosRef = useRef<Set<string>>(new Set());
+  // Contexto de la fase "proceso" — solo los turnos de esa fase, no arrastra
+  // las preguntas de perfil (empresa/RUT/nombre) como contexto ruidoso.
+  const procesoDesdeRef = useRef(0);
 
   const omitirPorAhora = () => {
     if (onSkip) {
@@ -135,6 +157,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     createClient().auth.getUser().then(async ({ data }) => {
       const u = data.user;
       if (!u) { if (!floating) router.replace("/login"); return; }
+      userIdRef.current = u.id;
       const m = (u.user_metadata ?? {}) as Record<string, unknown>;
       const faltan = camposFaltantes(m);
 
@@ -175,7 +198,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
         await espera(300);
         addBot(undefined, d);
         await espera(200);
-        addBot("¿Es tu empresa? Cuéntame lo que haga falta corregir, o dime de una vez tu RUT, tu nombre y cómo funciona la compra en tu empresa — todo junto si quieres.");
+        addBot("¿Es tu empresa? Cuéntame lo que haga falta corregir, o dime de una vez tu RUT, tu nombre y cómo te llamas — todo junto si quieres.");
       } else {
         await espera(300);
         addBot("No reconocí tu empresa automáticamente. Cuéntame su nombre, tu RUT y cómo te llamas — puedes darlo todo en un solo mensaje.");
@@ -185,7 +208,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [investigar, router, floating]);
 
-  const enviar = async () => {
+  const enviarPerfil = async () => {
     const mensaje = input.trim();
     if (!mensaje || !sessionId || busy) return;
     setInput("");
@@ -227,6 +250,49 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
       setBusy(false);
     }
   };
+
+  // Fase "proceso": misma llamada, mismo endpoint y mismos mensajes de error
+  // que usa /settings/autorizaciones — la diferencia es que acá se sigue
+  // agregando a la MISMA lista de mensajes de la conversación, en vez de un
+  // hilo separado.
+  const contextoProceso = () =>
+    msgs.slice(procesoDesdeRef.current).map(m => `${m.rol === "bot" ? "ASISTENTE" : "USUARIO"}: ${m.texto ?? ""}`).join("\n");
+
+  const enviarProceso = async () => {
+    const mensaje = input.trim();
+    if (!mensaje || busy) return;
+    setInput("");
+    addUser(mensaje);
+    setBusy(true);
+    setPropuestaWorkflow(null);
+    try {
+      const res = await fetch(`${API_URL}/api/workflows/interpretar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ descripcion: mensaje, contexto: contextoProceso() }),
+        signal: AbortSignal.timeout(40000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: Propuesta = await res.json();
+      if (data.requiere_aclaracion) {
+        const pregunta = data.preguntas?.length ? data.preguntas.join(" ") : "¿Puedes darme un poco más de detalle?";
+        addBot(pregunta);
+      } else {
+        addBot(data.resumen || "Esto es lo que entendí:");
+        setPropuestaWorkflow(data);
+        setAInvitarWorkflow(new Set((data.responsables_detectados || []).filter(r => r.email).map(r => r.email)));
+      }
+    } catch (error) {
+      const timeout = error instanceof DOMException && error.name === "TimeoutError";
+      addBot(timeout
+        ? "Está tardando más de lo esperado. No guardé nada; prueba nuevamente o ármalo visualmente desde Configuración."
+        : "Tuve un problema interpretando eso. No guardé nada; puedes intentarlo de nuevo.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const enviar = () => (fase === "proceso" ? enviarProceso() : enviarPerfil());
 
   const usarLogoCandidato = async () => {
     if (!investigacion?.logo_candidatos?.[logoIdx] || logoOcupado) return;
@@ -303,6 +369,38 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     }
   };
 
+  const irAlPanel = () => {
+    if (floating) { onDone?.(); return; }
+    router.replace("/dashboard");
+  };
+
+  const empezarProceso = () => {
+    setFase("proceso");
+    procesoDesdeRef.current = msgs.length + 1;
+    addBot("Cuéntame cómo funciona hoy tu proceso de compras. Puede ser informal — por ejemplo: \"Los cotizadores preparan la comparación, después la revisa mi jefe, y si es sobre $500.000 también tiene que aprobar finanzas.\"");
+  };
+
+  const ofrecerConfigurarProceso = async () => {
+    // Si ya existe un ciclo de compras, no tiene sentido ofrecer crear otro
+    // — eso es justo lo que generaba ciclos duplicados. Se salta directo a
+    // "listo, ve a Configuración a revisarlo" y termina el onboarding.
+    let tieneWorkflow = false;
+    if (userIdRef.current) {
+      try {
+        const lista = await fetch(`${API_URL}/api/workflows?user_id=${userIdRef.current}`).then(r => r.json());
+        tieneWorkflow = Array.isArray(lista) && lista.length > 0;
+      } catch { /* si falla el chequeo, se asume que no tiene y se ofrece igual */ }
+    }
+    if (tieneWorkflow) {
+      addBot("Veo que ya tienes un ciclo de compras configurado — puedes revisarlo o ajustarlo cuando quieras desde Configuración.");
+      setFase("proceso");
+      irAlPanel();
+      return;
+    }
+    setFase("transicion");
+    addBot("¿Pasamos a configurar el proceso de compras? Te sirve para automatizar quién autoriza cada compra.");
+  };
+
   // Confirma la sesión en el backend (perfil organizacional canónico) y
   // además hace backfill de user_metadata para no romper el resto de la app
   // que hoy lee empresa/rut/nombre_usuario/proceso_compra desde ahí.
@@ -356,53 +454,35 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
 
       addBot(`¡Listo, ${draft.nombre_usuario?.valor || ""}! Configuré tu cuenta de ${draft.empresa?.valor || "tu empresa"}.`);
       router.refresh();
-      if (floating) { onDone?.(); return; }
-      await espera(600);
-      router.replace("/dashboard");
+      setFinalizando(false);
+      await espera(400);
+      await ofrecerConfigurarProceso();
     } catch (e) {
       addBot(`Hubo un problema guardando tu configuración: ${(e as Error).message || "error desconocido"}. Puedes completarlo luego en Configuración.`);
       setFinalizando(false);
     }
   };
 
+  const entradaDeshabilitada = cargandoInicial || busy || (fase === "perfil" && completo) || fase === "transicion";
+
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: floating ? "16px 14px" : "28px 16px", minHeight: 0 }}>
         <div style={{ maxWidth: floating ? "100%" : 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
-          {msgs.map((m, i) => (
-            <div key={i} style={{ display: "flex", gap: 10, justifyContent: m.rol === "user" ? "flex-end" : "flex-start", alignItems: "flex-start" }}>
-              {m.rol === "bot" && (
-                <span style={{
-                  width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-                  background: "var(--brand-50)", color: "var(--brand)",
-                  display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 14, fontWeight: 700, marginTop: 2,
-                }}>B</span>
-              )}
-              <div style={{
-                maxWidth: "78%",
-                background: m.rol === "user" ? "var(--brand)" : "var(--surface)",
-                color: m.rol === "user" ? "#fff" : "var(--n-900)",
-                border: m.rol === "user" ? "none" : "1px solid var(--n-200)",
-                borderRadius: m.rol === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
-                boxShadow: m.rol === "bot" ? "var(--shadow-card)" : "none",
-                padding: m.card ? 16 : "10px 14px",
-                fontSize: 14, lineHeight: 1.55,
-              }}>
-                {m.texto}
-                {m.card && (
-                  <EmpresaCard
-                    d={m.card} logoIdx={logoIdx} logoUrlFinal={logoUrlFinal} logoOcupado={logoOcupado}
-                    onLogoError={() => setLogoIdx(x => x + 1)}
-                    onUsarLogo={usarLogoCandidato}
-                    onSubirArchivo={() => fileInputRef.current?.click()}
-                  />
-                )}
-              </div>
-            </div>
-          ))}
+          <ChatBubbles mensajes={msgs.map((m): Mensaje => ({
+            rol: m.rol,
+            texto: m.texto,
+            extra: m.card ? (
+              <EmpresaCard
+                d={m.card} logoIdx={logoIdx} logoUrlFinal={logoUrlFinal} logoOcupado={logoOcupado}
+                onLogoError={() => setLogoIdx(x => x + 1)}
+                onUsarLogo={usarLogoCandidato}
+                onSubirArchivo={() => fileInputRef.current?.click()}
+              />
+            ) : undefined,
+          }))} />
 
-          {Object.keys(draft).length > 0 && (
+          {Object.keys(draft).length > 0 && fase === "perfil" && (
             <div style={{ marginLeft: 36, display: "flex", flexWrap: "wrap", gap: 6 }}>
               {Object.entries(draft).filter(([campo]) => ETIQUETAS_CAMPO[campo]).map(([campo, entrada]) => (
                 <span key={campo} style={{
@@ -436,15 +516,22 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
             />
           )}
 
-          {completo && (
+          {fase === "perfil" && completo && (
             <div style={{ marginLeft: 36 }}>
-              <button onClick={confirmarYGuardar} disabled={finalizando} className="btn-swiss-primary">
+              <BtnPrimary onClick={confirmarYGuardar} disabled={finalizando}>
                 {finalizando ? "Guardando…" : "Confirmar y continuar"}
-              </button>
+              </BtnPrimary>
             </div>
           )}
 
-          {(cargandoInicial || busy) && <TypingDots />}
+          {fase === "transicion" && (
+            <div style={{ marginLeft: 36, display: "flex", gap: 8 }}>
+              <BtnPrimary onClick={empezarProceso} size="sm">Sí, configurémoslo</BtnPrimary>
+              <BtnGhost onClick={irAlPanel} size="sm">Ahora no</BtnGhost>
+            </div>
+          )}
+
+          {(cargandoInicial || busy) && <TypingBubble icon={Bot} />}
         </div>
       </div>
 
@@ -454,24 +541,26 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
       />
 
       <div style={{ borderTop: "1px solid var(--n-200)", padding: floating ? "10px 12px" : "14px 16px", background: "var(--surface)", flexShrink: 0 }}>
-        <div style={{ maxWidth: floating ? "100%" : 640, margin: "0 auto", display: "flex", gap: 8, alignItems: "center", flexWrap: floating ? "wrap" : "nowrap" }}>
-          <input
+        <div style={{ maxWidth: floating ? "100%" : 640, margin: "0 auto", display: "flex", gap: 8, alignItems: "flex-end", flexWrap: floating ? "wrap" : "nowrap" }}>
+          <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && !busy) enviar(); }}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !busy) { e.preventDefault(); enviar(); } }}
             placeholder="Escribe lo que quieras contarme…"
+            rows={2}
             autoFocus
-            disabled={cargandoInicial || completo}
+            disabled={entradaDeshabilitada}
             style={{
-              flex: 1, minWidth: floating ? 120 : undefined, background: "var(--canvas)",
+              flex: 1, minWidth: floating ? 120 : undefined, resize: "none",
+              background: "var(--canvas)", color: "var(--n-900)",
               border: "1px solid var(--n-300)", borderRadius: "var(--r-md)",
-              padding: "10px 14px", fontSize: 14, color: "var(--n-900)", fontFamily: "var(--font-sans)", outline: "none",
+              padding: "10px 14px", fontFamily: "inherit", fontSize: 14, lineHeight: 1.5, outline: "none",
             }}
           />
-          <button onClick={enviar} disabled={busy || cargandoInicial || completo || !input.trim()} className="btn-swiss-primary" style={{ whiteSpace: "nowrap" }}>
-            {busy ? "…" : "Enviar"}
-          </button>
-          {!completo && (
+          <BtnPrimary onClick={enviar} disabled={busy || entradaDeshabilitada || !input.trim()}>
+            <Send size={16} />
+          </BtnPrimary>
+          {fase === "perfil" && !completo && (
             <button onClick={omitirPorAhora} style={{ fontSize: 12.5, color: "var(--n-500)", background: "none", border: "none", cursor: "pointer", padding: "4px 2px", textDecoration: "underline", whiteSpace: "nowrap" }}>
               Omitir por ahora
             </button>
@@ -523,28 +612,6 @@ function EmpresaCard({ d, logoIdx, logoUrlFinal, logoOcupado, onLogoError, onUsa
           </button>
         </div>
       )}
-    </div>
-  );
-}
-
-function TypingDots() {
-  return (
-    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-      <span style={{
-        width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-        background: "var(--brand-50)", color: "var(--brand)",
-        display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700,
-      }}>B</span>
-      <div style={{
-        background: "var(--surface)", border: "1px solid var(--n-200)",
-        borderRadius: "16px 16px 16px 4px", padding: "12px 16px",
-        display: "flex", gap: 5, alignItems: "center", boxShadow: "var(--shadow-card)",
-      }}>
-        {[0, 1, 2].map(i => (
-          <span key={i} style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--n-400)", animation: `pulseDot 1.2s ease-in-out ${i * 0.15}s infinite` }} />
-        ))}
-        <style>{`@keyframes pulseDot { 0%,60%,100% { opacity:.3; transform: scale(.85) } 30% { opacity:1; transform: scale(1) } }`}</style>
-      </div>
     </div>
   );
 }
