@@ -27,6 +27,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Sin esto, una excepción que no sea HTTPException (KeyError, un error de
+# postgrest, etc.) se escapa hasta el ServerErrorMiddleware por defecto de
+# Starlette — que queda AFUERA del middleware de CORS agregado arriba, así
+# que su respuesta ("Internal Server Error" en texto plano) nunca lleva
+# headers de CORS. El navegador entonces bloquea la lectura de esa
+# respuesta y la reporta como "Failed to fetch", sin mostrar el status real
+# (500) ni ningún detalle — un bug real encontrado en producción con
+# /api/onboarding/sesion/{id}/confirmar. Este handler corre DENTRO del
+# middleware de CORS (FastAPI lo intercepta antes de llegar al
+# ServerErrorMiddleware), así que cualquier error no manejado se ve como un
+# 500 JSON normal, con CORS, en vez de una falla opaca de red.
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+
+@app.exception_handler(Exception)
+async def manejador_excepciones_no_capturadas(request: Request, exc: Exception):
+    import traceback
+    print(f"[UNCAUGHT] {request.method} {request.url.path}: {exc!r}")
+    traceback.print_exc()
+    return JSONResponse(status_code=500, content={"detail": "Error interno del servidor. Intenta de nuevo en unos segundos."})
+
+
 app.include_router(health.router)
 app.include_router(identificar.router)
 app.include_router(buscar.router)
