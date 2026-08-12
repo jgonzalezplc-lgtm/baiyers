@@ -80,6 +80,19 @@ const OPERADORES = [">", ">=", "<", "<=", "==", "!=", "in", "not in"];
 const NODE_W = 168;
 const NODE_H = 60;
 
+const COLOR_RESULTADO: Record<string, string> = {
+  aprobado: "var(--success)",
+  rechazado: "var(--danger)",
+  default: "var(--n-500)",
+};
+
+function colorClaveResultado(resultado?: string): string {
+  const r = (resultado || "").toLowerCase();
+  if (r.includes("aprob")) return "aprobado";
+  if (r.includes("rechaz")) return "rechazado";
+  return "default";
+}
+
 function colorNodo(tipo: string): string {
   if (tipo === "inicio") return "var(--success)";
   if (tipo === "fin") return "var(--n-700)";
@@ -556,9 +569,11 @@ export default function CanvasWorkflowPage() {
         >
           <svg style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
             <defs>
-              <marker id="flecha" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-                <path d="M0,0 L8,4 L0,8 z" fill="var(--n-500)" />
-              </marker>
+              {Object.entries(COLOR_RESULTADO).map(([clave, color]) => (
+                <marker key={clave} id={`flecha-${clave}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                  <path d="M0,0 L8,4 L0,8 z" fill={color} />
+                </marker>
+              ))}
             </defs>
             {conexiones.map((c, i) => {
               const o = nodos.find(n => n.id === c.origen_nodo_id);
@@ -566,11 +581,13 @@ export default function CanvasWorkflowPage() {
               if (!o || !d) return null;
               const p1 = puntoSalida(o), p2 = puntoEntrada(d);
               const mx = (p1.x + p2.x) / 2;
+              const clave = colorClaveResultado(c.resultado);
+              const color = COLOR_RESULTADO[clave];
               return (
                 <g key={i}>
-                  <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="var(--n-500)" strokeWidth={1.5} markerEnd="url(#flecha)" />
+                  <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={color} strokeWidth={1.5} markerEnd={`url(#flecha-${clave})`} />
                   {c.resultado && (
-                    <text x={mx} y={(p1.y + p2.y) / 2 - 4} fontSize={11} fill="var(--n-700)" textAnchor="middle" style={{ fontFamily: "var(--font-sans)" }}>
+                    <text x={mx} y={(p1.y + p2.y) / 2 - 4} fontSize={11} fontWeight={600} fill={color} textAnchor="middle" style={{ fontFamily: "var(--font-sans)" }}>
                       {c.resultado}
                     </text>
                   )}
