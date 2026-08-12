@@ -280,6 +280,21 @@ export default function ListaDetallePage() {
   const alternarProveedor = async (item: ItemLista, proveedor: ProveedorRecomendado) => {
     if (!userId) return;
     const clave = `${item.cotizacion_id}:${proveedor.id}`;
+    const nuevoEstado = !proveedor.seleccionado;
+
+    // Feedback inmediato: no esperar la escritura ni recargar el detalle
+    // completo (esa recarga vuelve a calcular todos los ítems y proveedores).
+    const actualizarLocal = (seleccionado: boolean) => setLista(actual => actual ? {
+      ...actual,
+      items: actual.items.map(it => it.cotizacion_id !== item.cotizacion_id ? it : {
+        ...it,
+        proveedores_recomendados: it.proveedores_recomendados.map(p =>
+          p.id === proveedor.id ? { ...p, seleccionado } : p
+        ),
+      }),
+    } : actual);
+
+    actualizarLocal(nuevoEstado);
     setGuardandoProveedor(clave);
     try {
       const res = await authFetch(`${API_URL}/api/listas/${id}/seleccionar-proveedor`, {
@@ -287,14 +302,14 @@ export default function ListaDetallePage() {
         body: JSON.stringify({
           cotizacion_id: item.cotizacion_id,
           origen: proveedor.origen, proveedor_id: proveedor.origen === "proveedor" ? proveedor.id : null,
-          email: proveedor.email, seleccionado: !proveedor.seleccionado,
+          email: proveedor.email, seleccionado: nuevoEstado,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "No se pudo guardar la selección");
-      await cargar(userId);
-      setToast(proveedor.seleccionado ? "Proveedor quitado" : "Proveedor agregado a la cotización");
+      setToast(nuevoEstado ? "Proveedor agregado a la cotización" : "Proveedor quitado");
     } catch (e) {
+      actualizarLocal(proveedor.seleccionado);
       setToast(e instanceof Error ? e.message : "No se pudo guardar la selección");
     } finally { setGuardandoProveedor(null); }
   };
