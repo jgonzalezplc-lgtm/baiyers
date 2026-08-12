@@ -85,6 +85,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   const [draft, setDraft] = useState<Draft>({});
   const [completo, setCompleto] = useState(false);
   const [fase, setFase] = useState<Fase>("perfil");
+  const [sugerenciasPendientes, setSugerenciasPendientes] = useState<{ campo: "rut" | "direccion"; valor: string }[]>([]);
   const [propuestaWorkflow, setPropuestaWorkflow] = useState<Propuesta | null>(null);
   const [cargandoInicial, setCargandoInicial] = useState(true);
   const [input, setInput] = useState("");
@@ -208,10 +209,16 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [investigar, router, floating]);
 
-  const enviarPerfil = async () => {
-    const mensaje = input.trim();
+  // Toma el mensaje como parámetro (en vez de leer `input` directo) para que
+  // tanto el textarea como el botón de "confirmar con un clic" de una
+  // sugerencia (RUT/dirección encontrados por scraping) usen la misma
+  // lógica — el backend nunca inventa un valor que no esté literalmente en
+  // el mensaje, así que "confirmar con un clic" en realidad manda ese valor
+  // como si el usuario lo hubiera escrito, no un simple "sí".
+  const enviarMensajePerfil = async (mensaje: string) => {
     if (!mensaje || !sessionId || busy) return;
-    setInput("");
+    addUser(mensaje);
+    setSugerenciasPendientes([]);
     setBusy(true);
     try {
       const res = await authFetch(`${API_URL}/api/onboarding/sesion/${sessionId}/turno`, {
@@ -241,22 +248,37 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
         }
         // El RUT/dirección que encuentra el scraping se muestran en la
         // tarjeta, pero eso NO llena el draft de la sesión (draft.rut solo
-        // se completa con lo que el usuario escribe en el chat) — sin este
-        // mensaje, el bot le volvía a pedir el RUT aunque ya apareciera en
-        // pantalla, dando la sensación de que no lo había encontrado.
+        // se completa con lo que el usuario escribe en el chat) — sin esto
+        // el bot los volvía a pedir como si no los hubiera encontrado. Se
+        // ofrece un botón de un clic en vez de pedirle al usuario que los
+        // reescriba a mano.
+        const nuevasSugerencias: { campo: "rut" | "direccion"; valor: string }[] = [];
         if (d.rut && !data.draft?.rut?.valor) {
-          addBot(`Encontré este RUT: ${d.rut}. Si es correcto, escríbelo tal cual para confirmarlo (o dime el correcto si no lo es).`);
+          addBot(`Encontré este RUT: ${d.rut}. ¿Es correcto?`);
+          nuevasSugerencias.push({ campo: "rut", valor: d.rut });
         }
         if (d.direccion && !data.draft?.direccion?.valor) {
-          addBot(`Encontré esta dirección: ${d.direccion}. ¿La confirmas o la corriges?`);
+          addBot(`Encontré esta dirección: ${d.direccion}. ¿Es correcta?`);
+          nuevasSugerencias.push({ campo: "direccion", valor: d.direccion });
         }
+        if (nuevasSugerencias.length) setSugerenciasPendientes(nuevasSugerencias);
       }
     } catch {
-      addUser(mensaje);
       addBot("Tuve un problema procesando eso. Puedes intentarlo de nuevo.");
     } finally {
       setBusy(false);
     }
+  };
+
+  const enviarPerfil = () => {
+    const mensaje = input.trim();
+    if (!mensaje) return;
+    setInput("");
+    enviarMensajePerfil(mensaje);
+  };
+
+  const confirmarSugerencia = (s: { campo: "rut" | "direccion"; valor: string }) => {
+    enviarMensajePerfil(s.valor);
   };
 
   // Fase "proceso": misma llamada, mismo endpoint y mismos mensajes de error
@@ -522,6 +544,16 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
               onConfirmar={confirmarWorkflow}
               cargando={guardandoWorkflow}
             />
+          )}
+
+          {fase === "perfil" && sugerenciasPendientes.length > 0 && (
+            <div style={{ marginLeft: 36, display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {sugerenciasPendientes.map(s => (
+                <BtnPrimary key={s.campo} onClick={() => confirmarSugerencia(s)} disabled={busy} size="sm">
+                  Sí, {s.campo === "rut" ? "ese es el RUT" : "esa es la dirección"}
+                </BtnPrimary>
+              ))}
+            </div>
           )}
 
           {fase === "perfil" && completo && (
