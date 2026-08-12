@@ -315,42 +315,57 @@ async def turno(session_id: str, req: TurnoRequest, ctx: AuthContext = Depends(g
 async def confirmar_sesion(session_id: str, ctx: AuthContext = Depends(get_auth_context)):
     """Cierra la sesión y escribe el perfil organizacional canónico. Solo se
     puede confirmar si no faltan campos críticos — nunca se marca completa
-    por inferencia del modelo, solo por esta acción explícita del usuario."""
+    por inferencia del modelo, solo por esta acción explícita del usuario.
+
+    Todo el cuerpo va envuelto en try/except: una excepción que no sea
+    HTTPException devuelve un 500 sin headers de CORS (queda afuera del
+    CORSMiddleware) y el navegador la reporta como "Failed to fetch" sin
+    ningún detalle — bug real encontrado en producción. Acá se convierte
+    cualquier excepción en un HTTPException con el detalle real, además de
+    loguear el traceback completo para Railway."""
     from app.services import onboarding_session as sesiones
     from app.services.organizacion import resolver_organizacion
 
-    sesion = _sesion_o_404(session_id, ctx)
-    draft = sesion.get("draft") or {}
-    faltantes = sesiones.campos_faltantes(draft)
-    if faltantes:
-        raise HTTPException(status_code=400, detail=f"Faltan campos por confirmar: {', '.join(faltantes)}")
-
-    from app.services.supabase import get_supabase
-    sb = get_supabase()
-    ctx_org = resolver_organizacion(ctx.actor_user_id)
-    if not ctx_org:
-        raise HTTPException(status_code=403, detail="Usuario sin organización asignada")
-
-    valores = {
-        "nombre": draft["empresa"]["valor"],
-        "rut": draft["rut"]["valor"],
-    }
-    if draft.get("direccion", {}).get("valor"):
-        valores["direccion"] = draft["direccion"]["valor"]
     try:
-        sb.table("organizaciones").update(valores).eq("id", ctx_org.organizacion_id).execute()
-    except Exception as e:
-        # Violación del índice único de RUT (23505) → conflicto manual, no
-        # fusionar organizaciones automáticamente.
-        if "23505" in str(e) or "duplicate key" in str(e).lower():
-            raise HTTPException(status_code=409, detail="Ese RUT ya está registrado en otra organización — revisión manual requerida")
+        sesion = _sesion_o_404(session_id, ctx)
+        draft = sesion.get("draft") or {}
+        faltantes = sesiones.campos_faltantes(draft)
+        if faltantes:
+            raise HTTPException(status_code=400, detail=f"Faltan campos por confirmar: {', '.join(faltantes)}")
+
+        from app.services.supabase import get_supabase
+        sb = get_supabase()
+        ctx_org = resolver_organizacion(ctx.actor_user_id)
+        if not ctx_org:
+            raise HTTPException(status_code=403, detail="Usuario sin organización asignada")
+
+        valores = {
+            "nombre": draft["empresa"]["valor"],
+            "rut": draft["rut"]["valor"],
+        }
+        if draft.get("direccion", {}).get("valor"):
+            valores["direccion"] = draft["direccion"]["valor"]
+        try:
+            sb.table("organizaciones").update(valores).eq("id", ctx_org.organizacion_id).execute()
+        except Exception as e:
+            # Violación del índice único de RUT (23505) → conflicto manual, no
+            # fusionar organizaciones automáticamente.
+            if "23505" in str(e) or "duplicate key" in str(e).lower():
+                raise HTTPException(status_code=409, detail="Ese RUT ya está registrado en otra organización — revisión manual requerida")
+            raise
+
+        sb.table("onboarding_sessions").update({
+            "estado": "completado", "organizacion_id": ctx_org.organizacion_id,
+        }).eq("id", session_id).execute()
+
+        return {"estado": "completado", "organizacion_id": ctx_org.organizacion_id}
+    except HTTPException:
         raise
-
-    sb.table("onboarding_sessions").update({
-        "estado": "completado", "organizacion_id": ctx_org.organizacion_id,
-    }).eq("id", session_id).execute()
-
-    return {"estado": "completado", "organizacion_id": ctx_org.organizacion_id}
+    except Exception as e:
+        import traceback
+        print(f"[Onboarding] error confirmando sesión {session_id}: {e!r}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"No pude confirmar tu perfil ({type(e).__name__}: {e}). Intenta de nuevo.")
 
 
 @router.post("/sesion/{session_id}/logo/candidato")
