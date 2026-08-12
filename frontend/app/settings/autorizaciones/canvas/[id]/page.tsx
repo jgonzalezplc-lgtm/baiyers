@@ -528,16 +528,20 @@ export default function CanvasWorkflowPage() {
     x: (n.posicion?.x ?? 0) + NODE_W / 2,
     y: (n.posicion?.y ?? 0) + NODE_H / 2,
   });
-  // Las líneas salen del punto de salida (borde derecho) y entran por el
-  // punto de entrada (borde izquierdo) — mismo lugar donde están los botones.
-  const puntoSalida = (n: Nodo) => ({
-    x: (n.posicion?.x ?? 0) + NODE_W,
-    y: (n.posicion?.y ?? 0) + NODE_H / 2,
-  });
-  const puntoEntrada = (n: Nodo) => ({
-    x: n.posicion?.x ?? 0,
-    y: (n.posicion?.y ?? 0) + NODE_H / 2,
-  });
+
+  // Punto donde una línea desde `centroPropio` hacia `haciaDonde` cruza el
+  // borde de la tarjeta (nunca su interior) — así la flecha siempre "sale" o
+  // "entra" por el perímetro real, sea cual sea la posición relativa de la
+  // otra tarjeta, en vez de un punto fijo izquierda/derecha que corta en
+  // diagonal por encima de tarjetas sin relación con esa conexión.
+  const bordeHacia = (centroPropio: { x: number; y: number }, haciaDonde: { x: number; y: number }) => {
+    const dx = haciaDonde.x - centroPropio.x;
+    const dy = haciaDonde.y - centroPropio.y;
+    if (dx === 0 && dy === 0) return centroPropio;
+    const hw = NODE_W / 2, hh = NODE_H / 2;
+    const escala = 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh);
+    return { x: centroPropio.x + dx * escala, y: centroPropio.y + dy * escala };
+  };
 
   return (
     <div>
@@ -626,7 +630,8 @@ export default function CanvasWorkflowPage() {
               const o = nodos.find(n => n.id === c.origen_nodo_id);
               const d = nodos.find(n => n.id === c.destino_nodo_id);
               if (!o || !d) return null;
-              const p1 = puntoSalida(o), p2 = puntoEntrada(d);
+              const centroO = centro(o), centroD = centro(d);
+              const p1 = bordeHacia(centroO, centroD), p2 = bordeHacia(centroD, centroO);
               const mx = (p1.x + p2.x) / 2;
               const clave = colorClaveResultado(c.resultado);
               const color = COLOR_RESULTADO[clave];
