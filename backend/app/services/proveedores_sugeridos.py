@@ -40,6 +40,11 @@ PALABRAS_VACIAS = {
     "electronico", "electronicos", "equipo", "equipos", "ferreteria",
     "industrial", "industriales", "material", "materiales", "mecanico",
     "mecanicos", "producto", "productos", "retail", "sistema", "sistemas",
+    # Materiales/contextos demasiado amplios: no deben convertir una búsqueda
+    # como "tornillos para madera" en match con cualquier maderera.
+    "madera", "maderas", "aglomerado", "aglomerados",
+    # Adjetivos comerciales ambiguos ("rosca fina" ≠ "maderas finas").
+    "fino", "fina", "finos", "finas",
 }
 
 

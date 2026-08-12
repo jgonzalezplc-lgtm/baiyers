@@ -39,3 +39,17 @@ def test_no_puntua_palabras_genericas_del_rubro():
     assert sugeridos[0]["nombre"] == "SKF Chile"
     empack = next(p for p in sugeridos if p["nombre"] == "Empack")
     assert empack["match_score"] == 0
+
+
+def test_material_de_uso_no_se_confunde_con_el_producto_buscado():
+    sugeridos = sugeridos_para_categoria(
+        "carpinteria", "Tornillos para madera y aglomerado rosca fina"
+    )
+    imperial = next(p for p in sugeridos if p["nombre"] == "Ferreterias Imperial")
+    clc = next(p for p in sugeridos if p["nombre"] == "CLC Maderas del Mundo")
+    colonial = next(p for p in sugeridos if p["nombre"] == "Maderas Colonial")
+
+    assert imperial["match_score"] > 0
+    assert imperial["match_label"].startswith("Match por producto: Tornillos")
+    assert clc["match_score"] == 0
+    assert colonial["match_score"] == 0

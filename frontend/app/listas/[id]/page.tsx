@@ -148,21 +148,6 @@ function categoriaItem(categoria: string | null | undefined) {
   };
 }
 
-function urlBusquedaProducto(item: ItemLista, proveedor: ProveedorRecomendado) {
-  const productoMatch = proveedor.match_label.startsWith("Match por producto:")
-    ? proveedor.match_label.replace("Match por producto:", "").trim()
-    : "";
-  // Una búsqueda con `site:` y frase exacta suele fallar cuando el catálogo
-  // del proveedor no está indexado. Producto + empresa entrega resultados
-  // útiles incluso si la ficha vive en redes sociales, marketplaces o un PDF.
-  const consulta = [
-    productoMatch || item.nombre,
-    proveedor.nombre,
-    "Chile",
-  ].filter(Boolean).join(" ");
-  return `https://www.google.com/search?q=${encodeURIComponent(consulta)}`;
-}
-
 export default function ListaDetallePage() {
   const { id: idUrl } = useParams<{ id: string }>();
   const router = useRouter();
@@ -873,21 +858,6 @@ export default function ListaDetallePage() {
                             </div>
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                            {matchPorProducto && <a
-                              href={urlBusquedaProducto(it, proveedor)}
-                              target="_blank" rel="noopener noreferrer"
-                              onClick={e => e.stopPropagation()}
-                              title={`Buscar ${it.nombre} ofrecido por ${proveedor.nombre}`}
-                              style={{
-                                display: "inline-flex", alignItems: "center", gap: 5,
-                                border: "1px solid var(--success)", background: "var(--surface)",
-                                color: "var(--success)", borderRadius: "var(--r-md)",
-                                padding: "6px 9px", fontSize: 12, fontWeight: 600,
-                                textDecoration: "none",
-                              }}
-                            >
-                              Ver <ExternalLink size={12} strokeWidth={2} />
-                            </a>}
                             <button onClick={e => { e.stopPropagation(); void alternarProveedor(it, proveedor); }} disabled={guardandoProveedor === clave || !proveedor.email} style={{
                               border: `1px solid ${proveedor.seleccionado ? "var(--brand)" : "var(--n-300)"}`,
                               background: proveedor.seleccionado ? "var(--brand)" : "var(--surface)",
