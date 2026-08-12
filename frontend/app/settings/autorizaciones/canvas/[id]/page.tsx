@@ -477,7 +477,7 @@ export default function CanvasWorkflowPage() {
       const res = await authFetch(`${API_URL}/api/workflows/${workflowId}/interpretar-correccion`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ descripcion: texto, grafo_actual: { nodos, conexiones }, contexto }),
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(45000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -492,8 +492,11 @@ export default function CanvasWorkflowPage() {
           texto: (data.resumen || "Listo, apliqué el cambio.") + " Recuerda apretar \"Guardar\" para que quede persistido.",
         }]);
       }
-    } catch {
-      setMensajesCorreccion(prev => [...prev, { rol: "bot", texto: "Tuve un problema interpretando eso. No cambié nada; intenta de nuevo." }]);
+    } catch (error) {
+      const timeout = error instanceof DOMException && error.name === "TimeoutError";
+      setMensajesCorreccion(prev => [...prev, { rol: "bot", texto: timeout
+        ? "Está tardando más de lo esperado — probablemente porque es un cambio grande con varios pasos a la vez. Prueba de nuevo, o divídelo en correcciones más chicas (por ejemplo, primero agrega la etapa de homologación, después conecta el rechazo de vuelta a cotizar)."
+        : "Tuve un problema interpretando eso. No cambié nada; intenta de nuevo." }]);
     } finally {
       setEnviandoCorreccion(false);
     }
