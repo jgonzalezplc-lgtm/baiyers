@@ -311,6 +311,59 @@ class InterpretarCorreccionTest(unittest.TestCase):
             r = interpretar_correccion("si rechaza vuelve a cotizar", self.GRAFO)
         self.assertEqual(len(r["operaciones"]), 1)
 
+    def test_asignar_responsable_a_rol_existente_se_mantiene(self):
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            instancia = MockModel.return_value
+            instancia.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "Asigno a Luis como autorizador",
+                "operaciones": [{"tipo": "asignar_responsable", "rol_clave": "autorizador", "nombre": "Luis", "email": "luis@acme.cl"}],
+                "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("Luis será el autorizador, luis@acme.cl", self.GRAFO)
+        self.assertEqual(len(r["operaciones"]), 1)
+        self.assertEqual(r["operaciones"][0]["nombre"], "Luis")
+
+    def test_asignar_responsable_a_rol_que_no_existe_en_el_grafo_se_descarta(self):
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            instancia = MockModel.return_value
+            instancia.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "", "operaciones": [{"tipo": "asignar_responsable", "rol_clave": "comprador", "nombre": "Jose", "email": "jose@acme.cl"}],
+                "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("Jose será el comprador", self.GRAFO)
+        self.assertEqual(r["operaciones"], [])
+
+    def test_asignar_responsable_con_email_invalido_se_descarta(self):
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            instancia = MockModel.return_value
+            instancia.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "", "operaciones": [{"tipo": "asignar_responsable", "rol_clave": "autorizador", "nombre": "Luis", "email": "no-es-un-email"}],
+                "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("Luis será el autorizador", self.GRAFO)
+        self.assertEqual(r["operaciones"], [])
+
+    def test_asignar_responsable_a_rol_de_nodo_agregado_en_la_misma_correccion(self):
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            instancia = MockModel.return_value
+            instancia.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "", "operaciones": [
+                    {"tipo": "agregar_nodo", "nodo_id": "nuevo_homologacion", "tipo_nodo": "homologacion", "nombre": "Homologar proveedores", "roles": ["revisor"]},
+                    {"tipo": "asignar_responsable", "rol_clave": "revisor", "nombre": "Luis", "email": "luis@acme.cl"},
+                ],
+                "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("agrega homologación y que Luis la haga", self.GRAFO)
+        self.assertEqual(len(r["operaciones"]), 2)
+
     def test_roles_invalidos_se_descartan(self):
         with patch("app.config.settings.gemini_api_key", "x"), \
              patch("google.generativeai.configure"), \

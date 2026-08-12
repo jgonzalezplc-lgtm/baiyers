@@ -207,6 +207,22 @@ export default function CanvasWorkflowPage() {
     return data;
   };
 
+  // A diferencia de cargarWorkflow(), esto NO toca nodos/conexiones locales
+  // — solo refresca el roster de responsables. Necesario porque una
+  // asignación desde el chat de correcciones puede llegar en la misma tanda
+  // que ediciones de grafo todavía no guardadas (agregar_nodo, conectar...);
+  // recargar todo el workflow ahí pisaría esos cambios locales con la
+  // última versión guardada en el servidor, antes de que el usuario
+  // alcance a apretar "Guardar".
+  const refrescarResponsablesAsignados = async (uid: string) => {
+    try {
+      const data: Workflow = await fetch(`${API_URL}/api/workflows/${workflowId}?user_id=${uid}`).then(r => r.json());
+      setWorkflow(prev => (prev ? { ...prev, responsables: data.responsables } : data));
+    } catch {
+      // No crítico — el panel puede tardar un refresco en reflejar la asignación.
+    }
+  };
+
   useEffect(() => {
     if (!userId) return;
     (async () => {
@@ -470,6 +486,63 @@ export default function CanvasWorkflowPage() {
     }
   };
 
+  // "asignar_responsable" no es una edición del grafo pendiente de "Guardar"
+  // — es la misma acción inmediata que ya hace "+ Agregar responsable" en el
+  // panel (crea/reusa la persona, la asigna al rol y la invita si trae
+  // email), solo que disparada desde el chat. Se mantiene separada de
+  // aplicarOperacion() porque necesita llamadas reales al backend, no solo
+  // mutar el estado local de nodos/conexiones.
+  const aplicarOperacionAsignarResponsable = async (op: Record<string, unknown>) => {
+    if (!userId) return;
+    const nombre = ((op.nombre as string) || "").trim();
+    const email = ((op.email as string) || "").trim().toLowerCase() || null;
+    const rolClave = op.rol_clave as string;
+    if (!nombre || !rolClave) return;
+
+    let responsableId = email
+      ? responsablesOrg.find(r => r.activo && r.email?.toLowerCase() === email)?.id
+      : undefined;
+
+    if (!responsableId) {
+      try {
+        const creado = await fetch(`${API_URL}/api/workflows/responsables`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: userId, nombre, email }),
+        }).then(r => r.json());
+        responsableId = creado.id;
+      } catch {
+        setMensajesCorreccion(prev => [...prev, { rol: "bot", texto: `No pude crear a ${nombre} — intenta agregarlo desde el panel de la tarjeta.` }]);
+        return;
+      }
+    }
+
+    try {
+      await fetch(`${API_URL}/api/workflows/responsables/${responsableId}/roles`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, workflow_id: workflowId, rol_clave: rolClave }),
+      });
+    } catch {
+      setMensajesCorreccion(prev => [...prev, { rol: "bot", texto: `No pude asignar a ${nombre} al rol "${rolClave}".` }]);
+      return;
+    }
+
+    if (email) {
+      try {
+        await fetch(`${API_URL}/api/organizacion/invitar`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: userId, email, responsable_id: responsableId }),
+        });
+      } catch {
+        // No bloquea — el responsable ya quedó asignado, la invitación se
+        // puede reintentar después desde el panel.
+      }
+    }
+
+    const org: ResponsableInfo[] = await fetch(`${API_URL}/api/workflows/responsables/listar?user_id=${userId}`).then(r => r.json()).catch(() => responsablesOrg);
+    setResponsablesOrg(Array.isArray(org) ? org : responsablesOrg);
+    await refrescarResponsablesAsignados(userId);
+  };
+
   const enviarCorreccion = async () => {
     const texto = entradaCorreccion.trim();
     if (!texto || enviandoCorreccion || !userId) return;
@@ -489,12 +562,21 @@ export default function CanvasWorkflowPage() {
         const pregunta = (data.preguntas || []).join(" ") || "¿Puedes darme un poco más de detalle?";
         setMensajesCorreccion(prev => [...prev, { rol: "bot", texto: pregunta }]);
       } else {
-        (data.operaciones || []).forEach(aplicarOperacion);
+        const operaciones: Record<string, unknown>[] = data.operaciones || [];
+        const huboAsignaciones = operaciones.some(op => op.tipo === "asignar_responsable");
+        const huboCambiosGrafo = operaciones.some(op => op.tipo !== "asignar_responsable");
+        for (const op of operaciones) {
+          if (op.tipo === "asignar_responsable") {
+            await aplicarOperacionAsignarResponsable(op);
+          } else {
+            aplicarOperacion(op);
+          }
+        }
         setErrores(null);
-        setMensajesCorreccion(prev => [...prev, {
-          rol: "bot",
-          texto: (data.resumen || "Listo, apliqué el cambio.") + " Recuerda apretar \"Guardar\" para que quede persistido.",
-        }]);
+        const partes = [data.resumen || "Listo, apliqué el cambio."];
+        if (huboAsignaciones) partes.push("Las personas ya quedaron asignadas (e invitadas si tenían correo) — eso no necesita \"Guardar\".");
+        if (huboCambiosGrafo) partes.push("Recuerda apretar \"Guardar\" para que los cambios del grafo queden persistidos.");
+        setMensajesCorreccion(prev => [...prev, { rol: "bot", texto: partes.join(" ") }]);
       }
     } catch (error) {
       const timeout = error instanceof DOMException && error.name === "TimeoutError";

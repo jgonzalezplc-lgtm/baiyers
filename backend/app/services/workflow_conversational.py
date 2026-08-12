@@ -300,6 +300,7 @@ def compilar_a_grafo(etapas: list[dict], reglas_autorizacion: Optional[list[dict
 OPERACIONES_VALIDAS = {
     "renombrar_nodo", "cambiar_roles", "cambiar_entrada", "cambiar_proceso",
     "cambiar_condicion_entrada", "agregar_nodo", "eliminar_nodo", "conectar", "desconectar",
+    "asignar_responsable",
 }
 
 PROMPT_CORRECCION = """Eres un asistente que ajusta un diagrama de proceso de compras ya
@@ -319,7 +320,8 @@ Responde SOLO JSON válido, sin markdown, con esta forma exacta:
     {"tipo": "agregar_nodo", "nodo_id": "nuevo_homologacion", "tipo_nodo": "autorizacion", "nombre": "nombre de la etapa nueva", "roles": ["autorizador"]},
     {"tipo": "eliminar_nodo", "nodo_id": "n1"},
     {"tipo": "conectar", "origen_nodo_id": "n1", "destino_nodo_id": "n2", "resultado": "aprobado"},
-    {"tipo": "desconectar", "origen_nodo_id": "n1", "destino_nodo_id": "n2", "resultado": "aprobado"}
+    {"tipo": "desconectar", "origen_nodo_id": "n1", "destino_nodo_id": "n2", "resultado": "aprobado"},
+    {"tipo": "asignar_responsable", "rol_clave": "autorizador", "nombre": "Luis", "email": "luis@acme.cl"}
   ],
   "requiere_aclaracion": false,
   "preguntas": ["máximo 3 preguntas cortas si la corrección es ambigua"]
@@ -342,8 +344,16 @@ Reglas:
   el que DECIDE, nunca el que recibe la decisión. Ej: si "Autorizar compra" puede rechazar y
   volver a "Preparar cotización", la conexión es origen_nodo_id="Autorizar compra",
   destino_nodo_id="Preparar cotización", resultado="rechazado" — NUNCA al revés.
-- Si el usuario pide algo que no tiene que ver con el grafo (agregar responsables, activar
-  el ciclo, etc.), no generes una operación para eso — son acciones separadas del canvas.
+- "asignar_responsable" asigna una PERSONA real (nombre + email opcional) a un rol que YA
+  existe en alguna etapa del grafo actual — "rol_clave" debe ser uno de los roles que
+  aparecen en el campo "roles" de algún nodo (mira el grafo actual para saber cuáles hay:
+  cotizador, revisor, autorizador o comprador). Si el usuario usa un nombre coloquial para
+  el rol ("el jefe", "el homologador", "quien homologa"), mapéalo al "rol_clave" real que
+  tiene esa etapa en el grafo — nunca inventes una clave nueva. Si no puedes determinar con
+  seguridad a qué rol_clave se refiere, pon requiere_aclaracion=true y pregunta cuál es.
+  Esta operación asigna a la persona de inmediato (no espera a "Guardar").
+- Si el usuario pide activar el ciclo u otra acción que no sea ni el grafo ni asignar una
+  persona, no generes una operación para eso — es una acción separada del canvas.
 - Si la corrección es ambigua o falta información para aplicarla con seguridad, pon
   requiere_aclaracion=true y pregunta — no adivines."""
 
@@ -393,6 +403,23 @@ def _operacion_valida(op: dict, ids_nodos: set[str], nodos_por_id: dict | None =
         if resultado and nodos_por_id is not None:
             origen_nodo = nodos_por_id.get(origen_id) or {}
             if resultado not in (origen_nodo.get("resultados") or []):
+                return False
+        return True
+    if tipo == "asignar_responsable":
+        nombre = op.get("nombre")
+        email = op.get("email")
+        rol_clave = op.get("rol_clave")
+        if not isinstance(nombre, str) or not nombre.strip():
+            return False
+        if rol_clave not in ROLES_VALIDOS:
+            return False
+        if email is not None and (not isinstance(email, str) or "@" not in email):
+            return False
+        # El rol debe pertenecer de verdad a alguna etapa del grafo (incluye
+        # nodos agregados en esta misma corrección) — si no, la persona
+        # quedaría asignada a un rol que ninguna tarjeta usa.
+        if nodos_por_id is not None:
+            if not any(rol_clave in (n.get("roles") or []) for n in nodos_por_id.values()):
                 return False
         return True
     return False
@@ -483,7 +510,7 @@ def interpretar_correccion(descripcion: str, grafo_actual: dict, contexto: str =
             ids_conocidos.add(nodo_id)
             tipo_nodo = op.get("tipo_nodo")
             resultados_nuevo = ["aprobado", "rechazado"] if tipo_nodo in ("decision", "autorizacion") else []
-            nodos_por_id[nodo_id] = {"id": nodo_id, "tipo": tipo_nodo, "resultados": resultados_nuevo}
+            nodos_por_id[nodo_id] = {"id": nodo_id, "tipo": tipo_nodo, "resultados": resultados_nuevo, "roles": op.get("roles") or []}
             continue
         if _operacion_valida(op, ids_conocidos, nodos_por_id):
             operaciones.append(op)
