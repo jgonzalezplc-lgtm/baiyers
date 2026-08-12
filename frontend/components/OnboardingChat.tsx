@@ -52,7 +52,7 @@ interface Props {
   floating?: boolean;
   /** Se llama cuando terminó de guardar (o no había nada que hacer). En modo no-flotante, además navega a /dashboard. */
   onDone?: () => void;
-  /** Botón "Omitir por ahora" (sólo modo flotante). */
+  /** Acción externa para "Omitir por ahora" en modo flotante. */
   onSkip?: () => void;
 }
 
@@ -85,6 +85,17 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   const [nombreWorkflow, setNombreWorkflow] = useState("Ciclo de compras");
   const [guardandoWorkflow, setGuardandoWorkflow] = useState(false);
   const emailsVistosRef = useRef<Set<string>>(new Set());
+
+  const omitirPorAhora = () => {
+    if (onSkip) {
+      onSkip();
+      return;
+    }
+    // No marca el onboarding como completo: el usuario puede retomarlo desde
+    // el panel y el asistente flotante no lo interrumpe durante esta sesión.
+    try { sessionStorage.setItem("baiyer-onboarding-omitido", "1"); } catch { /* ignore */ }
+    router.replace("/dashboard");
+  };
 
   // Los responsables recién detectados quedan marcados para invitar por
   // defecto; los que el usuario ya desmarcó a mano no se vuelven a marcar
@@ -460,8 +471,8 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
           <button onClick={enviar} disabled={busy || cargandoInicial || completo || !input.trim()} className="btn-swiss-primary" style={{ whiteSpace: "nowrap" }}>
             {busy ? "…" : "Enviar"}
           </button>
-          {floating && onSkip && !completo && (
-            <button onClick={onSkip} style={{ fontSize: 12.5, color: "var(--n-500)", background: "none", border: "none", cursor: "pointer", padding: "4px 2px", textDecoration: "underline" }}>
+          {!completo && (
+            <button onClick={omitirPorAhora} style={{ fontSize: 12.5, color: "var(--n-500)", background: "none", border: "none", cursor: "pointer", padding: "4px 2px", textDecoration: "underline", whiteSpace: "nowrap" }}>
               Omitir por ahora
             </button>
           )}

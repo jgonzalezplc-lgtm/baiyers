@@ -3,7 +3,7 @@ import OnboardingChat from "@/components/OnboardingChat";
 
 export default function OnboardingPage() {
   return (
-    <div style={{ minHeight: "100vh", background: "var(--canvas)", display: "flex", flexDirection: "column" }}>
+    <div style={{ height: "100dvh", minHeight: 0, overflow: "hidden", background: "var(--canvas)", display: "flex", flexDirection: "column" }}>
       {/* Header con marca */}
       <div style={{
         borderBottom: "1px solid var(--n-200)",
