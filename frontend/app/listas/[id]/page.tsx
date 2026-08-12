@@ -3,7 +3,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { ArrowLeft, Check, Send, Wand2, Camera, ShoppingBag, Mail, ExternalLink, Network, Search, ChevronRight } from "lucide-react";
+import {
+  ArrowLeft, Check, Send, Wand2, Camera, ShoppingBag, Mail, ExternalLink,
+  Network, Search, ChevronRight, Cpu, Building2, Hammer, HeartPulse, Factory,
+  Wrench, Zap, Droplets, Wind, Briefcase, Package, Boxes, GitBranch,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
 import { Card, Badge, BtnPrimary, BtnSecondary, SummaryPanel, Input, SkeletonBox, SkeletonText, CascadeWrapper } from "@/components/ui";
@@ -66,6 +70,7 @@ export interface ItemLista {
   cantidad: number;
   unidad: string;
   partida?: string | null;
+  categoria?: string | null;
   comparado: boolean;
   comparados: ComparadoLista[];
   definitivo: Definitivo | null;
@@ -118,6 +123,30 @@ const FUENTE_LABEL: Record<string, string> = {
 const fmtCLP = (n: number) => `$${Math.round(n).toLocaleString("es-CL")}`;
 const fmtPrecio = (n: number, m: string) =>
   m === "CLP" ? fmtCLP(n) : `${n.toLocaleString("en-US", { minimumFractionDigits: 2 })} ${m}`;
+
+const CATEGORIAS_ITEM = {
+  electronica: { label: "Electrónica", icon: Cpu },
+  construccion: { label: "Construcción", icon: Building2 },
+  carpinteria: { label: "Carpintería", icon: Hammer },
+  insumos_medicos: { label: "Insumos médicos", icon: HeartPulse },
+  industrial: { label: "Industrial", icon: Factory },
+  tuberias_valvulas: { label: "Tuberías y válvulas", icon: GitBranch },
+  mecanico: { label: "Mecánico", icon: Wrench },
+  electrico: { label: "Eléctrico", icon: Zap },
+  hidraulico: { label: "Hidráulico", icon: Droplets },
+  neumatico: { label: "Neumático", icon: Wind },
+  servicio: { label: "Servicio", icon: Briefcase },
+  consumible: { label: "Consumible", icon: Package },
+  otro: { label: "Otro", icon: Boxes },
+} as const;
+
+function categoriaItem(categoria: string | null | undefined) {
+  const clave = (categoria || "otro").toLowerCase() as keyof typeof CATEGORIAS_ITEM;
+  return CATEGORIAS_ITEM[clave] ?? {
+    label: categoria ? categoria.replaceAll("_", " ") : "Otro",
+    icon: Boxes,
+  };
+}
 
 export default function ListaDetallePage() {
   const { id: idUrl } = useParams<{ id: string }>();
@@ -644,6 +673,8 @@ export default function ListaDetallePage() {
         const compraOnline = autorizadaYConDef && !emailProveedor && compra?.estado !== "comprado";
         // El autorizador rechazó este ítem puntual al aprobar con observaciones.
         const rechazado = lista.aprobacion?.estado === "aprobado_con_observaciones" && !!lista.aprobacion.observaciones_items?.[it.cotizacion_id];
+        const categoria = categoriaItem(it.categoria);
+        const IconoCategoria = categoria.icon;
 
         return (
         <div key={it.cotizacion_id} style={{
@@ -658,7 +689,6 @@ export default function ListaDetallePage() {
             background: rechazado ? "var(--st-rechazada-bg)" : "var(--canvas)",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              {it.partida && <span className="label">{it.partida}</span>}
               <span style={{
                 fontSize: 15, fontWeight: 600,
                 color: rechazado ? "var(--st-rechazada-fg)" : "var(--n-900)",
@@ -682,6 +712,16 @@ export default function ListaDetallePage() {
                   }}
                 />
                 <span style={{ fontSize: 12.5, color: "var(--n-600)" }}>{it.unidad || "unidad"}</span>
+              </span>
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "4px 8px", border: "1px solid var(--n-200)",
+                borderRadius: "var(--r-sm)", background: "var(--surface)",
+                fontSize: 11.5, fontWeight: 500, color: "var(--n-600)",
+                textTransform: "capitalize",
+              }} title={`Categoría: ${categoria.label}`}>
+                <IconoCategoria size={13} strokeWidth={1.8} />
+                {categoria.label}
               </span>
               {it.definitivo && (
                 <Badge status="aprobada">

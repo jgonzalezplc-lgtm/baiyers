@@ -327,6 +327,7 @@ async def detalle_lista(lista_id: str, ctx: AuthContext = Depends(get_auth_conte
         "items": [
             {
                 **it,
+                "categoria": categorias_por_item.get(it["cotizacion_id"]) or it.get("categoria") or "otro",
                 "cantidad": float(it.get("cantidad") or 1),
                 "comparados": comparadores[i],
                 "definitivo": definitivos_salida.get(it["cotizacion_id"]),
