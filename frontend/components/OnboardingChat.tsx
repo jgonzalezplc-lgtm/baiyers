@@ -239,7 +239,15 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
         if (d.empresa) {
           addBot(undefined, d);
         }
-        if (d.direccion && !draft.direccion?.valor) {
+        // El RUT/dirección que encuentra el scraping se muestran en la
+        // tarjeta, pero eso NO llena el draft de la sesión (draft.rut solo
+        // se completa con lo que el usuario escribe en el chat) — sin este
+        // mensaje, el bot le volvía a pedir el RUT aunque ya apareciera en
+        // pantalla, dando la sensación de que no lo había encontrado.
+        if (d.rut && !data.draft?.rut?.valor) {
+          addBot(`Encontré este RUT: ${d.rut}. Si es correcto, escríbelo tal cual para confirmarlo (o dime el correcto si no lo es).`);
+        }
+        if (d.direccion && !data.draft?.direccion?.valor) {
           addBot(`Encontré esta dirección: ${d.direccion}. ¿La confirmas o la corriges?`);
         }
       }
