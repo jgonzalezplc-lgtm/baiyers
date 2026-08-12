@@ -225,5 +225,37 @@ class ObtenerPerfilOrganizacionTest(unittest.TestCase):
         self.assertEqual(perfil, {})
 
 
+class EstadoOnboardingDeUsuariosTest(unittest.TestCase):
+    def test_usuario_que_ya_inicio_sesion_es_activo(self):
+        fake_user = MagicMock(last_sign_in_at="2026-01-01T00:00:00Z")
+        fake = MagicMock()
+        fake.auth.admin.get_user_by_id.return_value = MagicMock(user=fake_user)
+        with patch("app.services.organizacion._sb", return_value=fake):
+            from app.services.organizacion import estado_onboarding_de_usuarios
+            estados = estado_onboarding_de_usuarios(["u-1"])
+        self.assertEqual(estados["u-1"], "activo")
+
+    def test_usuario_que_nunca_inicio_sesion_es_pendiente(self):
+        fake_user = MagicMock(last_sign_in_at=None)
+        fake = MagicMock()
+        fake.auth.admin.get_user_by_id.return_value = MagicMock(user=fake_user)
+        with patch("app.services.organizacion._sb", return_value=fake):
+            from app.services.organizacion import estado_onboarding_de_usuarios
+            estados = estado_onboarding_de_usuarios(["u-1"])
+        self.assertEqual(estados["u-1"], "invitacion_pendiente")
+
+    def test_error_de_supabase_no_lanza_y_queda_pendiente(self):
+        fake = MagicMock()
+        fake.auth.admin.get_user_by_id.side_effect = Exception("boom")
+        with patch("app.services.organizacion._sb", return_value=fake):
+            from app.services.organizacion import estado_onboarding_de_usuarios
+            estados = estado_onboarding_de_usuarios(["u-1"])
+        self.assertEqual(estados["u-1"], "invitacion_pendiente")
+
+    def test_lista_vacia_devuelve_diccionario_vacio(self):
+        from app.services.organizacion import estado_onboarding_de_usuarios
+        self.assertEqual(estado_onboarding_de_usuarios([]), {})
+
+
 if __name__ == "__main__":
     unittest.main()

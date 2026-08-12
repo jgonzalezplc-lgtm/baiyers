@@ -138,6 +138,27 @@ def nombres_de_usuarios(auth_uids: list[str]) -> dict[str, str]:
     return fuera
 
 
+def estado_onboarding_de_usuarios(usuario_baiyer_ids: list[str]) -> dict[str, str]:
+    """Para el roster de responsables: ¿esta persona ya aceptó su invitación
+    y usa Baiyer, o la cuenta existe pero nunca inició sesión? Mismo patrón
+    de batching que `nombres_de_usuarios()`. Nunca lanza: un id que no se
+    puede resolver queda como "invitacion_pendiente" (nunca se asume
+    "activo" sin evidencia real de que inició sesión)."""
+    if not usuario_baiyer_ids:
+        return {}
+    sb = _sb()
+    fuera = {}
+    unicos = {u for u in usuario_baiyer_ids if u}
+    for uid in unicos:
+        try:
+            resp = sb.auth.admin.get_user_by_id(uid)
+            u = resp.user if resp else None
+            fuera[uid] = "activo" if (u and getattr(u, "last_sign_in_at", None)) else "invitacion_pendiente"
+        except Exception:
+            fuera[uid] = "invitacion_pendiente"
+    return fuera
+
+
 def listar_miembros(auth_uid: str) -> list[dict]:
     """Fase D — miembros de la organización del `auth_uid` con nombre e info
     de rol, para poblar el mapa de 'hecho por X' en el frontend."""

@@ -138,6 +138,17 @@ async def obtener_workflow(workflow_id: str, user_id: str):
     return workflow
 
 
+@router.delete("/{workflow_id}")
+async def eliminar_workflow_endpoint(workflow_id: str, ctx: AuthContext = Depends(get_auth_context)):
+    from app.services.workflow_service import eliminar_workflow
+    try:
+        eliminar_workflow(ctx.actor_user_id, workflow_id)
+    except ValueError as e:
+        codigo = 404 if "no encontrado" in str(e) else 400
+        raise HTTPException(status_code=codigo, detail=str(e))
+    return {"success": True}
+
+
 class ActualizarWorkflowRequest(BaseModel):
     user_id: str
     nodos: list[dict]

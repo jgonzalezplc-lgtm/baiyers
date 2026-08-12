@@ -75,9 +75,38 @@ def obtener_workflow(user_id: str, workflow_id: str) -> Optional[dict]:
         return None
     roles = sb.table("workflow_roles").select("*").eq("workflow_id", workflow_id).execute().data or []
     responsables = sb.table("responsable_roles").select(
-        "*, responsables(id,nombre,cargo,email,telefono,activo)"
+        "*, responsables(id,nombre,cargo,email,telefono,activo,usuario_baiyer_id)"
     ).eq("workflow_id", workflow_id).execute().data or []
+
+    # Roster: ¿cada responsable ya aceptó su invitación o sigue pendiente?
+    # "sin_vincular" no necesita llamar a Supabase Auth (nunca se invitó).
+    from app.services.organizacion import estado_onboarding_de_usuarios
+    ids_vinculados = [
+        r["responsables"]["usuario_baiyer_id"]
+        for r in responsables if r.get("responsables") and r["responsables"].get("usuario_baiyer_id")
+    ]
+    estados = estado_onboarding_de_usuarios(ids_vinculados)
+    for r in responsables:
+        resp = r.get("responsables") or {}
+        uid = resp.get("usuario_baiyer_id")
+        resp["estado_onboarding"] = estados.get(uid, "invitacion_pendiente") if uid else "sin_vincular"
+
     return {**workflow, "roles": roles, "responsables": responsables}
+
+
+def eliminar_workflow(user_id: str, workflow_id: str) -> None:
+    """Borra un ciclo (borrador o archivado). Nunca borra el ciclo activo —
+    la organización no puede quedarse sin ninguno por accidente; hay que
+    activar un reemplazo primero. `responsable_roles` de este workflow se
+    borran solos por ON DELETE CASCADE (migración 027); los `responsables`
+    (personas) no se tocan, son de la organización, no del workflow."""
+    sb = _sb()
+    workflow = obtener_workflow(user_id, workflow_id)
+    if not workflow:
+        raise ValueError("Workflow no encontrado")
+    if workflow["estado"] == "activo":
+        raise ValueError("No se puede eliminar el ciclo activo — activa un reemplazo primero")
+    sb.table("workflow_definitions").delete().eq("id", workflow_id).execute()
 
 
 def validar_workflow(user_id: str, workflow_id: str) -> list[dict]:

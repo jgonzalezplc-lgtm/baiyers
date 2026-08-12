@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Bot, Send, LayoutGrid } from "lucide-react";
+import { ArrowLeft, Bot, Send, LayoutGrid, Trash2, Plus, ChevronDown, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
-import { BtnPrimary, Card, TypingBubble, CascadeWrapper, SkeletonBox } from "@/components/ui";
+import { BtnPrimary, BtnSecondary, BtnGhost, Card, TypingBubble, CascadeWrapper, SkeletonBox } from "@/components/ui";
 import { ChatBubbles, type Mensaje } from "@/components/chat/ChatBubbles";
 import { PropuestaWorkflowCard, type Propuesta } from "@/components/workflow/PropuestaWorkflowCard";
 
@@ -19,14 +19,52 @@ interface WorkflowExistente {
   updated_at?: string;
 }
 
+interface ResponsableInfo {
+  id: string;
+  nombre: string;
+  cargo?: string | null;
+  email: string | null;
+  telefono?: string | null;
+  activo: boolean;
+}
+
+interface AsignacionRol {
+  id: string;
+  rol_clave: string;
+  orden_autorizacion: number | null;
+  responsables: ResponsableInfo & { usuario_baiyer_id?: string | null; estado_onboarding?: string };
+}
+
+interface WorkflowDetalle extends WorkflowExistente {
+  roles?: { clave: string; nombre: string }[];
+  responsables?: AsignacionRol[];
+}
+
 const ESTADO_LABEL: Record<string, string> = { activo: "Activo", borrador: "Borrador", archivado: "Archivado" };
+
+const ONBOARDING_BADGE: Record<string, { label: string; bg: string; fg: string }> = {
+  activo: { label: "Activo", bg: "var(--success-bg, #e6f4ea)", fg: "var(--success, #1e7e34)" },
+  invitacion_pendiente: { label: "Invitación pendiente", bg: "var(--warning-bg, #fff4e0)", fg: "var(--warning, #b26a00)" },
+  sin_vincular: { label: "Sin vincular", bg: "var(--n-100)", fg: "var(--n-500)" },
+};
 
 export default function ConfiguracionAutorizacionesPage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [cargandoInicial, setCargandoInicial] = useState(true);
   const [workflowsExistentes, setWorkflowsExistentes] = useState<WorkflowExistente[]>([]);
+  const [principal, setPrincipal] = useState<WorkflowDetalle | null>(null);
+  const [responsablesOrg, setResponsablesOrg] = useState<ResponsableInfo[]>([]);
+  const [mostrarOtros, setMostrarOtros] = useState(false);
   const [mostrarChatNuevo, setMostrarChatNuevo] = useState(false);
+  const [asignandoRol, setAsignandoRol] = useState<string | null>(null);
+  const [nuevoNombre, setNuevoNombre] = useState("");
+  const [nuevoEmail, setNuevoEmail] = useState("");
+  const [guardandoResponsable, setGuardandoResponsable] = useState(false);
+  const [confirmandoEliminar, setConfirmandoEliminar] = useState<string | null>(null);
+  const [eliminando, setEliminando] = useState<string | null>(null);
+  const [toast, setToast] = useState("");
+
   const [mensajes, setMensajes] = useState<Mensaje[]>([
     { rol: "bot", texto: "Cuéntame cómo funciona hoy tu proceso de compras. Puede ser informal — por ejemplo: \"Los cotizadores preparan la comparación, después la revisa mi jefe, y si es sobre $500.000 también tiene que aprobar finanzas.\"" },
   ]);
@@ -35,24 +73,70 @@ export default function ConfiguracionAutorizacionesPage() {
   const [propuesta, setPropuesta] = useState<Propuesta | null>(null);
   const [nombreWorkflow, setNombreWorkflow] = useState("Ciclo de compras");
   const [creandoEnBlanco, setCreandoEnBlanco] = useState(false);
-  // Emails de responsables detectados que el usuario deja marcados para
-  // invitar al confirmar. Un email vacío nunca entra acá (los responsables
-  // sin email se crean sin invitar).
   const [aInvitar, setAInvitar] = useState<Set<string>>(new Set());
   const finRef = useRef<HTMLDivElement>(null);
+
+  const avisar = (texto: string) => {
+    setToast(texto);
+    setTimeout(() => setToast(""), 3500);
+  };
+
+  // Trae la lista completa y refresca el detalle del ciclo cuyo id se pasa
+  // (o null para dejarlo sin elegir). Nunca recalcula "cuál es el principal"
+  // por su cuenta — eso solo pasa en elegirPrincipal(), para que asignar o
+  // quitar una persona no salte a otro ciclo en medio de la edición.
+  //
+  // Importante: un fallo de red/timeout al refrescar NUNCA borra lo que ya
+  // había en pantalla — solo un 404 real (el ciclo ya no existe) limpia el
+  // principal. Antes, cualquier error de fetch caía a `null` y la tarjeta
+  // recién asignada "desaparecía" aunque el cambio sí se hubiera guardado.
+  const cargarDetalle = async (uid: string, workflowId: string | null) => {
+    let arr = workflowsExistentes;
+    try {
+      const lista: WorkflowExistente[] = await fetch(`${API_URL}/api/workflows?user_id=${uid}`).then(r => r.json());
+      arr = Array.isArray(lista) ? lista : [];
+      setWorkflowsExistentes(arr);
+    } catch {
+      avisar("No pudimos actualizar la lista de ciclos — intenta de nuevo.");
+    }
+
+    if (!workflowId) {
+      setPrincipal(null);
+      return arr;
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/api/workflows/${workflowId}?user_id=${uid}`);
+      if (res.status === 404) {
+        setPrincipal(null);
+        return arr;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const detalle: WorkflowDetalle = await res.json();
+      setPrincipal(detalle);
+      const org: ResponsableInfo[] = await fetch(`${API_URL}/api/workflows/responsables/listar?user_id=${uid}`).then(r => r.json());
+      setResponsablesOrg(Array.isArray(org) ? org : []);
+    } catch {
+      avisar("El cambio se guardó, pero no pudimos refrescar la vista — intenta recargar la página.");
+    }
+    return arr;
+  };
+
+  // Elige el ciclo principal (activo, o el borrador más reciente) — solo se
+  // llama al montar la página o después de eliminar un ciclo, nunca tras
+  // asignar/quitar una persona del ciclo que ya se está viendo.
+  const elegirPrincipal = async (uid: string) => {
+    const lista: WorkflowExistente[] = await fetch(`${API_URL}/api/workflows?user_id=${uid}`).then(r => r.json()).catch(() => []);
+    const arr = Array.isArray(lista) ? lista : [];
+    const candidato = arr.find(w => w.estado === "activo") || arr.find(w => w.estado === "borrador") || arr[0] || null;
+    await cargarDetalle(uid, candidato?.id ?? null);
+  };
 
   useEffect(() => {
     createClient().auth.getUser().then(async ({ data }) => {
       const uid = data.user?.id ?? null;
       setUserId(uid);
-      if (uid) {
-        try {
-          const lista: WorkflowExistente[] = await fetch(`${API_URL}/api/workflows?user_id=${uid}`).then(r => r.json());
-          setWorkflowsExistentes(Array.isArray(lista) ? lista : []);
-        } catch {
-          setWorkflowsExistentes([]);
-        }
-      }
+      if (uid) await elegirPrincipal(uid);
       setCargandoInicial(false);
     });
   }, []);
@@ -88,8 +172,6 @@ export default function ConfiguracionAutorizacionesPage() {
       } else {
         setMensajes(prev => [...prev, { rol: "bot", texto: data.resumen || "Esto es lo que entendí:" }]);
         setPropuesta(data);
-        // Por defecto se marcan todos los responsables con email — el
-        // usuario puede desmarcar los que no quiera invitar todavía.
         setAInvitar(new Set((data.responsables_detectados || []).filter(r => r.email).map(r => r.email)));
       }
     } catch (error) {
@@ -111,8 +193,6 @@ export default function ConfiguracionAutorizacionesPage() {
     if (!propuesta || !userId) return;
     setCargando(true);
     try {
-      // Responsables listos para el backend: se marca `invitar` solo para
-      // los que tienen email Y el usuario dejó el checkbox activo.
       const responsables = (propuesta.responsables_detectados || []).map(r => ({
         nombre: r.nombre,
         email: r.email || null,
@@ -132,10 +212,6 @@ export default function ConfiguracionAutorizacionesPage() {
         }),
       }).then(r => r.json());
 
-      // Sin pantalla intermedia: apenas queda guardado como borrador, se
-      // pasa directo al canvas — ahí se ve la validación real y se puede
-      // ajustar/activar. El resumen de invitaciones se resuelve solo con
-      // mirar los responsables asignados en el canvas.
       router.push(`/settings/autorizaciones/canvas/${creado.id}`);
     } catch {
       setMensajes(prev => [...prev, { rol: "bot", texto: "No pude guardar el workflow. Intenta de nuevo." }]);
@@ -163,6 +239,93 @@ export default function ConfiguracionAutorizacionesPage() {
     }
   };
 
+  const asignarExistente = async (rol: string, responsableId: string) => {
+    if (!userId || !principal) return;
+    setGuardandoResponsable(true);
+    try {
+      const res = await fetch(`${API_URL}/api/workflows/responsables/${responsableId}/roles`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, workflow_id: principal.id, rol_clave: rol }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        avisar(body.detail || "No se pudo asignar el responsable");
+        return;
+      }
+      await cargarDetalle(userId, principal.id);
+      setAsignandoRol(null);
+      const nombre = responsablesOrg.find(r => r.id === responsableId)?.nombre || "Responsable";
+      avisar(`${nombre} asignado a "${rol}"`);
+    } finally {
+      setGuardandoResponsable(false);
+    }
+  };
+
+  const crearYAsignar = async (rol: string) => {
+    if (!userId || !principal || !nuevoNombre.trim() || !nuevoEmail.trim()) return;
+    setGuardandoResponsable(true);
+    try {
+      const creado = await fetch(`${API_URL}/api/workflows/responsables`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, nombre: nuevoNombre.trim(), email: nuevoEmail.trim() }),
+      }).then(r => r.json());
+      await fetch(`${API_URL}/api/workflows/responsables/${creado.id}/roles`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId, workflow_id: principal.id, rol_clave: rol }),
+      });
+      let mensajeInvitacion = "";
+      try {
+        const inv = await fetch(`${API_URL}/api/organizacion/invitar`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: userId, email: nuevoEmail.trim(), responsable_id: creado.id }),
+        });
+        const invData = await inv.json();
+        if (!inv.ok) {
+          mensajeInvitacion = `Responsable creado, pero no pudimos invitar: ${invData.detail || "error desconocido"}`;
+        } else if (invData.estado === "ya_miembro") {
+          mensajeInvitacion = `${nuevoEmail.trim()} ya es miembro de la organización.`;
+        } else {
+          mensajeInvitacion = `Invitación enviada a ${nuevoEmail.trim()}.`;
+        }
+      } catch (e) {
+        mensajeInvitacion = `Responsable creado, pero no pudimos enviar la invitación (${(e as Error).message}).`;
+      }
+      avisar(mensajeInvitacion);
+      await cargarDetalle(userId, principal.id);
+      setAsignandoRol(null); setNuevoNombre(""); setNuevoEmail("");
+    } finally {
+      setGuardandoResponsable(false);
+    }
+  };
+
+  const quitarAsignacion = async (rol: string, responsableId: string) => {
+    if (!userId || !principal) return;
+    setGuardandoResponsable(true);
+    try {
+      await fetch(`${API_URL}/api/workflows/responsables/${responsableId}/roles/${principal.id}/${rol}?user_id=${userId}`, { method: "DELETE" });
+      await cargarDetalle(userId, principal.id);
+    } finally {
+      setGuardandoResponsable(false);
+    }
+  };
+
+  const eliminarCiclo = async (id: string) => {
+    if (!userId) return;
+    setEliminando(id);
+    try {
+      const res = await authFetch(`${API_URL}/api/workflows/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        avisar(body.detail || "No se pudo eliminar el ciclo");
+        return;
+      }
+      setConfirmandoEliminar(null);
+      await elegirPrincipal(userId);
+    } finally {
+      setEliminando(null);
+    }
+  };
+
   if (cargandoInicial) {
     return (
       <div style={{ maxWidth: 640, margin: "0 auto" }}>
@@ -177,57 +340,173 @@ export default function ConfiguracionAutorizacionesPage() {
     );
   }
 
+  const otrosWorkflows = workflowsExistentes.filter(w => w.id !== principal?.id);
+  const asignaciones = principal?.responsables || [];
+  const roles = principal?.roles || [];
+
+  const mostrarChat = mostrarChatNuevo || !principal;
+
   return (
     <div style={{ maxWidth: 640, margin: "0 auto" }}>
       <button onClick={() => router.push("/settings")} style={{ border: 0, background: "none", color: "var(--n-600)", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 16, fontSize: 13.5 }}>
         <ArrowLeft size={16} /> Configuración
       </button>
 
+      {toast && (
+        <div style={{ marginBottom: 14, padding: "9px 13px", borderRadius: "var(--r-md)", background: "var(--surface-2)", color: "var(--n-800)", fontSize: 12.5 }}>
+          {toast}
+        </div>
+      )}
+
+      {principal && !mostrarChat && (
+        <>
+          <div style={{ marginBottom: 20, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <h1 style={{ fontSize: 22, fontWeight: 600, color: "var(--n-900)", margin: "0 0 4px" }}>{principal.nombre}</h1>
+              <p style={{ fontSize: 13.5, color: "var(--n-600)", margin: 0 }}>
+                {ESTADO_LABEL[principal.estado] ?? principal.estado} · quién está a cargo de cada rol y si ya se sumó a Baiyer.
+              </p>
+            </div>
+            <BtnSecondary onClick={() => router.push(`/settings/autorizaciones/canvas/${principal.id}`)} size="sm">
+              Editar el grafo
+            </BtnSecondary>
+          </div>
+
+          <CascadeWrapper>
+            {roles.length === 0 && (
+              <Card padding={18} style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 13, color: "var(--n-500)" }}>Este ciclo todavía no tiene roles definidos — ábrelo en el editor visual para agregarlos.</div>
+              </Card>
+            )}
+            {roles.map(rol => {
+              const asignados = asignaciones.filter(a => a.rol_clave === rol.clave);
+              const disponibles = responsablesOrg.filter(r => r.activo && !asignados.some(a => a.responsables?.id === r.id));
+              return (
+                <Card key={rol.clave} padding={16} style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--n-900)", marginBottom: 10 }}>{rol.nombre}</div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
+                    {asignados.length === 0 && <div style={{ fontSize: 12.5, color: "var(--n-500)" }}>Nadie asignado todavía.</div>}
+                    {asignados.map(a => {
+                      const estado = a.responsables?.estado_onboarding || "sin_vincular";
+                      const badge = ONBOARDING_BADGE[estado] || ONBOARDING_BADGE.sin_vincular;
+                      return (
+                        <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 10px", background: "var(--surface-2)", borderRadius: "var(--r-sm)" }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, color: "var(--n-900)" }}>{a.responsables?.nombre}</div>
+                            <div style={{ fontSize: 11.5, color: "var(--n-500)" }}>{a.responsables?.email || "sin email"}</div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: "var(--r-pill)", background: badge.bg, color: badge.fg, whiteSpace: "nowrap" }}>
+                              {badge.label}
+                            </span>
+                            <button onClick={() => quitarAsignacion(rol.clave, a.responsables.id)} disabled={guardandoResponsable} style={{ border: 0, background: "none", color: "var(--n-400)", cursor: "pointer", padding: 0 }} title="Quitar">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {asignandoRol === rol.clave ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {disponibles.length > 0 && (
+                        <>
+                          <select
+                            defaultValue=""
+                            disabled={guardandoResponsable}
+                            onChange={e => { if (e.target.value) asignarExistente(rol.clave, e.target.value); }}
+                            style={{ width: "100%", padding: "6px 8px", fontSize: 12.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }}
+                          >
+                            <option value="">Elegir persona existente…</option>
+                            {disponibles.map(r => <option key={r.id} value={r.id}>{r.nombre} · {r.email}</option>)}
+                          </select>
+                          <div style={{ fontSize: 11, color: "var(--n-500)" }}>o crear una persona nueva:</div>
+                        </>
+                      )}
+                      <input placeholder="Nombre" value={nuevoNombre} onChange={e => setNuevoNombre(e.target.value)} style={{ padding: "6px 8px", fontSize: 12.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }} />
+                      <input placeholder="Email" type="email" value={nuevoEmail} onChange={e => setNuevoEmail(e.target.value)} style={{ padding: "6px 8px", fontSize: 12.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }} />
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <BtnGhost onClick={() => { setAsignandoRol(null); setNuevoNombre(""); setNuevoEmail(""); }} size="sm">Cancelar</BtnGhost>
+                        <BtnPrimary onClick={() => crearYAsignar(rol.clave)} disabled={!nuevoNombre.trim() || !nuevoEmail.trim() || guardandoResponsable} size="sm">Crear e invitar</BtnPrimary>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setAsignandoRol(rol.clave)} style={{ display: "inline-flex", alignItems: "center", gap: 4, border: 0, background: "none", color: "var(--brand)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>
+                      <Plus size={13} /> Agregar persona
+                    </button>
+                  )}
+                </Card>
+              );
+            })}
+          </CascadeWrapper>
+
+          {otrosWorkflows.length > 0 && (
+            <div style={{ marginTop: 8, marginBottom: 16 }}>
+              <button
+                onClick={() => setMostrarOtros(v => !v)}
+                style={{ display: "inline-flex", alignItems: "center", gap: 4, border: 0, background: "none", color: "var(--n-600)", fontSize: 12.5, cursor: "pointer", padding: 0 }}
+              >
+                {mostrarOtros ? <ChevronDown size={14} /> : <ChevronRight size={14} />} Otros ciclos ({otrosWorkflows.length})
+              </button>
+              {mostrarOtros && (
+                <Card padding={0} style={{ marginTop: 8 }}>
+                  {otrosWorkflows.map((w, i) => (
+                    <div key={w.id} style={{ padding: "10px 14px", borderBottom: i === otrosWorkflows.length - 1 ? "none" : "1px solid var(--n-100)" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--n-900)" }}>{w.nombre}</div>
+                          <div style={{ fontSize: 11.5, color: "var(--n-500)", marginTop: 2 }}>v{w.version} · {ESTADO_LABEL[w.estado] ?? w.estado}</div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                          <button onClick={() => router.push(`/settings/autorizaciones/canvas/${w.id}`)} style={{ border: 0, background: "none", color: "var(--brand)", fontSize: 12, cursor: "pointer" }}>Abrir</button>
+                          {confirmandoEliminar === w.id ? (
+                            <>
+                              <button onClick={() => eliminarCiclo(w.id)} disabled={eliminando === w.id} style={{ border: 0, background: "none", color: "var(--error, #c0392b)", fontSize: 12, cursor: "pointer" }}>
+                                {eliminando === w.id ? "Eliminando…" : "Confirmar"}
+                              </button>
+                              <button onClick={() => setConfirmandoEliminar(null)} style={{ border: 0, background: "none", color: "var(--n-500)", fontSize: 12, cursor: "pointer" }}>Cancelar</button>
+                            </>
+                          ) : (
+                            <button onClick={() => setConfirmandoEliminar(w.id)} style={{ border: 0, background: "none", color: "var(--n-400)", cursor: "pointer" }} title="Eliminar">
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </Card>
+              )}
+            </div>
+          )}
+
+          <button
+            onClick={() => setMostrarChatNuevo(true)}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, border: 0, background: "none", color: "var(--n-500)", fontSize: 12.5, cursor: "pointer" }}
+          >
+            + Crear un ciclo nuevo
+          </button>
+        </>
+      )}
+
+      {mostrarChat && (
+      <>
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 600, color: "var(--n-900)", margin: "0 0 4px" }}>Ciclo de compras y autorizaciones</h1>
         <p style={{ fontSize: 13.5, color: "var(--n-600)", margin: 0 }}>Cuéntaselo a Baiyer en tus palabras. Después puedes ajustarlo visualmente.</p>
       </div>
 
-      {workflowsExistentes.length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.3 }}>
-            Ciclos que ya creaste
-          </div>
-          <Card padding={0}>
-            {workflowsExistentes.map((w, i) => (
-              <div
-                key={w.id}
-                onClick={() => router.push(`/settings/autorizaciones/canvas/${w.id}`)}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
-                  padding: "12px 16px", cursor: "pointer",
-                  borderBottom: i === workflowsExistentes.length - 1 ? "none" : "1px solid var(--n-100)",
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--n-900)" }}>{w.nombre}</div>
-                  <div style={{ fontSize: 12, color: "var(--n-500)", marginTop: 2 }}>v{w.version} · {ESTADO_LABEL[w.estado] ?? w.estado}</div>
-                </div>
-                <span style={{ fontSize: 12.5, color: "var(--brand)", flexShrink: 0 }}>Abrir →</span>
-              </div>
-            ))}
-          </Card>
-          {!mostrarChatNuevo && (
-            <button
-              onClick={() => setMostrarChatNuevo(true)}
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 6, marginTop: 10,
-                border: 0, background: "none", color: "var(--n-500)", fontSize: 12.5, cursor: "pointer",
-              }}
-            >
-              + Crear un ciclo nuevo
-            </button>
-          )}
-        </div>
+      {principal && (
+        <button
+          onClick={() => setMostrarChatNuevo(false)}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 16, border: 0, background: "none", color: "var(--n-600)", fontSize: 12.5, cursor: "pointer" }}
+        >
+          <ArrowLeft size={13} /> Volver a &quot;{principal.nombre}&quot;
+        </button>
       )}
 
-      {(mostrarChatNuevo || workflowsExistentes.length === 0) && (
-      <>
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
         <ChatBubbles mensajes={mensajes} />
 
