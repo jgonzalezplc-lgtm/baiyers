@@ -199,10 +199,10 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
         await espera(300);
         addBot(undefined, d);
         await espera(200);
-        addBot("¿Es tu empresa? Cuéntame lo que haga falta corregir, o dime de una vez tu RUT, tu nombre y cómo te llamas — todo junto si quieres.");
+        addBot("¿Es tu empresa? Cuéntame lo que haga falta corregir, o dime de una vez el RUT de la empresa y cómo te llamas tú — todo junto si quieres.");
       } else {
         await espera(300);
-        addBot("No reconocí tu empresa automáticamente. Cuéntame su nombre, tu RUT y cómo te llamas — puedes darlo todo en un solo mensaje.");
+        addBot("No reconocí tu empresa automáticamente. Cuéntame su nombre, el RUT de la empresa y cómo te llamas tú — puedes darlo todo en un solo mensaje.");
       }
       setCargandoInicial(false);
     });
