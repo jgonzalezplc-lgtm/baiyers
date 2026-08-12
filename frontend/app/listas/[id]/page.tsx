@@ -773,7 +773,7 @@ export default function ListaDetallePage() {
                       }}
                     >
                       <ChevronRight size={15} strokeWidth={2} style={{
-                        flexShrink: 0, transition: "transform .2s ease",
+                        flexShrink: 0, transition: "transform .3s cubic-bezier(.4,0,.2,1)",
                         transform: grupoAbierto ? "rotate(90deg)" : "rotate(0deg)",
                       }} />
                       Sugeridos por Baiyer
@@ -786,8 +786,10 @@ export default function ListaDetallePage() {
                       Proveedores de tu empresa
                     </div>
                   )}
-                  {grupoAbierto && <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    {proveedores.map(proveedor => {
+                  <div className={`acc-panel${grupoAbierto ? " open" : ""}`}>
+                    <div className="acc-inner">
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        {proveedores.map(proveedor => {
                       const clave = `${it.cotizacion_id}:${proveedor.id}`;
                       const detalleAbierto = proveedoresAbiertos.has(clave);
                       return <div key={proveedor.id} style={{
@@ -801,7 +803,7 @@ export default function ListaDetallePage() {
                           onKeyDown={e => { if (e.key === "Enter" || e.key === " ") alternarDetalleProveedor(clave); }}
                           style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", cursor: "pointer" }}
                         >
-                          <ChevronRight size={15} style={{ flexShrink: 0, color: "var(--n-400)", transform: detalleAbierto ? "rotate(90deg)" : undefined, transition: "transform .2s ease" }} />
+                          <ChevronRight size={15} style={{ flexShrink: 0, color: "var(--n-400)", transform: detalleAbierto ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .3s cubic-bezier(.4,0,.2,1)" }} />
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                               <strong style={{ fontSize: 13.5, color: "var(--n-900)" }}>{proveedor.nombre}</strong>
@@ -818,23 +820,29 @@ export default function ListaDetallePage() {
                             padding: "6px 9px", fontSize: 12, fontWeight: 600, cursor: proveedor.email ? "pointer" : "not-allowed",
                           }}>{proveedor.seleccionado ? "Seleccionado" : "Agregar"}</button>
                         </div>
-                        {detalleAbierto && <div style={{ borderTop: "1px solid var(--n-200)", padding: "10px 12px 12px 37px", background: "var(--surface)" }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-800)", marginBottom: 7 }}>Por qué puede cotizar este ítem</div>
-                          <div style={{ fontSize: 12.5, color: "var(--n-600)", lineHeight: 1.5, marginBottom: 8 }}>
-                            {proveedor.match_label}. El proveedor está asociado a la categoría del ítem y estas capacidades provienen del catálogo Baiyer.
+                        <div className={`acc-panel${detalleAbierto ? " open" : ""}`}>
+                          <div className="acc-inner">
+                            <div style={{ borderTop: "1px solid var(--n-200)", padding: "10px 12px 12px 37px", background: "var(--surface)" }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-800)", marginBottom: 7 }}>Por qué puede cotizar este ítem</div>
+                              <div style={{ fontSize: 12.5, color: "var(--n-600)", lineHeight: 1.5, marginBottom: 8 }}>
+                                {proveedor.match_label}. El proveedor está asociado a la categoría del ítem y estas capacidades provienen del catálogo Baiyer.
+                              </div>
+                              {!!proveedor.categorias_producto?.length && <div style={{ marginBottom: 7 }}>
+                                <span style={{ fontSize: 11.5, color: "var(--n-500)" }}>Especialidades: </span>
+                                <span style={{ fontSize: 11.5, color: "var(--n-700)" }}>{proveedor.categorias_producto.join(" · ")}</span>
+                              </div>}
+                              {!!proveedor.productos?.length && <div>
+                                <span style={{ fontSize: 11.5, color: "var(--n-500)" }}>Ejemplos del catálogo: </span>
+                                <span style={{ fontSize: 11.5, color: "var(--n-700)" }}>{proveedor.productos.join(" · ")}</span>
+                              </div>}
+                            </div>
                           </div>
-                          {!!proveedor.categorias_producto?.length && <div style={{ marginBottom: 7 }}>
-                            <span style={{ fontSize: 11.5, color: "var(--n-500)" }}>Especialidades: </span>
-                            <span style={{ fontSize: 11.5, color: "var(--n-700)" }}>{proveedor.categorias_producto.join(" · ")}</span>
-                          </div>}
-                          {!!proveedor.productos?.length && <div>
-                            <span style={{ fontSize: 11.5, color: "var(--n-500)" }}>Ejemplos del catálogo: </span>
-                            <span style={{ fontSize: 11.5, color: "var(--n-700)" }}>{proveedor.productos.join(" · ")}</span>
-                          </div>}
-                        </div>}
+                        </div>
                       </div>;
-                    })}
-                  </div>}
+                        })}
+                      </div>
+                    </div>
+                  </div>
                 </div>;
               })}
               <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--n-500)" }}>
