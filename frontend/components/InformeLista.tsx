@@ -5,7 +5,7 @@
  * - Una sección por ítem con todos sus proveedores comparados
  *   (descripción scrapeada, precio y URL de origen)
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { pdf, Document, Page, Text, View, Link as PdfLink, StyleSheet } from "@react-pdf/renderer";
 import { authFetch } from "@/lib/authFetch";
 import type { DetalleLista } from "@/app/listas/[id]/page";
@@ -201,12 +201,33 @@ function escenarioMejorPrecio(datos: DetalleLista, tasas: Record<string, number>
   return { ...datos, items };
 }
 
-export default function InformeLista({ listaId, userId, nombreLista }: { listaId: string; userId: string; nombreLista: string }) {
+export default function InformeLista({
+  listaId,
+  userId,
+  nombreLista,
+  tienePrecios,
+}: {
+  listaId: string;
+  userId: string;
+  nombreLista: string;
+  tienePrecios: boolean;
+}) {
   const [generando, setGenerando] = useState<"normal" | "mejor_precio" | null>(null);
+  const [abierto, setAbierto] = useState(false);
   const [error, setError] = useState("");
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const cerrarAlClickFuera = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setAbierto(false);
+    };
+    document.addEventListener("mousedown", cerrarAlClickFuera);
+    return () => document.removeEventListener("mousedown", cerrarAlClickFuera);
+  }, []);
 
   const descargar = async (modo: "normal" | "mejor_precio") => {
-    if (!userId) return;
+    if (!userId || !tienePrecios) return;
+    setAbierto(false);
     setGenerando(modo);
     setError("");
     try {
@@ -237,25 +258,66 @@ export default function InformeLista({ listaId, userId, nombreLista }: { listaId
   };
 
   return (
-    <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-      <div style={{ display: "flex", gap: 8 }}>
-        <button
-          onClick={() => descargar("mejor_precio")}
-          disabled={generando !== null}
-          className="btn-swiss-primary"
-          style={{ fontSize: 10, whiteSpace: "nowrap", cursor: generando ? "wait" : "pointer" }}
-          title="Selecciona automáticamente la opción más barata de cada ítem y descarga el PDF"
-        >
-          {generando === "mejor_precio" ? "Generando..." : "INFORME MEJOR PRECIO ↓"}
-        </button>
-        <button
-          onClick={() => descargar("normal")}
-          disabled={generando !== null}
-          className="btn-swiss-secondary"
-          style={{ fontSize: 10, whiteSpace: "nowrap", cursor: generando ? "wait" : "pointer" }}
-        >
-          {generando === "normal" ? "Generando..." : "INFORME PDF DE LA LISTA ↓"}
-        </button>
+    <div ref={menuRef} style={{ position: "relative", display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+      <button
+        type="button"
+        onClick={() => setAbierto(v => !v)}
+        disabled={!tienePrecios || generando !== null}
+        aria-expanded={abierto}
+        aria-haspopup="menu"
+        className="btn-swiss-primary"
+        style={{
+          fontSize: 10, whiteSpace: "nowrap",
+          cursor: !tienePrecios ? "not-allowed" : generando ? "wait" : "pointer",
+          opacity: tienePrecios ? 1 : .45,
+        }}
+        title={tienePrecios ? "Descargar informe" : "Disponible cuando el cuadro comparativo tenga precios"}
+      >
+        {generando ? "GENERANDO..." : "INFORMES"}
+        <span aria-hidden="true" style={{
+          display: "inline-block", marginLeft: 8,
+          transform: abierto ? "rotate(180deg)" : "rotate(0deg)",
+          transition: "transform 180ms ease",
+        }}>⌄</span>
+      </button>
+
+      <div style={{
+        position: "absolute", zIndex: 40, top: "calc(100% + 6px)", right: 0,
+        display: "grid", gridTemplateRows: abierto ? "1fr" : "0fr",
+        opacity: abierto ? 1 : 0,
+        transform: abierto ? "translateY(0)" : "translateY(-6px)",
+        transition: "grid-template-rows 220ms ease, opacity 160ms ease, transform 220ms ease",
+        pointerEvents: abierto ? "auto" : "none",
+      }}>
+        <div style={{ overflow: "hidden" }}>
+          <div role="menu" style={{
+            minWidth: 220, padding: 6,
+            background: "var(--surface)", border: "1px solid var(--n-200)",
+            borderRadius: "var(--r-md)", boxShadow: "var(--shadow-pop)",
+          }}>
+            {([
+              ["normal", "Informe completo"],
+              ["mejor_precio", "Informe mejor precio"],
+            ] as const).map(([modo, label]) => (
+              <button
+                key={modo}
+                type="button"
+                role="menuitem"
+                onClick={() => void descargar(modo)}
+                style={{
+                  display: "block", width: "100%", padding: "10px 12px",
+                  border: 0, borderRadius: "var(--r-sm)", background: "transparent",
+                  color: "var(--n-800)", textAlign: "left", whiteSpace: "nowrap",
+                  font: "inherit", fontSize: 13, fontWeight: 500, cursor: "pointer",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = "var(--n-100)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+              >
+                {label} <span aria-hidden="true" style={{ float: "right", color: "var(--n-500)" }}>↓</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
       {error && <span className="label" style={{ color: "var(--text-error)" }}>{error}</span>}
     </div>

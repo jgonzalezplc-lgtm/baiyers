@@ -613,7 +613,14 @@ export default function ListaDetallePage() {
             {!lista.aprobacion && lista.items.some(it => it.comparados.some(c => (c.precio_cotizado ?? c.precio) != null)) && (
               <BtnSecondary onClick={autoSeleccionarBaratos} icon={Wand2}>Escoger lo más barato</BtnSecondary>
             )}
-            <InformeLista listaId={lista.id} userId={userId ?? ""} nombreLista={lista.nombre} />
+            <InformeLista
+              listaId={lista.id}
+              userId={userId ?? ""}
+              nombreLista={lista.nombre}
+              tienePrecios={lista.items.some(it =>
+                it.comparados.some(c => (c.precio_cotizado ?? c.precio) != null)
+              )}
+            />
           </div>
         </div>
       </div>
