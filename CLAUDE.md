@@ -75,8 +75,44 @@ Reemplaza gradualmente el "Proceso de compra" (texto libre) + "Email del autoriz
 - `services/workflow_engine.py` — motor puro, sin DB: `validar_grafo()`, `siguiente_nodo()` (determinista), `evaluar_condicion()` (**sin `eval`**), `resolver_autorizadores()` (secuencial/paralela), `procesar_evento()` (idempotente).
 - `services/workflow_conversational.py` — `interpretar_descripcion()` (Gemini traduce texto libre a ETAPAS, nunca arma el grafo directamente) + `compilar_a_grafo()` (compilador puro y determinístico, reutiliza `validar_grafo`).
 - `services/workflow_service.py` — persistencia de borradores/versiones/responsables. `services/workflow_execution.py` — **el puente real**: `iniciar_autorizacion_workflow()` (llamado desde `listas.py` en `solicitar_aprobacion`) resuelve autorizadores reales del ciclo activo y decide a quién notificar; si no hay ciclo activo, cae al flujo legado de un solo `aprobador_email`. **Esto ya está conectado en producción** — no es un pendiente.
-- **`/settings/autorizaciones/canvas/[id]/page.tsx` — el canvas visual SÍ existe** (drag-and-drop de nodos, SVG para conexiones, panel de propiedades, asignación de responsables por rol con dropdown "elegir existente" que asigna al instante + toast de confirmación). No es un pendiente.
-- Endpoints en `routers/workflows.py`: `POST /api/workflows/interpretar`, `POST/GET /api/workflows`, `GET/PUT /api/workflows/{id}`, `GET /api/workflows/{id}/validar`, `POST /api/workflows/{id}/activar`, `/api/workflows/responsables*`. Migrados a `Depends(get_auth_context)` (ya no confían en `user_id` del body/query).
+- **`/settings/autorizaciones/canvas/[id]/page.tsx` — el canvas visual SÍ existe** (drag-and-drop de
+  nodos, panel de propiedades, asignación de responsables por rol con dropdown "elegir existente" que
+  asigna al instante + toast de confirmación). Cada tarjeta tiene un punto de **entrada** (izquierda,
+  solo responde si ya hay una conexión armada desde otro nodo) y uno de **salida** (derecha, arma el
+  origen) — antes un solo ícono servía para ambos y una conexión nueva podía pisar una existente. Las
+  líneas se dibujan desde el borde real de cada tarjeta (no siempre izquierda/derecha fijo) y, si dos
+  conexiones comparten el mismo par de tarjetas en sentidos opuestos, se separan con un offset
+  perpendicular estable — si no, quedaban exactamente superpuestas y parecían una sola flecha
+  apuntando mal. Las ramas "aprobado"/"rechazado" se pintan verde/rojo. Botón "Ordenar
+  automáticamente" reacomoda las tarjetas en columnas según su distancia real desde "Inicio" (BFS
+  simple — un nodo recibe su nivel la primera vez que se alcanza y nunca se re-encola, para tolerar
+  ciclos reales del proceso como "rechazado → volver a cotizar" sin colgar el navegador).
+- **Chat de correcciones dentro del canvas** (`interpretar_correccion()` en `workflow_conversational.py`,
+  `POST /api/workflows/{id}/interpretar-correccion`) — el LLM propone una lista de operaciones sobre el
+  grafo YA EXISTENTE (nunca lo rediseña completo), aplicadas con las mismas funciones que la edición
+  manual. Incluye `asignar_responsable` (nombre + email + rol_clave) — a diferencia de las operaciones
+  de grafo, esta se persiste al instante (igual que "+ Agregar responsable" del panel), no queda
+  pendiente de "Guardar". El set de tipos de nodo agregables por chat (`TIPOS_NODO_AGREGABLES`) incluye
+  "decision" — deliberadamente distinto del set que usa la creación inicial por ETAPAS, donde
+  "decision" nunca es algo que el usuario describa (lo arma el compilador solo). Si TODAS las
+  operaciones propuestas se descartan por validación, se lo dice honesto al usuario en vez de mostrar
+  el resumen optimista del modelo con el grafo intacto.
+- Endpoints en `routers/workflows.py`: `POST /api/workflows/interpretar`, `POST/GET /api/workflows`,
+  `GET/PUT /api/workflows/{id}`, `DELETE /api/workflows/{id}` (rechaza borrar el ciclo activo),
+  `GET /api/workflows/{id}/validar`, `POST /api/workflows/{id}/activar`,
+  `POST /api/workflows/{id}/interpretar-correccion`, `/api/workflows/responsables*`. Migrados a
+  `Depends(get_auth_context)` (ya no confían en `user_id` del body/query).
+- **`/settings/autorizaciones` — roster de un solo ciclo, no lista de duplicados (2026-08-12).** Antes
+  cada confirmación del chat creaba una fila nueva en `workflow_definitions` sin forma de verlas ni
+  limpiarlas — el usuario terminó con 8+ ciclos sueltos. Ahora, si existe algún ciclo, la página muestra
+  directo el principal (el `activo`, o si no el `borrador` más reciente) con quién está a cargo de cada
+  rol y su estado real (`estado_onboarding_de_usuarios()` en `organizacion.py`: "activo" si
+  `last_sign_in_at` no es null, "invitacion_pendiente" si nunca inició sesión, "sin_vincular" si nunca
+  se invitó) — agregar/quitar personas ahí mismo, sin pasar por el canvas. Los demás ciclos quedan
+  colapsados bajo "Otros ciclos (N)" con opción de eliminar (bloqueado para el activo). El refresco tras
+  asignar/quitar una persona fija el ciclo por id (`cargarDetalle`) en vez de recalcular "cuál es el
+  principal" en cada acción (`elegirPrincipal`, solo al montar o tras eliminar), y nunca borra la vista
+  si el refetch falla por algo transitorio — solo un 404 real limpia el principal.
 - **Pendiente real:** ficha visual de responsables más rica, homologación de proveedores.
 
 ## Auth & Onboarding (frontend)
@@ -105,12 +141,26 @@ extracción tolerante a lenguaje natural, fuera de orden y con correcciones. **M
 - `services/logo_upload.py` — protección SSRF real al descargar un logo candidato (sin redirects,
   resuelve DNS y rechaza IPs privadas/loopback antes de conectar, valida `content-type`/tamaño).
 - El onboarding, una vez que interpreta el proceso de compra, **crea el workflow real** (no solo
-  preview): reusa `PropuestaWorkflowCard`/`WorkflowGuardadoCard` (`frontend/components/workflow/`,
-  compartidos con `/settings/autorizaciones`) para crear el borrador, invitar responsables (solo si el
-  usuario deja el checkbox marcado) y activar — mismos endpoints de `workflows.py`, ningún endpoint
-  nuevo hizo falta para esto.
-- **Pendiente:** `onboarding_sessions` no guarda el `workflow_id` creado a mitad de camino (deuda
-  menor); overrides de plantilla por nodo del canvas no expuestos en la UI de onboarding.
+  preview): reusa `PropuestaWorkflowCard` (`frontend/components/workflow/`, compartido con
+  `/settings/autorizaciones`) para crear el borrador, invitar responsables (solo si el usuario deja el
+  checkbox marcado) y pasa directo al canvas para activar — mismos endpoints de `workflows.py`.
+- **Chats unificados (2026-08-12):** `OnboardingChat.tsx` ya no tiene sus propias burbujas/input —
+  usa los mismos componentes compartidos que `/settings/autorizaciones` y el chat de correcciones del
+  canvas (`ChatBubbles` con slot `extra` para la tarjeta de empresa, `TypingBubble`, `textarea` +
+  `BtnPrimary`). Al terminar el perfil, la MISMA conversación pregunta explícitamente "¿Pasamos a
+  configurar el proceso de compras?" (máquina de fases `perfil → transicion → proceso` local al
+  componente) en vez de mezclar la extracción de perfil y de proceso — la fase "proceso" llama
+  `POST /api/workflows/interpretar` igual que `/settings/autorizaciones`, con contexto que arranca
+  limpio desde ese punto. Si el usuario ya tiene un ciclo de compras, la pregunta ni se ofrece (chequea
+  `GET /api/workflows` antes de preguntar) — evita la causa real de los ciclos duplicados que motivó el
+  rediseño de `/settings/autorizaciones` en "roster de un solo ciclo" (ver sección Workflow Builder).
+  `WorkflowGuardadoCard.tsx` ya no existe (se borró cuando se sacó la pantalla intermedia "Aceptar" /
+  "Ajustar visualmente" — confirmar un workflow pasa directo al canvas en los dos chats).
+- **Pendiente:** `onboarding_sessions` no guarda el `workflow_id` creado a mitad de camino ni la fase
+  `perfil/transicion/proceso` — si el usuario recarga a mitad de la fase "proceso" antes de confirmar,
+  vuelve a ver el botón "Confirmar y continuar" del perfil (ya guardado, así que reintentar es inocuo)
+  y se le vuelve a preguntar si quiere configurar el proceso; overrides de plantilla por nodo del
+  canvas no expuestos en la UI de onboarding.
 
 ## Plantillas de correo (Fases 4-6 del mismo proyecto — completo, ver también sección de arriba)
 Antes cada correo transaccional (RFQ, aprobación, OC, seguimientos) tenía asunto/cuerpo hardcodeado
