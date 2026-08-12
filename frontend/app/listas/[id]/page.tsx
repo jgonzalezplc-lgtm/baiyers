@@ -152,14 +152,13 @@ function urlBusquedaProducto(item: ItemLista, proveedor: ProveedorRecomendado) {
   const productoMatch = proveedor.match_label.startsWith("Match por producto:")
     ? proveedor.match_label.replace("Match por producto:", "").trim()
     : "";
-  let dominio = "";
-  try {
-    dominio = proveedor.sitio_web ? new URL(proveedor.sitio_web).hostname.replace(/^www\./, "") : "";
-  } catch { /* el sitio es contexto opcional */ }
+  // Una búsqueda con `site:` y frase exacta suele fallar cuando el catálogo
+  // del proveedor no está indexado. Producto + empresa entrega resultados
+  // útiles incluso si la ficha vive en redes sociales, marketplaces o un PDF.
   const consulta = [
-    dominio ? `site:${dominio}` : proveedor.nombre,
-    `"${productoMatch || item.nombre}"`,
-    productoMatch && productoMatch.toLowerCase() !== item.nombre.toLowerCase() ? item.nombre : "",
+    productoMatch || item.nombre,
+    proveedor.nombre,
+    "Chile",
   ].filter(Boolean).join(" ");
   return `https://www.google.com/search?q=${encodeURIComponent(consulta)}`;
 }
@@ -878,7 +877,7 @@ export default function ListaDetallePage() {
                               href={urlBusquedaProducto(it, proveedor)}
                               target="_blank" rel="noopener noreferrer"
                               onClick={e => e.stopPropagation()}
-                              title={`Buscar ${it.nombre} en el sitio de ${proveedor.nombre}`}
+                              title={`Buscar ${it.nombre} ofrecido por ${proveedor.nombre}`}
                               style={{
                                 display: "inline-flex", alignItems: "center", gap: 5,
                                 border: "1px solid var(--success)", background: "var(--surface)",
