@@ -224,6 +224,62 @@ class InterpretarCorreccionTest(unittest.TestCase):
             r = interpretar_correccion("agrega que finanzas también autorice y renombra la etapa n1", self.GRAFO)
         self.assertEqual(len(r["operaciones"]), 2)
 
+    def test_conectar_nodo_recien_agregado_en_la_misma_correccion(self):
+        """Bug real: conectar una etapa que se agrega en la misma corrección
+        se descartaba porque se validaba contra el grafo previo, sin el id
+        nuevo — el usuario veía la tarjeta aparecer sin conectarse a nada."""
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            instancia = MockModel.return_value
+            instancia.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "Agrego homologación entre autorizar y fin",
+                "operaciones": [
+                    {"tipo": "agregar_nodo", "nodo_id": "nuevo_homologacion", "tipo_nodo": "homologacion", "nombre": "Homologar proveedores", "roles": ["revisor"]},
+                    {"tipo": "desconectar", "origen_nodo_id": "n1", "destino_nodo_id": "fin", "resultado": "aprobado"},
+                    {"tipo": "conectar", "origen_nodo_id": "n1", "destino_nodo_id": "nuevo_homologacion", "resultado": "aprobado"},
+                    {"tipo": "conectar", "origen_nodo_id": "nuevo_homologacion", "destino_nodo_id": "fin"},
+                ],
+                "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("agrega homologación de proveedores después de autorizar", self.GRAFO)
+        self.assertEqual(len(r["operaciones"]), 4)
+        tipos = [op["tipo"] for op in r["operaciones"]]
+        self.assertEqual(tipos, ["agregar_nodo", "desconectar", "conectar", "conectar"])
+        conectar_ops = [op for op in r["operaciones"] if op["tipo"] == "conectar"]
+        self.assertTrue(any(op["destino_nodo_id"] == "nuevo_homologacion" for op in conectar_ops))
+        self.assertTrue(any(op["origen_nodo_id"] == "nuevo_homologacion" for op in conectar_ops))
+
+    def test_agregar_nodo_sin_id_del_modelo_genera_uno_disponible_para_conectar(self):
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            instancia = MockModel.return_value
+            instancia.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "", "operaciones": [
+                    {"tipo": "agregar_nodo", "tipo_nodo": "revision", "nombre": "Revisión extra"},
+                    {"tipo": "conectar", "origen_nodo_id": "n0", "destino_nodo_id": "n1"},
+                ],
+                "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("agrega una revisión", self.GRAFO)
+        self.assertEqual(len(r["operaciones"]), 2)
+        self.assertTrue(r["operaciones"][0]["nodo_id"])
+
+    def test_conectar_a_id_inventado_no_agregado_sigue_descartandose(self):
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            instancia = MockModel.return_value
+            instancia.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "", "operaciones": [
+                    {"tipo": "conectar", "origen_nodo_id": "n0", "destino_nodo_id": "nodo_que_no_existe"},
+                ],
+                "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("conecta con algo que no existe", self.GRAFO)
+        self.assertEqual(r["operaciones"], [])
+
     def test_roles_invalidos_se_descartan(self):
         with patch("app.config.settings.gemini_api_key", "x"), \
              patch("google.generativeai.configure"), \

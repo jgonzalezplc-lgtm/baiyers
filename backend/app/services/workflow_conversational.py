@@ -316,7 +316,7 @@ Responde SOLO JSON válido, sin markdown, con esta forma exacta:
     {"tipo": "cambiar_entrada", "nodo_id": "n1", "entrada": "qué recibe esta etapa"},
     {"tipo": "cambiar_proceso", "nodo_id": "n1", "proceso": "qué debe hacer esta etapa"},
     {"tipo": "cambiar_condicion_entrada", "nodo_id": "n1", "condicion_entrada": {"campo": "monto_total", "operador": ">", "valor": 1000000}},
-    {"tipo": "agregar_nodo", "tipo_nodo": "autorizacion", "nombre": "nombre de la etapa nueva", "roles": ["autorizador"]},
+    {"tipo": "agregar_nodo", "nodo_id": "nuevo_homologacion", "tipo_nodo": "autorizacion", "nombre": "nombre de la etapa nueva", "roles": ["autorizador"]},
     {"tipo": "eliminar_nodo", "nodo_id": "n1"},
     {"tipo": "conectar", "origen_nodo_id": "n1", "destino_nodo_id": "n2", "resultado": "aprobado"},
     {"tipo": "desconectar", "origen_nodo_id": "n1", "destino_nodo_id": "n2", "resultado": "aprobado"}
@@ -326,8 +326,13 @@ Responde SOLO JSON válido, sin markdown, con esta forma exacta:
 }
 
 Reglas:
-- "nodo_id" en cualquier operación debe ser uno de los ids que aparecen en el grafo actual
-  que te paso abajo — JAMÁS inventes un id que no exista ahí.
+- "nodo_id" en cualquier operación que NO sea "agregar_nodo" debe ser uno de los ids que
+  aparecen en el grafo actual que te paso abajo — JAMÁS inventes un id que no exista ahí.
+- "agregar_nodo" SÍ debe traer su propio "nodo_id" nuevo — invéntale un id corto y único
+  (ej: "nuevo_homologacion") que no exista ya en el grafo. Si necesitas conectar esa etapa
+  nueva (con "conectar"/"desconectar" u otra operación), usa ESE MISMO id como si ya
+  existiera — y pon la operación "agregar_nodo" ANTES que las que la usan, en ese orden
+  dentro de la lista "operaciones".
 - "roles" solo puede tener valores de: cotizador, revisor, autorizador, comprador.
 - "tipo_nodo" (para agregar_nodo) solo puede ser uno de: tarea_humana, revision,
   autorizacion, homologacion, emision_oc, compra_sin_oc, espera_documento, accion_automatica.
@@ -419,7 +424,34 @@ def interpretar_correccion(descripcion: str, grafo_actual: dict, contexto: str =
         print(f"[WorkflowConversational] error interpretando corrección: {e}")
         return vacio_seguro
 
-    operaciones = [op for op in (data.get("operaciones") or []) if _operacion_valida(op, ids_nodos)]
+    # Filtrado secuencial: un nodo que se agrega en esta misma corrección debe
+    # quedar disponible para las operaciones que le siguen (conectarlo, etc.),
+    # así que el set de ids conocidos crece a medida que se procesa la lista
+    # — nunca se valida contra un snapshot fijo del grafo original.
+    ids_conocidos = set(ids_nodos)
+    operaciones: list[dict] = []
+    contador_nuevo = 0
+    for op in (data.get("operaciones") or []):
+        if not isinstance(op, dict):
+            continue
+        if op.get("tipo") == "agregar_nodo":
+            nodo_id = op.get("nodo_id")
+            if not isinstance(nodo_id, str) or not nodo_id or nodo_id in ids_conocidos:
+                while True:
+                    contador_nuevo += 1
+                    candidato = f"nuevo_{contador_nuevo}"
+                    if candidato not in ids_conocidos:
+                        nodo_id = candidato
+                        break
+            op = {**op, "nodo_id": nodo_id}
+            if not _operacion_valida(op, ids_conocidos):
+                continue
+            operaciones.append(op)
+            ids_conocidos.add(nodo_id)
+            continue
+        if _operacion_valida(op, ids_conocidos):
+            operaciones.append(op)
+
     return {
         "resumen": data.get("resumen") or "",
         "operaciones": operaciones,

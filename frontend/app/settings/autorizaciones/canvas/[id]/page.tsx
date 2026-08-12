@@ -441,7 +441,11 @@ export default function CanvasWorkflowPage() {
     } else if (tipo === "cambiar_condicion_entrada") {
       actualizarNodo(op.nodo_id as string, { condicion_entrada: op.condicion_entrada as Condicion });
     } else if (tipo === "agregar_nodo") {
-      const id = nuevoId(nodos);
+      // El backend ya viene con un nodo_id propio para esta etapa (para que
+      // las operaciones "conectar" que la referencian en la misma
+      // corrección apunten al mismo id) — solo se genera uno acá si por
+      // algún motivo faltara.
+      const id = (op.nodo_id as string) || nuevoId(nodos);
       const nuevo: Nodo = {
         id, tipo: op.tipo_nodo as string, nombre: op.nombre as string,
         posicion: { x: 60 + (nodos.length % 3) * 220, y: 40 + Math.floor(nodos.length / 3) * 130 },
