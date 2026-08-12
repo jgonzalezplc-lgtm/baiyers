@@ -108,6 +108,52 @@ function nuevoId(nodos: Nodo[]): string {
   return `n${i}`;
 }
 
+const COL_W = 240;
+const ROW_H = 110;
+
+// Ordena por columnas según la distancia real desde el/los nodos sin
+// entradas (normalmente "inicio") — así el flujo queda de izquierda a
+// derecha en el mismo orden en que se ejecuta, y las líneas dejan de cruzar
+// por encima de tarjetas que no tienen nada que ver con esa conexión.
+// Los nodos que el grafo no alcanza (sueltos) quedan en la última columna.
+function ordenarPorNiveles(nodos: Nodo[], conexiones: Conexion[]): Nodo[] {
+  const idsValidos = new Set(nodos.map(n => n.id));
+  const salientes = new Map<string, string[]>();
+  const entrantes = new Map<string, number>();
+  nodos.forEach(n => { salientes.set(n.id, []); entrantes.set(n.id, 0); });
+  conexiones.forEach(c => {
+    if (!idsValidos.has(c.origen_nodo_id) || !idsValidos.has(c.destino_nodo_id)) return;
+    salientes.get(c.origen_nodo_id)!.push(c.destino_nodo_id);
+    entrantes.set(c.destino_nodo_id, (entrantes.get(c.destino_nodo_id) ?? 0) + 1);
+  });
+
+  const nivel = new Map<string, number>();
+  const raices = nodos.filter(n => (entrantes.get(n.id) ?? 0) === 0).map(n => n.id);
+  const cola = raices.length ? [...raices] : nodos.slice(0, 1).map(n => n.id);
+  cola.forEach(id => nivel.set(id, 0));
+  for (let i = 0; i < cola.length; i++) {
+    const actual = cola[i];
+    const lv = nivel.get(actual) ?? 0;
+    for (const siguiente of salientes.get(actual) || []) {
+      if (nivel.get(siguiente) === undefined || nivel.get(siguiente)! < lv + 1) {
+        nivel.set(siguiente, lv + 1);
+        cola.push(siguiente);
+      }
+    }
+  }
+  let maxNivel = 0;
+  nivel.forEach(v => { if (v > maxNivel) maxNivel = v; });
+  nodos.forEach(n => { if (nivel.get(n.id) === undefined) nivel.set(n.id, maxNivel + 1); });
+
+  const filaPorNivel = new Map<number, number>();
+  return nodos.map(n => {
+    const lv = nivel.get(n.id)!;
+    const fila = filaPorNivel.get(lv) ?? 0;
+    filaPorNivel.set(lv, fila + 1);
+    return { ...n, posicion: { x: 40 + lv * COL_W, y: 40 + fila * ROW_H } };
+  });
+}
+
 export default function CanvasWorkflowPage() {
   const router = useRouter();
   const params = useParams();
@@ -514,6 +560,7 @@ export default function CanvasWorkflowPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <BtnSecondary onClick={() => setNodos(prev => ordenarPorNiveles(prev, conexiones))} disabled={guardando}>Ordenar automáticamente</BtnSecondary>
           <BtnSecondary onClick={validar} disabled={guardando}>Validar</BtnSecondary>
           <BtnSecondary onClick={guardar} disabled={guardando}>{guardando ? "Guardando…" : "Guardar"}</BtnSecondary>
           {workflow.estado !== "activo" && (
