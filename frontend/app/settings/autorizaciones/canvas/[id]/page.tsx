@@ -143,6 +143,12 @@ function ordenarPorNiveles(nodos: Nodo[], conexiones: Conexion[]): Nodo[] {
     entrantes.set(c.destino_nodo_id, (entrantes.get(c.destino_nodo_id) ?? 0) + 1);
   });
 
+  // BFS simple: cada nodo recibe su nivel la PRIMERA vez que se alcanza y
+  // nunca se re-encola — un ciclo real del proceso (ej: "rechazado" que
+  // vuelve de Autorizar compra a Preparar cotización, algo válido y común
+  // en este dominio) antes hacía que el nivel de los nodos del ciclo se
+  // siguiera "actualizando" cada vuelta sin límite, con la cola creciendo
+  // para siempre hasta que el navegador tiraba "Invalid array length".
   const nivel = new Map<string, number>();
   const raices = nodos.filter(n => (entrantes.get(n.id) ?? 0) === 0).map(n => n.id);
   const cola = raices.length ? [...raices] : nodos.slice(0, 1).map(n => n.id);
@@ -151,7 +157,7 @@ function ordenarPorNiveles(nodos: Nodo[], conexiones: Conexion[]): Nodo[] {
     const actual = cola[i];
     const lv = nivel.get(actual) ?? 0;
     for (const siguiente of salientes.get(actual) || []) {
-      if (nivel.get(siguiente) === undefined || nivel.get(siguiente)! < lv + 1) {
+      if (nivel.get(siguiente) === undefined) {
         nivel.set(siguiente, lv + 1);
         cola.push(siguiente);
       }
