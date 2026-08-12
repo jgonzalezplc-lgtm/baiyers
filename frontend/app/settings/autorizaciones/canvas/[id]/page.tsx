@@ -108,6 +108,22 @@ function nuevoId(nodos: Nodo[]): string {
   return `n${i}`;
 }
 
+// Busca la primera celda de la grilla que no se superponga con ninguna
+// tarjeta ya posicionada. La fórmula "x: 60 + (i % 3) * 220" por sí sola no
+// alcanza — si el grafo se editó por chat o "Ordenar automáticamente"
+// reacomodó nodos, el índice i puede caer justo sobre otra tarjeta ya
+// existente y la nueva queda tapada debajo, invisible, dando la sensación
+// de que "no pasó nada".
+function posicionLibre(nodos: Nodo[]): { x: number; y: number } {
+  const ocupadas = nodos.map(n => n.posicion || { x: 0, y: 0 });
+  for (let i = nodos.length; i < nodos.length + 200; i++) {
+    const candidata = { x: 60 + (i % 3) * 220, y: 40 + Math.floor(i / 3) * 130 };
+    const choca = ocupadas.some(p => Math.abs(p.x - candidata.x) < NODE_W && Math.abs(p.y - candidata.y) < NODE_H);
+    if (!choca) return candidata;
+  }
+  return { x: 60, y: 40 + nodos.length * (NODE_H + 20) };
+}
+
 const COL_W = 240;
 const ROW_H = 110;
 
@@ -324,7 +340,7 @@ export default function CanvasWorkflowPage() {
     const label = TIPOS.find(t => t.valor === tipo)?.label || tipo;
     const nuevo: Nodo = {
       id, tipo, nombre: label,
-      posicion: { x: 60 + (nodos.length % 3) * 220, y: 40 + Math.floor(nodos.length / 3) * 130 },
+      posicion: posicionLibre(nodos),
       ...(tipo === "decision" || tipo === "autorizacion" ? { resultados: ["aprobado", "rechazado"] } : {}),
       ...(["tarea_humana", "revision", "autorizacion", "homologacion"].includes(tipo) ? { roles: [] } : {}),
     };
@@ -464,7 +480,7 @@ export default function CanvasWorkflowPage() {
       const id = (op.nodo_id as string) || nuevoId(nodos);
       const nuevo: Nodo = {
         id, tipo: op.tipo_nodo as string, nombre: op.nombre as string,
-        posicion: { x: 60 + (nodos.length % 3) * 220, y: 40 + Math.floor(nodos.length / 3) * 130 },
+        posicion: posicionLibre(nodos),
         ...(op.tipo_nodo === "decision" || op.tipo_nodo === "autorizacion" ? { resultados: ["aprobado", "rechazado"] } : {}),
         ...(op.roles ? { roles: op.roles as string[] } : {}),
       };

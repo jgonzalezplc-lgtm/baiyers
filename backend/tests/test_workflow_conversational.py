@@ -364,6 +364,28 @@ class InterpretarCorreccionTest(unittest.TestCase):
             r = interpretar_correccion("agrega homologación y que Luis la haga", self.GRAFO)
         self.assertEqual(len(r["operaciones"]), 2)
 
+    def test_si_todas_las_operaciones_se_descartan_no_muestra_exito_falso(self):
+        """Bug real: el modelo devolvía un 'resumen' optimista ('voy a hacer
+        X') aunque las operaciones propuestas se descartaran todas por
+        validar mal — el usuario veía un mensaje de éxito sin que el grafo
+        cambiara nada. Ahora eso se trata como requiere_aclaracion."""
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            instancia = MockModel.return_value
+            instancia.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "Voy a agregar homologación y asignar a Luis",
+                "operaciones": [
+                    {"tipo": "asignar_responsable", "rol_clave": "rol_que_no_existe", "nombre": "Luis", "email": "luis@acme.cl"},
+                ],
+                "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("agrega homologación y asigna a Luis", self.GRAFO)
+        self.assertEqual(r["operaciones"], [])
+        self.assertEqual(r["resumen"], "")
+        self.assertTrue(r["requiere_aclaracion"])
+        self.assertTrue(r["preguntas"])
+
     def test_roles_invalidos_se_descartan(self):
         with patch("app.config.settings.gemini_api_key", "x"), \
              patch("google.generativeai.configure"), \

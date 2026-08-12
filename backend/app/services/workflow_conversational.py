@@ -515,6 +515,22 @@ def interpretar_correccion(descripcion: str, grafo_actual: dict, contexto: str =
         if _operacion_valida(op, ids_conocidos, nodos_por_id):
             operaciones.append(op)
 
+    # Si el modelo propuso operaciones pero TODAS se descartaron por validar
+    # mal (rol inexistente, resultado en la dirección equivocada, etc.), no
+    # hay que devolver el "resumen" original como si el cambio se hubiera
+    # aplicado — eso le mostraba al usuario un mensaje de éxito aunque el
+    # grafo no cambió nada. Se trata igual que requiere_aclaracion, con un
+    # mensaje honesto en vez del resumen que prometía algo que no pasó.
+    propuso_algo = bool(data.get("operaciones"))
+    todo_descartado = propuso_algo and not operaciones
+    if todo_descartado:
+        return {
+            "resumen": "",
+            "operaciones": [],
+            "requiere_aclaracion": True,
+            "preguntas": ["No pude aplicar ese cambio con seguridad — algún dato no coincidía con el grafo actual (un rol que no existe en ninguna etapa, una conexión con el resultado en la dirección equivocada, etc.). ¿Puedes darme más detalle o intentarlo de nuevo con otras palabras?"],
+        }
+
     return {
         "resumen": data.get("resumen") or "",
         "operaciones": operaciones,
