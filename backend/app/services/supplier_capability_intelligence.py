@@ -127,6 +127,63 @@ def registrar_evento(
     return recalcular_capacidad(user_id, proveedor_id, categoria, concepto_normalizado)
 
 
+def registrar_categorias_importadas(
+    user_id: str, asignaciones: set[tuple[str, str]], *, tamano_lote: int = 200,
+) -> int:
+    """Registra categorías explícitas de una importación en lotes.
+
+    Evita ejecutar 4-5 requests a PostgREST por cada proveedor/categoría. Los
+    eventos siguen siendo auditables e idempotentes y la capacidad derivada
+    queda con la misma confianza máxima de ``manual_category_assigned``.
+    """
+    if not asignaciones:
+        return 0
+    sb = _sb()
+    ahora = _now()
+    eventos = []
+    capacidades = []
+    for proveedor_id, categoria in sorted(asignaciones):
+        clave = _clave_idempotencia(
+            user_id, proveedor_id, "manual_category_assigned",
+            None, None, None, categoria,
+        )
+        eventos.append({
+            "user_id": user_id,
+            "proveedor_id": proveedor_id,
+            "categoria_confirmada": categoria,
+            "concepto_normalizado": "",
+            "tipo_evento": "manual_category_assigned",
+            "peso": PESOS["manual_category_assigned"],
+            "clave_idempotencia": clave,
+            "metadata": {"origen": "excel"},
+        })
+        capacidades.append({
+            "user_id": user_id,
+            "proveedor_id": proveedor_id,
+            "categoria": categoria,
+            "concepto": "",
+            "confianza": 1.0,
+            "evidencia_positiva": 1,
+            "evidencia_negativa": 0,
+            "cotizaciones_validas": 0,
+            "compras": 0,
+            "estado": "confirmed",
+            "ultima_evidencia_at": ahora,
+            "updated_at": ahora,
+        })
+
+    for inicio in range(0, len(eventos), tamano_lote):
+        sb.table("supplier_capability_events").upsert(
+            eventos[inicio:inicio + tamano_lote], on_conflict="clave_idempotencia",
+        ).execute()
+    for inicio in range(0, len(capacidades), tamano_lote):
+        sb.table("supplier_capabilities").upsert(
+            capacidades[inicio:inicio + tamano_lote],
+            on_conflict="user_id,proveedor_id,categoria,concepto",
+        ).execute()
+    return len(asignaciones)
+
+
 def recalcular_capacidad(
     user_id: str, proveedor_id: str, categoria: str, concepto: str = "",
 ) -> dict:

@@ -162,13 +162,14 @@ Filas:
         proveedores_norm = [_mapear_fila(fila) for fila in filas]
 
     from app.services.proveedores_matching import resolver_o_crear_proveedor, resolver_o_crear_contacto, normalizar_rut
-    from app.services.supplier_capability_intelligence import registrar_evento
+    from app.services.supplier_capability_intelligence import registrar_categorias_importadas
 
     sb = get_supabase()
     importados = 0
     actualizados = 0
     omitidos = 0
     errores = []
+    asignaciones_categoria: set[tuple[str, str]] = set()
 
     for p in proveedores_norm:
         nombre = (p.get("nombre") or "").strip()
@@ -203,16 +204,8 @@ Filas:
             if contacto_email:
                 resolver_o_crear_contacto(sb, user_id, proveedor_id, contacto_email, nombre=p.get("contacto_nombre"), origen="excel")
 
-            # La categoría declarada en el Excel es evidencia explícita del
-            # usuario. Se registra en el motor canónico y queda idempotente:
-            # reimportar actualiza al proveedor sin duplicar capacidades.
             for categoria in _categorias_items(p.get("categoria")):
-                registrar_evento(
-                    user_id, proveedor_id, "manual_category_assigned",
-                    categoria_confirmada=categoria,
-                    metadata={"origen": "excel"},
-                    estricto=True,
-                )
+                asignaciones_categoria.add((proveedor_id, categoria))
 
             if es_nuevo:
                 importados += 1
@@ -221,10 +214,18 @@ Filas:
         except Exception as e:
             errores.append(f"{nombre}: {e}")
 
+    categorias_registradas = 0
+    if asignaciones_categoria:
+        try:
+            categorias_registradas = registrar_categorias_importadas(user_id, asignaciones_categoria)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Proveedores guardados, pero falló su categorización: {e}")
+
     return {
         "importados": importados,
         "actualizados": actualizados,
         "omitidos": omitidos,
+        "categorias_registradas": categorias_registradas,
         "errores": errores[:10],
         "preview": preview,
         "total_filas": len(filas),

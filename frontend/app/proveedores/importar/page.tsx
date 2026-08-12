@@ -16,7 +16,7 @@ export default function ImportarProveedoresPage() {
   const [archivo, setArchivo] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewRow[]>([]);
   const [cargando, setCargando] = useState(false);
-  const [resultado, setResultado] = useState<{ importados: number; actualizados: number; omitidos: number; errores: string[] } | null>(null);
+  const [resultado, setResultado] = useState<{ importados: number; actualizados: number; omitidos: number; categoriasRegistradas: number; errores: string[] } | null>(null);
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -51,7 +51,7 @@ export default function ImportarProveedoresPage() {
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setPreview(data.preview || []);
-      setResultado({ importados: data.importados, actualizados: data.actualizados, omitidos: data.omitidos ?? 0, errores: data.errores ?? [] });
+      setResultado({ importados: data.importados, actualizados: data.actualizados, omitidos: data.omitidos ?? 0, categoriasRegistradas: data.categorias_registradas ?? 0, errores: data.errores ?? [] });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error importando");
     } finally {
@@ -151,6 +151,10 @@ export default function ImportarProveedoresPage() {
                 <div style={{ fontSize: 28, fontWeight: 800, color: "var(--warning)" }}>{resultado.omitidos}</div>
                 <div style={{ fontSize: 10, color: "var(--n-600)" }}>Omitidos sin nombre</div>
               </div>}
+              <div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: "var(--success)" }}>{resultado.categoriasRegistradas}</div>
+                <div style={{ fontSize: 10, color: "var(--n-600)" }}>Categorías asociadas</div>
+              </div>
             </div>
             {resultado.errores.length > 0 && (
               <div style={{ marginTop: 12, fontSize: 11, color: "var(--danger)" }}>

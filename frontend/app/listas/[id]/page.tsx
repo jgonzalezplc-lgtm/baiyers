@@ -800,8 +800,10 @@ export default function ListaDetallePage() {
                 const proveedores = it.proveedores_recomendados
                   .filter(p => p.origen === origen)
                   .sort((a, b) => (b.match_score ?? 0) - (a.match_score ?? 0));
-                if (!proveedores.length) return null;
                 const esSugerido = origen === "sugerido";
+                // La sección privada siempre se muestra para hacer visible la
+                // diferencia entre "sin matches" y una función no disponible.
+                if (esSugerido && !proveedores.length) return null;
                 const grupoAbierto = esSugerido
                   ? sugeridosAbiertos.has(it.cotizacion_id)
                   : confianzaAbiertos.has(it.cotizacion_id);
@@ -830,6 +832,14 @@ export default function ListaDetallePage() {
                   <div className={`acc-panel${grupoAbierto ? " open" : ""}`}>
                     <div className="acc-inner">
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {!proveedores.length && <div style={{
+                      width: "100%", padding: "12px 14px",
+                      border: "1px dashed var(--n-300)", borderRadius: "var(--r-md)",
+                      background: "var(--canvas)", color: "var(--n-600)",
+                      fontSize: 12.5, lineHeight: 1.5,
+                    }}>
+                      No hay proveedores de confianza asociados a la categoría <strong style={{ color: "var(--n-800)" }}>{categoria.label}</strong>. Reimporta el Excel o asigna categorías desde la ficha del proveedor.
+                    </div>}
                     {proveedores.map(proveedor => {
                       const clave = `${it.cotizacion_id}:${proveedor.id}`;
                       const detalleAbierto = proveedoresAbiertos.has(clave);
