@@ -461,7 +461,7 @@ def interpretar_correccion(descripcion: str, grafo_actual: dict, contexto: str =
         prompt += f"\n\nConversación previa:\n{contexto}"
 
     try:
-        resp = model.generate_content(prompt, request_options={"timeout": 25})
+        resp = model.generate_content(prompt, request_options={"timeout": 35})
         text = resp.text.strip()
         if "```" in text:
             text = text.split("```")[1]

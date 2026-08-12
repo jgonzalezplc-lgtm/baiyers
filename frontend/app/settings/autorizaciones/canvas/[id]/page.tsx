@@ -570,7 +570,7 @@ export default function CanvasWorkflowPage() {
       const res = await authFetch(`${API_URL}/api/workflows/${workflowId}/interpretar-correccion`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ descripcion: texto, grafo_actual: { nodos, conexiones }, contexto }),
-        signal: AbortSignal.timeout(45000),
+        signal: AbortSignal.timeout(50000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
