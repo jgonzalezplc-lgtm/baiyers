@@ -137,8 +137,13 @@ async def preparar_rfq(lista_id: str, req: PrepararRFQRequest, ctx: AuthContext 
             row = {
                 "user_id": ctx.actor_user_id, "lista_proyecto_id": lista_id,
                 "proveedor_id": proveedor_id, "contacto_id": (contacto or {}).get("id"),
-                "destinatario_email": email, "subject": subject, "body": body,
-                "estado": "draft", "clave_idempotencia": clave, "updated_at": _now(),
+                # Preparar nuevamente debe retomar el trabajo guardado, no
+                # pisar ediciones con la plantilla por defecto.
+                "destinatario_email": existente.get("destinatario_email") if existente else email,
+                "subject": existente.get("subject") if existente else subject,
+                "body": existente.get("body") if existente else body,
+                "estado": existente.get("estado") if existente else "draft",
+                "clave_idempotencia": clave, "updated_at": _now(),
             }
             if existente:
                 batch = sb.table("rfq_batches").update(row).eq("id", existente["id"]).execute().data[0]
