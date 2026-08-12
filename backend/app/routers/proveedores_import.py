@@ -9,6 +9,34 @@ from app.services.auth_context import AuthContext, get_auth_context
 router = APIRouter(prefix="/api/proveedores", tags=["proveedores_import"])
 
 
+def _valor(fila: dict, *claves: str):
+    normalizada = {str(k).lower().strip(): v for k, v in fila.items()}
+    return next((normalizada.get(k) for k in claves if normalizada.get(k) not in (None, "")), None)
+
+
+def _mapear_fila(fila: dict) -> dict:
+    """Mapeo determinístico para encabezados comunes y formatos Baiyer."""
+    return {
+        "nombre": _valor(fila, "nombre", "name", "proveedor", "supplier_name", "legal_name", "company_name"),
+        "email": _valor(fila, "email", "correo", "primary_email"),
+        "telefono": _valor(fila, "telefono", "teléfono", "phone", "primary_phone"),
+        "categoria": _valor(fila, "categoria", "category", "rubro"),
+        "pais": _valor(fila, "pais", "país", "country") or "CL",
+        "notas": _valor(fila, "notas", "notes", "observaciones"),
+        "rut": _valor(fila, "rut", "tax_id"),
+        "contacto_nombre": _valor(fila, "contact_name", "nombre_contacto"),
+        "contacto_email": _valor(fila, "contact_email", "secondary_email", "correo_alternativo"),
+        "sitio_web": _valor(fila, "sitio_web", "website", "web", "url"),
+    }
+
+
+def _tiene_columnas_reconocidas(columnas) -> bool:
+    nombres = {str(c).lower().strip() for c in columnas}
+    return bool(nombres.intersection({
+        "nombre", "name", "proveedor", "supplier_name", "legal_name", "company_name",
+    }))
+
+
 @router.get("/plantilla")
 async def descargar_plantilla():
     """Retorna plantilla Excel con el formato sugerido."""
@@ -70,9 +98,12 @@ async def importar_proveedores(file: UploadFile = File(...), ctx: AuthContext = 
     # Preview (primeras 5 filas para el frontend)
     preview = df.head(5).to_dict(orient="records")
 
-    # Normalizar con Gemini
+    # Para formatos conocidos el mapeo determinístico es más confiable, rápido
+    # y procesa las 200 filas; Gemini queda para encabezados realmente libres.
     proveedores_norm = []
-    if settings.gemini_api_key:
+    if _tiene_columnas_reconocidas(df.columns):
+        proveedores_norm = [_mapear_fila(fila) for fila in filas]
+    elif settings.gemini_api_key:
         try:
             import google.generativeai as genai
             genai.configure(api_key=settings.gemini_api_key)
@@ -92,38 +123,28 @@ Filas:
                 text = text.split("```")[1]
                 if text.startswith("json"):
                     text = text[4:].strip()
-            proveedores_norm = json.loads(text)
+            respuesta_gemini = json.loads(text)
+            proveedores_norm = [_mapear_fila(p) for p in respuesta_gemini if isinstance(p, dict)]
         except Exception as e:
             print(f"[Import] Gemini error: {e}")
 
     # Fallback: mapeo directo de columnas
     if not proveedores_norm:
-        col_map = {c.lower().strip(): c for c in df.columns}
-        for fila in filas:
-            fila_lower = {k.lower().strip(): v for k, v in fila.items()}
-            proveedores_norm.append({
-                "nombre": fila_lower.get("nombre") or fila_lower.get("name") or fila_lower.get("proveedor") or fila_lower.get("supplier_name") or fila_lower.get("legal_name"),
-                "email": fila_lower.get("email") or fila_lower.get("correo"),
-                "telefono": fila_lower.get("telefono") or fila_lower.get("teléfono") or fila_lower.get("phone"),
-                "categoria": fila_lower.get("categoria") or fila_lower.get("category") or fila_lower.get("rubro"),
-                "pais": fila_lower.get("pais") or fila_lower.get("país") or fila_lower.get("country") or "CL",
-                "notas": fila_lower.get("notas") or fila_lower.get("notes") or fila_lower.get("observaciones"),
-                "rut": fila_lower.get("rut") or fila_lower.get("tax_id"),
-                "contacto_nombre": fila_lower.get("contact_name") or fila_lower.get("nombre_contacto"),
-                "contacto_email": fila_lower.get("contact_email") or fila_lower.get("secondary_email") or fila_lower.get("correo_alternativo"),
-            })
+        proveedores_norm = [_mapear_fila(fila) for fila in filas]
 
     from app.services.proveedores_matching import resolver_o_crear_proveedor, resolver_o_crear_contacto, normalizar_rut
 
     sb = get_supabase()
     importados = 0
     actualizados = 0
+    omitidos = 0
     errores = []
 
     for p in proveedores_norm:
         nombre = (p.get("nombre") or "").strip()
         email = (p.get("email") or "").strip() or None
         if not nombre:
+            omitidos += 1
             continue
         try:
             # Busca por RUT → email/dominio → nombre normalizado antes de crear
@@ -140,6 +161,10 @@ Filas:
             rut_norm = normalizar_rut(p.get("rut"))
             if rut_norm:
                 cambios["rut"] = rut_norm
+            if p.get("telefono"):
+                cambios["telefono"] = str(p["telefono"])[:100]
+            if p.get("sitio_web"):
+                cambios["sitio_web"] = str(p["sitio_web"])[:500]
             sb.table("proveedores").update(cambios).eq("id", proveedor_id).execute()
 
             if email:
@@ -158,6 +183,7 @@ Filas:
     return {
         "importados": importados,
         "actualizados": actualizados,
+        "omitidos": omitidos,
         "errores": errores[:10],
         "preview": preview,
         "total_filas": len(filas),
