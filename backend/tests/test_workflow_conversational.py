@@ -208,6 +208,28 @@ class InterpretarCorreccionTest(unittest.TestCase):
             r = interpretar_correccion("agrega una etapa rara", self.GRAFO)
         self.assertEqual(r["operaciones"], [])
 
+    def test_agregar_nodo_tipo_decision_se_acepta_con_ramas_aprobado_rechazado(self):
+        """Bug real: el chat de correcciones reusaba TIPOS_ETAPA_VALIDOS (del
+        flujo de creación inicial, donde 'decision' nunca es una etapa
+        directa) para validar agregar_nodo — así que pedir un nodo de tipo
+        'decision' por chat siempre se rechazaba en silencio, aunque el
+        canvas manual sí lo permite."""
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            instancia = MockModel.return_value
+            instancia.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "Agrego decisión de proveedor nuevo",
+                "operaciones": [
+                    {"tipo": "agregar_nodo", "nodo_id": "nuevo_decision", "tipo_nodo": "decision", "nombre": "¿Proveedor nuevo?"},
+                    {"tipo": "conectar", "origen_nodo_id": "nuevo_decision", "destino_nodo_id": "n0", "resultado": "aprobado"},
+                ],
+                "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("agrega una decisión de proveedor nuevo", self.GRAFO)
+        self.assertEqual(len(r["operaciones"]), 2)
+        self.assertEqual(r["operaciones"][0]["tipo_nodo"], "decision")
+
     def test_operacion_valida_se_mantiene(self):
         with patch("app.config.settings.gemini_api_key", "x"), \
              patch("google.generativeai.configure"), \

@@ -19,6 +19,16 @@ TIPOS_ETAPA_VALIDOS = {
     "emision_oc", "compra_sin_oc", "espera_documento", "accion_automatica",
 }
 
+# Distinto de TIPOS_ETAPA_VALIDOS a propósito: ese set es para el flujo de
+# creación inicial (interpretar_descripcion → compilar_a_grafo), donde
+# "decision" JAMÁS es una etapa que el usuario describa — el compilador la
+# arma solo a partir de las reglas de autorización por monto. En cambio el
+# canvas manual sí deja agregar un nodo de tipo "decisión" directamente
+# (ver TIPOS en canvas/[id]/page.tsx), así que la corrección por chat
+# también debe poder agregarlo — bug real: antes reusaba TIPOS_ETAPA_VALIDOS
+# acá y "decisión" siempre se rechazaba en silencio.
+TIPOS_NODO_AGREGABLES = TIPOS_ETAPA_VALIDOS | {"decision"}
+
 ROLES_VALIDOS = {"cotizador", "revisor", "autorizador", "comprador"}
 
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
@@ -337,13 +347,20 @@ Reglas:
   dentro de la lista "operaciones".
 - "roles" solo puede tener valores de: cotizador, revisor, autorizador, comprador.
 - "tipo_nodo" (para agregar_nodo) solo puede ser uno de: tarea_humana, revision,
-  autorizacion, homologacion, emision_oc, compra_sin_oc, espera_documento, accion_automatica.
+  autorizacion, decision, homologacion, emision_oc, compra_sin_oc, espera_documento,
+  accion_automatica. Usa "decision" para un punto donde el flujo se ramifica según una
+  condición del proceso (ej: "¿el proveedor es nuevo?", "¿el monto supera X?") — igual que
+  "autorizacion", un nodo "decision" SIEMPRE se ramifica con resultados "aprobado"/
+  "rechazado" (nunca inventes otras etiquetas como "si"/"no" — el motor real solo entiende
+  esas dos), aunque el significado de cada rama lo decidas vos según la pregunta (ej:
+  "aprobado" = "sí es nuevo", "rechazado" = "no es nuevo" — el resumen que le muestras al
+  usuario debe aclarar qué significa cada rama en este caso concreto).
 - "resultado" en conectar/desconectar solo hace falta si el nodo ORIGEN (origen_nodo_id) es
-  el que tiene esa rama entre sus propios resultados (ej: un nodo de autorización con
-  "aprobado"/"rechazado") — si no, omite el campo. IMPORTANTE: el nodo de origen es siempre
-  el que DECIDE, nunca el que recibe la decisión. Ej: si "Autorizar compra" puede rechazar y
-  volver a "Preparar cotización", la conexión es origen_nodo_id="Autorizar compra",
-  destino_nodo_id="Preparar cotización", resultado="rechazado" — NUNCA al revés.
+  el que tiene esa rama entre sus propios resultados (ej: un nodo de autorización o decisión
+  con "aprobado"/"rechazado") — si no, omite el campo. IMPORTANTE: el nodo de origen es
+  siempre el que DECIDE, nunca el que recibe la decisión. Ej: si "Autorizar compra" puede
+  rechazar y volver a "Preparar cotización", la conexión es origen_nodo_id="Autorizar
+  compra", destino_nodo_id="Preparar cotización", resultado="rechazado" — NUNCA al revés.
 - "asignar_responsable" asigna una PERSONA real (nombre + email opcional) a un rol que YA
   existe en alguna etapa del grafo actual — "rol_clave" debe ser uno de los roles que
   aparecen en el campo "roles" de algún nodo (mira el grafo actual para saber cuáles hay:
@@ -383,7 +400,7 @@ def _operacion_valida(op: dict, ids_nodos: set[str], nodos_por_id: dict | None =
     if tipo == "agregar_nodo":
         roles = op.get("roles") or []
         return (
-            op.get("tipo_nodo") in TIPOS_ETAPA_VALIDOS
+            op.get("tipo_nodo") in TIPOS_NODO_AGREGABLES
             and bool(op.get("nombre"))
             and all(r in ROLES_VALIDOS for r in roles)
         )
