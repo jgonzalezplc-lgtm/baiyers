@@ -280,6 +280,37 @@ class InterpretarCorreccionTest(unittest.TestCase):
             r = interpretar_correccion("conecta con algo que no existe", self.GRAFO)
         self.assertEqual(r["operaciones"], [])
 
+    def test_resultado_en_direccion_incorrecta_se_descarta(self):
+        """Bug real: el modelo conectó 'rechazado' desde la tarea previa
+        (que no tiene resultados) hacia el nodo de autorización, en vez de
+        desde el nodo de autorización de vuelta — dirección invertida."""
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            instancia = MockModel.return_value
+            instancia.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "", "operaciones": [
+                    {"tipo": "conectar", "origen_nodo_id": "n0", "destino_nodo_id": "n1", "resultado": "rechazado"},
+                ],
+                "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("conecta rechazado al revés", self.GRAFO)
+        self.assertEqual(r["operaciones"], [])
+
+    def test_resultado_en_direccion_correcta_se_mantiene(self):
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            instancia = MockModel.return_value
+            instancia.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "", "operaciones": [
+                    {"tipo": "conectar", "origen_nodo_id": "n1", "destino_nodo_id": "n0", "resultado": "rechazado"},
+                ],
+                "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("si rechaza vuelve a cotizar", self.GRAFO)
+        self.assertEqual(len(r["operaciones"]), 1)
+
     def test_roles_invalidos_se_descartan(self):
         with patch("app.config.settings.gemini_api_key", "x"), \
              patch("google.generativeai.configure"), \

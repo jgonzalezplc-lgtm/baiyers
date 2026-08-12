@@ -336,15 +336,19 @@ Reglas:
 - "roles" solo puede tener valores de: cotizador, revisor, autorizador, comprador.
 - "tipo_nodo" (para agregar_nodo) solo puede ser uno de: tarea_humana, revision,
   autorizacion, homologacion, emision_oc, compra_sin_oc, espera_documento, accion_automatica.
-- "resultado" en conectar/desconectar solo hace falta si el nodo origen tiene resultados
-  (ej: un nodo de autorización con "aprobado"/"rechazado") — si no, omite el campo.
+- "resultado" en conectar/desconectar solo hace falta si el nodo ORIGEN (origen_nodo_id) es
+  el que tiene esa rama entre sus propios resultados (ej: un nodo de autorización con
+  "aprobado"/"rechazado") — si no, omite el campo. IMPORTANTE: el nodo de origen es siempre
+  el que DECIDE, nunca el que recibe la decisión. Ej: si "Autorizar compra" puede rechazar y
+  volver a "Preparar cotización", la conexión es origen_nodo_id="Autorizar compra",
+  destino_nodo_id="Preparar cotización", resultado="rechazado" — NUNCA al revés.
 - Si el usuario pide algo que no tiene que ver con el grafo (agregar responsables, activar
   el ciclo, etc.), no generes una operación para eso — son acciones separadas del canvas.
 - Si la corrección es ambigua o falta información para aplicarla con seguridad, pon
   requiere_aclaracion=true y pregunta — no adivines."""
 
 
-def _operacion_valida(op: dict, ids_nodos: set[str]) -> bool:
+def _operacion_valida(op: dict, ids_nodos: set[str], nodos_por_id: dict | None = None) -> bool:
     from app.services.workflow_engine import CAMPOS_CONDICION_VALIDOS, OPERADORES_VALIDOS
 
     tipo = op.get("tipo")
@@ -376,7 +380,21 @@ def _operacion_valida(op: dict, ids_nodos: set[str]) -> bool:
     if tipo == "eliminar_nodo":
         return op.get("nodo_id") in ids_nodos
     if tipo in ("conectar", "desconectar"):
-        return op.get("origen_nodo_id") in ids_nodos and op.get("destino_nodo_id") in ids_nodos
+        origen_id = op.get("origen_nodo_id")
+        destino_id = op.get("destino_nodo_id")
+        if origen_id not in ids_nodos or destino_id not in ids_nodos:
+            return False
+        resultado = op.get("resultado")
+        # Un "aprobado"/"rechazado" solo tiene sentido si el nodo de ORIGEN
+        # es el que decide (tiene esa rama en sus propios resultados) — así
+        # se evita el caso real donde el modelo conectó "rechazado" en la
+        # dirección equivocada (entrando a la autorización en vez de
+        # saliendo de ella).
+        if resultado and nodos_por_id is not None:
+            origen_nodo = nodos_por_id.get(origen_id) or {}
+            if resultado not in (origen_nodo.get("resultados") or []):
+                return False
+        return True
     return False
 
 
@@ -427,8 +445,12 @@ def interpretar_correccion(descripcion: str, grafo_actual: dict, contexto: str =
     # Filtrado secuencial: un nodo que se agrega en esta misma corrección debe
     # quedar disponible para las operaciones que le siguen (conectarlo, etc.),
     # así que el set de ids conocidos crece a medida que se procesa la lista
-    # — nunca se valida contra un snapshot fijo del grafo original.
+    # — nunca se valida contra un snapshot fijo del grafo original. También
+    # se mantiene un mapa id -> nodo para poder chequear que un resultado
+    # ("aprobado"/"rechazado") en una conexión pertenezca de verdad al nodo
+    # de origen, incluyendo nodos agregados en esta misma respuesta.
     ids_conocidos = set(ids_nodos)
+    nodos_por_id = {n.get("id"): n for n in (grafo_actual.get("nodos") or []) if n.get("id")}
     operaciones: list[dict] = []
     contador_nuevo = 0
     for op in (data.get("operaciones") or []):
@@ -444,12 +466,15 @@ def interpretar_correccion(descripcion: str, grafo_actual: dict, contexto: str =
                         nodo_id = candidato
                         break
             op = {**op, "nodo_id": nodo_id}
-            if not _operacion_valida(op, ids_conocidos):
+            if not _operacion_valida(op, ids_conocidos, nodos_por_id):
                 continue
             operaciones.append(op)
             ids_conocidos.add(nodo_id)
+            tipo_nodo = op.get("tipo_nodo")
+            resultados_nuevo = ["aprobado", "rechazado"] if tipo_nodo in ("decision", "autorizacion") else []
+            nodos_por_id[nodo_id] = {"id": nodo_id, "tipo": tipo_nodo, "resultados": resultados_nuevo}
             continue
-        if _operacion_valida(op, ids_conocidos):
+        if _operacion_valida(op, ids_conocidos, nodos_por_id):
             operaciones.append(op)
 
     return {
