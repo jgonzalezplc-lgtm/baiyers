@@ -1,102 +1,2259 @@
 [
-  {"company_name": "Dartel Electricidad", "primary_email": "ventas@dartel.cl", "website": "https://www.dartel.cl", "phone": "+56 2 2680 0000", "is_suggested": true, "categories": ["electrico", "ferreteria"]},
-  {"company_name": "ElectraFK (Grupo Sonepar)", "primary_email": "contacto@electrafk.cl", "website": "https://www.electrafk.cl", "phone": "+56 2 2496 1000", "is_suggested": true, "categories": ["electrico", "electronico"]},
-  {"company_name": "Electricidad Gobantes", "primary_email": "ventas@gobantes.cl", "website": "https://www.gobantes.cl", "phone": "+56 2 2829 8000", "is_suggested": true, "categories": ["electrico"]},
-  {"company_name": "Rhona S.A.", "primary_email": "contacto@rhona.cl", "website": "https://www.rhona.cl", "phone": "+56 32 226 9000", "is_suggested": true, "categories": ["electrico", "mecanico"]},
-  {"company_name": "EECOL Electric Chile", "primary_email": "ventas@eecol.cl", "website": "https://www.eecol.cl", "phone": "+56 2 2398 5000", "is_suggested": true, "categories": ["electrico"]},
-  {"company_name": "Casa Musa", "primary_email": "contacto@casamusa.cl", "website": "https://www.casamusa.cl", "phone": "+56 2 2638 1234", "is_suggested": true, "categories": ["electrico", "ferreteria"]},
-  {"company_name": "Extraelec", "primary_email": "ventas@extraelec.cl", "website": "https://www.extraelec.cl", "phone": "+56 32 254 5850", "is_suggested": true, "categories": ["electrico"]},
-  {"company_name": "Matelec", "primary_email": "ventas@matelec.cl", "website": "https://matelec.cl", "phone": "+56 9 9669 1574", "is_suggested": true, "categories": ["electrico", "ferreteria"]},
-  {"company_name": "Kolff S.A.", "primary_email": "ventas@kolff.cl", "website": "https://www.kolff.cl", "phone": "+56 2 2351 3000", "is_suggested": true, "categories": ["electrico", "electronico"]},
-  {"company_name": "MCI Electronics", "primary_email": "ventas@mci.cl", "website": "https://www.mci.cl", "phone": "+56 2 2334 3390", "is_suggested": true, "categories": ["electronico"]},
-  {"company_name": "Altronics", "primary_email": "contacto@altronics.cl", "website": "https://www.altronics.cl", "phone": "+56 2 2222 8800", "is_suggested": true, "categories": ["electronico"]},
-  {"company_name": "Electrocom", "primary_email": "ventas@electrocom.cl", "website": "https://www.electrocom.cl", "phone": "+56 2 2592 1100", "is_suggested": true, "categories": ["electrico", "ferreteria"]},
-  {"company_name": "Distec Chile", "primary_email": "contacto@distecchile.cl", "website": "https://distecchile.cl", "phone": "+56 2 2739 2989", "is_suggested": true, "categories": ["electronico", "retail"]},
-  {"company_name": "Legrand / Bticino Chile", "primary_email": "contacto.chile@legrand.com", "website": "https://www.bticino.cl", "phone": "+56 2 2580 5200", "is_suggested": true, "categories": ["electrico", "construccion"]},
-  {"company_name": "Schneider Electric Chile", "primary_email": "atencion.clientes@se.com", "website": "https://www.se.com/cl", "phone": "+56 2 2837 8000", "is_suggested": true, "categories": ["electrico", "electronico"]},
-  {"company_name": "Fertec", "primary_email": "web@fertec.cl", "website": "https://www.fertec.cl", "phone": "+56 2 2598 9000", "is_suggested": true, "categories": ["ferreteria", "mecanico"]},
-  {"company_name": "Feram", "primary_email": "contacto@feram.cl", "website": "https://www.feram.cl", "phone": "+56 2 2592 2000", "is_suggested": true, "categories": ["mecanico", "ferreteria"]},
-  {"company_name": "Todo Ferretero", "primary_email": "contacto@todoferretero.cl", "website": "https://todoferretero.cl", "phone": "+56 2 2696 2059", "is_suggested": true, "categories": ["ferreteria", "construccion"]},
-  {"company_name": "Empack", "primary_email": "info@empack.cl", "website": "https://www.empack.cl", "phone": "+56 2 2351 8000", "is_suggested": true, "categories": ["mecanico"]},
-  {"company_name": "SKF Chile", "primary_email": "contacto.chile@skf.com", "website": "https://www.skf.com/cl", "phone": "+56 2 2380 9100", "is_suggested": true, "categories": ["mecanico"]},
-  {"company_name": "Indura", "primary_email": "contacto@indura.cl", "website": "https://www.indura.cl", "phone": "+56 2 2530 3000", "is_suggested": true, "categories": ["mecanico", "ferreteria"]},
-  {"company_name": "Abastible Industrial", "primary_email": "contacto@abastible.cl", "website": "https://www.abastible.cl", "phone": "600 600 9000", "is_suggested": true, "categories": ["mecanico"]},
-  {"company_name": "Impomak", "primary_email": "ventas@impomak.cl", "website": "https://www.impomak.cl", "phone": "+56 2 2783 1200", "is_suggested": true, "categories": ["mecanico"]},
-  {"company_name": "Aperlos", "primary_email": "ventas@aperlos.cl", "website": "https://www.aperlos.cl", "phone": "+56 2 2683 5500", "is_suggested": true, "categories": ["ferreteria", "mecanico"]},
-  {"company_name": "Ferreteria O'Higgins (FOH)", "primary_email": "ventas@foh.cl", "website": "https://www.foh.cl", "phone": "+56 2 2589 1500", "is_suggested": true, "categories": ["ferreteria", "construccion"]},
-  {"company_name": "Ferreteria Buale", "primary_email": "contacto@buale.cl", "website": "https://www.buale.cl", "phone": "+56 2 2681 4000", "is_suggested": true, "categories": ["ferreteria", "mecanico"]},
-  {"company_name": "Prodac", "primary_email": "contacto@prodac.cl", "website": "https://www.prodac.cl", "phone": "+56 2 2482 7000", "is_suggested": true, "categories": ["mecanico", "ferreteria"]},
-  {"company_name": "Ferreteria San Francisco", "primary_email": "ventas@fsf.cl", "website": "https://www.fsf.cl", "phone": "+56 2 2555 4000", "is_suggested": true, "categories": ["ferreteria", "construccion"]},
-  {"company_name": "Equipos Y Herramientas Weber", "primary_email": "contacto@weber.cl", "website": "https://www.weber.cl", "phone": "+56 2 2430 5000", "is_suggested": true, "categories": ["mecanico", "construccion"]},
-  {"company_name": "Sipetrol Ferreteria", "primary_email": "ventas@sipetrolferreteria.cl", "website": "https://www.sipetrolferreteria.cl", "phone": "+56 2 2556 1200", "is_suggested": true, "categories": ["ferreteria"]},
-  {"company_name": "Importadora Tecnica Industrial (ITI)", "primary_email": "contacto@iti.cl", "website": "https://www.iti.cl", "phone": "+56 2 2634 3000", "is_suggested": true, "categories": ["mecanico"]},
-  {"company_name": "Kaufmann Repuestos e Insumos", "primary_email": "contacto@kaufmann.cl", "website": "https://www.kaufmann.cl", "phone": "600 600 5283", "is_suggested": true, "categories": ["mecanico"]},
-  {"company_name": "Wurth Chile", "primary_email": "info@wurth.cl", "website": "https://www.wurth.cl", "phone": "+56 2 2577 1100", "is_suggested": true, "categories": ["ferreteria", "mecanico"]},
-  {"company_name": "Makita Chile", "primary_email": "ventas@makita.cl", "website": "https://www.makita.cl", "phone": "+56 2 2583 6000", "is_suggested": true, "categories": ["ferreteria", "mecanico"]},
-  {"company_name": "Bosch Herramientas Chile", "primary_email": "contacto.bosch@cl.bosch.com", "website": "https://www.bosch-pt.cl", "phone": "+56 2 2520 3000", "is_suggested": true, "categories": ["ferreteria", "mecanico"]},
-  {"company_name": "Sika Chile", "primary_email": "contacto.chile@cl.sika.com", "website": "https://www.sika.cl", "phone": "+56 2 2510 6500", "is_suggested": true, "categories": ["construccion", "mecanico"]},
-  {"company_name": "El Volcan", "primary_email": "contacto@volcan.cl", "website": "https://www.volcan.cl", "phone": "+56 2 2441 6000", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Pizarreño Etex", "primary_email": "contacto@pizarreño.cl", "website": "https://www.pizarreño.cl", "phone": "+56 2 2838 1000", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Melon Hormigones", "primary_email": "contacto@melon.cl", "website": "https://www.melon.cl", "phone": "600 400 2000", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Cintac (Grupo CAP)", "primary_email": "ventas@cintac.cl", "website": "https://www.cintac.cl", "phone": "+56 2 2484 9200", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Polpaico Soluciones", "primary_email": "contacto@polpaico.cl", "website": "https://www.polpaico.cl", "phone": "+56 2 2707 1000", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "DVP (De Vicente Plasticos)", "primary_email": "ventas@dvp.cl", "website": "https://www.dvp.cl", "phone": "+56 2 2392 0000", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Crom S.A.", "primary_email": "contacto@crom.cl", "website": "https://www.crom.cl", "phone": "+56 2 2759 2447", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Mathiesen Chile", "primary_email": "info@mathiesen.cl", "website": "https://www.mathiesen.cl", "phone": "+56 2 2640 1000", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Techboard (Grupo Mathiesen)", "primary_email": "contacto@techboard.cl", "website": "https://www.techboard.cl", "phone": "+56 2 2640 1200", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Knauf Chile", "primary_email": "contacto@knauf.cl", "website": "https://www.knauf.cl", "phone": "+56 2 2580 4000", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Sipa Pinturas", "primary_email": "contacto@sipa.cl", "website": "https://www.sipa.cl", "phone": "+56 2 2580 8000", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Sherwin Williams Chile", "primary_email": "atencion.cliente@sherwin.cl", "website": "https://www.sherwin.cl", "phone": "+56 2 2870 5000", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Pinturas Ceresita", "primary_email": "contacto@ceresita.com", "website": "https://www.ceresita.com", "phone": "600 622 2000", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Weber Saint-Gobain Chile", "primary_email": "contacto.chile@saint-gobain.com", "website": "https://www.cl.weber", "phone": "+56 2 2829 1300", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Anasac Ambiental", "primary_email": "contacto@anasac.cl", "website": "https://www.anasac.cl", "phone": "+56 2 2486 9000", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Prefabricados Grau", "primary_email": "ventas@grau.cl", "website": "https://www.grau.cl", "phone": "+56 2 2488 4000", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Ternium Chile", "primary_email": "contacto.chile@ternium.com", "website": "https://www.ternium.com/cl", "phone": "+56 2 2580 6000", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Armacero", "primary_email": "ventas@armacero.cl", "website": "https://www.armacero.cl", "phone": "+56 2 2594 1000", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "AZA Aceros", "primary_email": "contacto@aza.cl", "website": "https://www.aza.cl", "phone": "+56 2 2680 8000", "is_suggested": true, "categories": ["construccion"]},
-  {"company_name": "Vinilit Aliaxis", "primary_email": "infovinilit@aliaxis-la.com", "website": "https://www.vinilit.cl", "phone": "+56 2 2836 1000", "is_suggested": true, "categories": ["mecanico", "construccion"]},
-  {"company_name": "Tigre Chile", "primary_email": "serviciocliente@tigre.com", "website": "https://www.tigre.cl", "phone": "+56 2 2829 5000", "is_suggested": true, "categories": ["mecanico", "construccion"]},
-  {"company_name": "Nibsa", "primary_email": "contacto@nibsa.cl", "website": "https://www.nibsa.cl", "phone": "+56 2 2580 3000", "is_suggested": true, "categories": ["mecanico"]},
-  {"company_name": "Hoffmann Group Chile", "primary_email": "info.cl@hoffmann-group.com", "website": "https://www.hoffmann-group.com", "phone": "+56 2 2938 2000", "is_suggested": true, "categories": ["mecanico"]},
-  {"company_name": "KSB Chile", "primary_email": "ksbchile@ksb.com", "website": "https://www.ksb.com/es-cl", "phone": "+56 2 2677 8300", "is_suggested": true, "categories": ["mecanico"]},
-  {"company_name": "Veto y Cia.", "primary_email": "veto@veto.cl", "website": "https://www.veto.cl", "phone": "+56 2 2355 4400", "is_suggested": true, "categories": ["electronico", "mecanico"]},
-  {"company_name": "Danfoss Chile", "primary_email": "danfoss.chile@danfoss.com", "website": "https://www.danfoss.cl", "phone": "+56 2 2829 0100", "is_suggested": true, "categories": ["mecanico"]},
-  {"company_name": "Spirax Sarco Chile", "primary_email": "contacto@cl.spiraxsarco.com", "website": "https://www.spiraxsarco.com/global/es-CL", "phone": "+56 2 2482 1700", "is_suggested": true, "categories": ["mecanico"]},
-  {"company_name": "Helbert Chile", "primary_email": "ventas@helbert.cl", "website": "https://www.helbert.cl", "phone": "+56 2 2551 2000", "is_suggested": true, "categories": ["mecanico"]},
-  {"company_name": "Ingersoll Rand Chile", "primary_email": "contacto.chile@irco.com", "website": "https://www.ingersollrand.com", "phone": "+56 2 2580 2300", "is_suggested": true, "categories": ["mecanico"]},
-  {"company_name": "FESTO Chile", "primary_email": "ventas.cl@festo.com", "website": "https://www.festo.com/cl/es/", "phone": "+56 2 2690 2800", "is_suggested": true, "categories": ["mecanico", "electronico"]},
-  {"company_name": "SMC Corporation Chile", "primary_email": "ventas@smc.cl", "website": "https://www.smc.cl", "phone": "+56 2 2820 8100", "is_suggested": true, "categories": ["mecanico"]},
-  {"company_name": "Hidrostal Chile", "primary_email": "hidrostal@hidrostal.cl", "website": "https://www.hidrostal.cl", "phone": "+56 2 2598 7000", "is_suggested": true, "categories": ["mecanico"]},
-  {"company_name": "Franklin Electric Chile", "primary_email": "contacto.chile@fele.com", "website": "https://www.franklin-electric.com", "phone": "+56 2 2898 3000", "is_suggested": true, "categories": ["mecanico", "electrico"]},
-  {"company_name": "Atlas Copco Chile", "primary_email": "contacto.chile@atlascopco.com", "website": "https://www.atlascopco.com/es-cl", "phone": "+56 2 2442 3600", "is_suggested": true, "categories": ["mecanico", "construccion"]},
-  {"company_name": "Arauco (Soluciones Arauco)", "primary_email": "contacto@arauco.com", "website": "https://www.arauco.com", "phone": "600 400 6000", "is_suggested": true, "categories": ["madera", "construccion"]},
-  {"company_name": "CMPC Maderas", "primary_email": "marketingmaderas@cmpc.cl", "website": "https://www.disenamadera.cl", "phone": "+56 2 2441 2832", "is_suggested": true, "categories": ["madera", "construccion"]},
-  {"company_name": "Masisa Chile", "primary_email": "contacto@masisa.com", "website": "https://www.masisa.com", "phone": "800 221 000", "is_suggested": true, "categories": ["madera"]},
-  {"company_name": "Maderera Puelche", "primary_email": "contacto@madererapuelche.cl", "website": "https://www.madererapuelche.cl", "phone": "+56 2 2854 1100", "is_suggested": true, "categories": ["madera"]},
-  {"company_name": "Impregno Madera", "primary_email": "ventas@impregnomadera.cl", "website": "https://www.impregnomadera.cl", "phone": "+56 2 2857 2000", "is_suggested": true, "categories": ["madera"]},
-  {"company_name": "Maderas Cugat", "primary_email": "contacto@maderascugat.cl", "website": "https://www.maderascugat.cl", "phone": "+56 72 223 1000", "is_suggested": true, "categories": ["madera"]},
-  {"company_name": "Sociedad Maderera de Chile", "primary_email": "sociedadchilemaderas@gmail.com", "website": "https://www.sociedad-madereradechile.cl", "phone": "+56 9 4476 7556", "is_suggested": true, "categories": ["madera"]},
-  {"company_name": "CLC Maderas del Mundo", "primary_email": "ventaslocales@clcsa.cl", "website": "https://clcsa.cl", "phone": "+56 2 2551 8000", "is_suggested": true, "categories": ["madera"]},
-  {"company_name": "Maderas Troncoso", "primary_email": "ventas@maderastroncoso.cl", "website": "https://www.maderastroncoso.cl", "phone": "+56 2 2525 3000", "is_suggested": true, "categories": ["madera"]},
-  {"company_name": "Maderas Aysen", "primary_email": "contacto@maderasaysen.cl", "website": "https://www.maderasaysen.cl", "phone": "+56 2 2558 1200", "is_suggested": true, "categories": ["madera"]},
-  {"company_name": "Maderera San Pedro", "primary_email": "ventas@madererasanpedro.cl", "website": "https://www.madererasanpedro.cl", "phone": "+56 41 279 1000", "is_suggested": true, "categories": ["madera"]},
-  {"company_name": "Maderas Colonial", "primary_email": "contacto@maderascolonial.cl", "website": "https://www.maderascolonial.cl", "phone": "+56 2 2242 9000", "is_suggested": true, "categories": ["madera"]},
-  {"company_name": "Maderera Silva", "primary_email": "ventas@madererasilva.cl", "website": "https://www.madererasilva.cl", "phone": "+56 2 2527 1000", "is_suggested": true, "categories": ["madera"]},
-  {"company_name": "Imperial Madera", "primary_email": "contacto@imperial.cl", "website": "https://www.imperial.cl", "phone": "600 460 5000", "is_suggested": true, "categories": ["madera", "construccion", "ferreteria"]},
-  {"company_name": "Proplac Maderas Tecnica", "primary_email": "ventas@proplac.cl", "website": "https://www.proplac.cl", "phone": "+56 2 2554 8000", "is_suggested": true, "categories": ["madera"]},
-  {"company_name": "Sodimac Venta Empresa", "primary_email": "Venta_empresa@sodimac.cl", "website": "https://www.sodimac.cl", "phone": "600 600 1230", "is_suggested": true, "categories": ["retail", "electrico", "construccion", "ferreteria", "madera"]},
-  {"company_name": "Easy Venta Empresa", "primary_email": "ventaempresa@easy.cl", "website": "https://www.easy.cl", "phone": "600 327 9000", "is_suggested": true, "categories": ["retail", "electrico", "construccion", "ferreteria"]},
-  {"company_name": "Ferreterias Imperial", "primary_email": "contacto@imperial.cl", "website": "https://www.imperial.cl", "phone": "600 460 5000", "is_suggested": true, "categories": ["retail", "madera", "ferreteria"]},
-  {"company_name": "Construmart Venta Empresa", "primary_email": "ventaempresa@construmart.cl", "website": "https://www.construmart.cl", "phone": "600 360 0001", "is_suggested": true, "categories": ["retail", "construccion", "ferreteria"]},
-  {"company_name": "MTS Red Ferretera", "primary_email": "contacto@mts.cl", "website": "https://www.mts.cl", "phone": "+56 2 2430 2000", "is_suggested": true, "categories": ["retail", "ferreteria"]},
-  {"company_name": "Chilemat Red Ferretera", "primary_email": "contacto@chilemat.cl", "website": "https://www.chilemat.cl", "phone": "+56 2 2783 5000", "is_suggested": true, "categories": ["retail", "ferreteria"]},
-  {"company_name": "Walmart Chile B2B", "primary_email": "contacto.b2b@walmart.com", "website": "https://www.walmartchile.cl", "phone": "600 600 9191", "is_suggested": true, "categories": ["retail"]},
-  {"company_name": "Cencosud Venta Corporativa", "primary_email": "ventacorporativa@cencosud.cl", "website": "https://www.cencosud.com", "phone": "+56 2 2959 0000", "is_suggested": true, "categories": ["retail"]},
-  {"company_name": "Mercado Libre Chile B2B", "primary_email": "empresas@mercadolibre.cl", "website": "https://www.mercadolibre.cl", "phone": "N/A", "is_suggested": true, "categories": ["retail"]},
-  {"company_name": "Ferreteria Weitzler", "primary_email": "ventas@weitzler.cl", "website": "https://www.weitzler.cl", "phone": "+56 65 220 0200", "is_suggested": true, "categories": ["retail", "ferreteria"]},
-  {"company_name": "Ferreteria Prat", "primary_email": "contacto@ferreteriaprat.cl", "website": "https://www.ferreteriaprat.cl", "phone": "+56 32 221 3000", "is_suggested": true, "categories": ["ferreteria"]},
-  {"company_name": "Ferreteria El Candado", "primary_email": "ventas@elcandado.cl", "website": "https://www.elcandado.cl", "phone": "+56 2 2698 1200", "is_suggested": true, "categories": ["ferreteria"]},
-  {"company_name": "Ferreteria Higueras", "primary_email": "ventas@fhigueras.cl", "website": "https://www.fhigueras.cl", "phone": "+56 41 258 5000", "is_suggested": true, "categories": ["ferreteria", "construccion"]},
-  {"company_name": "Belsport EPP e Industrial", "primary_email": "contacto@belsport.cl", "website": "https://www.belsport.cl", "phone": "+56 2 2433 9000", "is_suggested": true, "categories": ["retail", "ferreteria"]},
-  {"company_name": "Nazar EPP y Equipamiento", "primary_email": "ventas@nazar.cl", "website": "https://www.nazar.cl", "phone": "+56 2 2797 8000", "is_suggested": true, "categories": ["ferreteria"]}
+  {
+    "company_name": "Dartel Electricidad",
+    "primary_email": "ventas@dartel.cl",
+    "website": "https://www.dartel.cl",
+    "phone": "+56 2 2680 0000",
+    "is_suggested": true,
+    "categories": [
+      "electrico",
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Iluminación y LED",
+      "Automatización y Control",
+      "Canalización y Bandejas",
+      "Energías Renovables y Solar",
+      "Herramientas Dieléctricas"
+    ],
+    "products": [
+      "Luminarias LED Darlux",
+      "Bandeja Tipo Canastillo FNX",
+      "Interruptores Automáticos Schneider",
+      "Motores Eléctricos Siemens",
+      "Medidores de Energía Digitales FNX"
+    ]
+  },
+  {
+    "company_name": "ElectraFK (Grupo Sonepar)",
+    "primary_email": "contacto@electrafk.cl",
+    "website": "https://www.electrafk.cl",
+    "phone": "+56 2 2496 1000",
+    "is_suggested": true,
+    "categories": [
+      "electrico",
+      "electronico"
+    ],
+    "product_categories": [
+      "Herramientas de Corte y Mano",
+      "Pilas y Baterías Industriales",
+      "Accesorios de Instalación Eléctrica",
+      "Conductores Eléctricos"
+    ],
+    "products": [
+      "Destornilladores Aislados Tradeforce",
+      "Alicantes y Pinzas Industriales Tradeforce",
+      "Cortatubos Industriales",
+      "Pilas Alcalinas Industriales",
+      "Accesorios de Fijación Eléctrica"
+    ]
+  },
+  {
+    "company_name": "Electricidad Gobantes",
+    "primary_email": "ventas@gobantes.cl",
+    "website": "https://www.gobantes.cl",
+    "phone": "+56 2 2829 8000",
+    "is_suggested": true,
+    "categories": [
+      "electrico"
+    ],
+    "product_categories": [
+      "Conductores y Cables",
+      "Tableros Eléctricos",
+      "Aparatos de Maniobra",
+      "Protección Eléctrica"
+    ],
+    "products": [
+      "Cables de Cobre Libre de Halógenos",
+      "Interruptores Termomagnéticos",
+      "Tableros de Distribución Eléctrica",
+      "Contactores Industriales"
+    ]
+  },
+  {
+    "company_name": "Rhona S.A.",
+    "primary_email": "contacto@rhona.cl",
+    "website": "https://www.rhona.cl",
+    "phone": "+56 32 226 9000",
+    "is_suggested": true,
+    "categories": [
+      "electrico",
+      "mecanico"
+    ],
+    "product_categories": [
+      "Transformadores Eléctricos",
+      "Potencia y Control",
+      "Nuevas Energías y Solar",
+      "Iluminación Industrial",
+      "Accionamientos Eléctricos"
+    ],
+    "products": [
+      "Transformadores de Distribución y Pad Mounted",
+      "Estaciones de Energía Portátiles EcoFlow",
+      "Variadores de Frecuencia",
+      "Paneles Solares Fotovoltaicos",
+      "Grupos Electrógenos Diesel"
+    ]
+  },
+  {
+    "company_name": "EECOL Electric Chile",
+    "primary_email": "ventas@eecol.cl",
+    "website": "https://www.eecol.cl",
+    "phone": "+56 2 2398 5000",
+    "is_suggested": true,
+    "categories": [
+      "electrico"
+    ],
+    "product_categories": [
+      "Distribución de Energía",
+      "Control Industrial",
+      "Cables y Conectores Eléctricos",
+      "Equipos de Canalización"
+    ],
+    "products": [
+      "Cables Mineros e Industriales",
+      "Sistemas de Control de Motores",
+      "Tableros Eléctricos de Fuerza",
+      "Conectores y Terminales Eléctricos"
+    ]
+  },
+  {
+    "company_name": "Casa Musa",
+    "primary_email": "contacto@casamusa.cl",
+    "website": "https://www.casamusa.cl",
+    "phone": "+56 2 2638 1234",
+    "is_suggested": true,
+    "categories": [
+      "electrico",
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Materiales Eléctricos Domiciliarios e Industriales",
+      "Iluminación LED",
+      "Herramientas Manuales",
+      "Artículos de Ferretería General"
+    ],
+    "products": [
+      "Enchufes e Interruptores Domiciliarios",
+      "Ampolletas y Focos LED",
+      "Cables Eléctricos NYA / Flexibles",
+      "Cajas de Paso Eléctricas"
+    ]
+  },
+  {
+    "company_name": "Extraelec",
+    "primary_email": "ventas@extraelec.cl",
+    "website": "https://www.extraelec.cl",
+    "phone": "+56 32 254 5850",
+    "is_suggested": true,
+    "categories": [
+      "electrico"
+    ],
+    "product_categories": [
+      "Conductores Eléctricos",
+      "Iluminación Industrial",
+      "Protección Eléctrica",
+      "Materiales para Empalmes"
+    ],
+    "products": [
+      "Cables de Cobre THHN/THWN",
+      "Luminarias LED Industriales",
+      "Disyuntores Mantenimiento",
+      "Cajas de Empalme Monofásicas"
+    ]
+  },
+  {
+    "company_name": "Matelec",
+    "primary_email": "ventas@matelec.cl",
+    "website": "https://matelec.cl",
+    "phone": "+56 9 9669 1574",
+    "is_suggested": true,
+    "categories": [
+      "electrico",
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Suministros Eléctricos",
+      "Herramientas Eléctricas",
+      "Accesorios de Montaje",
+      "Sistemas de Iluminación"
+    ],
+    "products": [
+      "Cinta Aisladora Eléctrica",
+      "Canaletas de PVC para Cableado",
+      "Interruptores Automáticos",
+      "Proyectores LED de Exterior"
+    ]
+  },
+  {
+    "company_name": "Kolff S.A.",
+    "primary_email": "ventas@kolff.cl",
+    "website": "https://www.kolff.cl",
+    "phone": "+56 2 2351 3000",
+    "is_suggested": true,
+    "categories": [
+      "electrico",
+      "electronico"
+    ],
+    "product_categories": [
+      "Sistemas UPS y Respaldos",
+      "Iluminación de Emergencia",
+      "Inversores y Cargadores",
+      "Baterías Industriales"
+    ],
+    "products": [
+      "Sistemas de Fuerza Ininterrumpida UPS Kolff",
+      "Equipos de Iluminación de Emergencia LED",
+      "Baterías Secas de Libre Mantenimiento",
+      "Inversores de Voltaje"
+    ]
+  },
+  {
+    "company_name": "MCI Electronics",
+    "primary_email": "ventas@mci.cl",
+    "website": "https://www.mci.cl",
+    "phone": "+56 2 2334 3390",
+    "is_suggested": true,
+    "categories": [
+      "electronico"
+    ],
+    "product_categories": [
+      "Desarrollo Electrónico e IoT",
+      "Sensores y Módulos",
+      "Placas de Desarrollo",
+      "Robótica y Robótica Educativa"
+    ],
+    "products": [
+      "Módulos IoT y Sensores Ambiental/Temperatura",
+      "Placas Microcontroladoras (Arduino/Raspberry Pi)",
+      "Fuentes de Poder Reguladas",
+      "Componentes Electrónicos SMD/THT"
+    ]
+  },
+  {
+    "company_name": "Altronics",
+    "primary_email": "contacto@altronics.cl",
+    "website": "https://www.altronics.cl",
+    "phone": "+56 2 2222 8800",
+    "is_suggested": true,
+    "categories": [
+      "electronico"
+    ],
+    "product_categories": [
+      "Componentes Electrónicos Pasivos/Activos",
+      "Equipos de Medición",
+      "Conectores y Cables de Datos",
+      "Instrumentación"
+    ],
+    "products": [
+      "Multímetros Digitales",
+      "Osciloscopios de Banco",
+      "Resistencias, Condensadores y Transistores",
+      "Conectores Industriales y Cables Flat"
+    ]
+  },
+  {
+    "company_name": "Electrocom",
+    "primary_email": "ventas@electrocom.cl",
+    "website": "https://www.electrocom.cl",
+    "phone": "+56 2 2592 1100",
+    "is_suggested": true,
+    "categories": [
+      "electrico",
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Telecomunicaciones y Redes",
+      "Fibra Óptica",
+      "Cables de Red y Datos",
+      "Tableros y Gabinetes"
+    ],
+    "products": [
+      "Cables UTP Categoria 6 y 6A",
+      "Gabinetes Rack de Wall y Piso",
+      "Patch Panels y Cordones de Parcheo",
+      "Kits de Conexión Fibra Óptica"
+    ]
+  },
+  {
+    "company_name": "Distec Chile",
+    "primary_email": "contacto@distecchile.cl",
+    "website": "https://distecchile.cl",
+    "phone": "+56 2 2739 2989",
+    "is_suggested": true,
+    "categories": [
+      "electronico",
+      "retail"
+    ],
+    "product_categories": [
+      "Electrónica de Consumo",
+      "Accesorios Tecnológicos",
+      "Equipos Audiovisuales",
+      "Conectividad"
+    ],
+    "products": [
+      "Soportes TV y Monitores",
+      "Cables HDMI y Adaptadores",
+      "Cargadores y Bancos de Batería",
+      "Audífonos e Instrumental de Audio"
+    ]
+  },
+  {
+    "company_name": "Legrand / Bticino Chile",
+    "primary_email": "contacto.chile@legrand.com",
+    "website": "https://www.bticino.cl",
+    "phone": "+56 2 2580 5200",
+    "is_suggested": true,
+    "categories": [
+      "electrico",
+      "construccion"
+    ],
+    "product_categories": [
+      "Aparataje Residencial y Comercial",
+      "Citofonía y Videocitofonía",
+      "Bandejas y Canalización (Cablofil)",
+      "Protección y Distribución"
+    ],
+    "products": [
+      "Líneas de Interruptores Bticino Classia y Livinglight",
+      "Videocitófonos Class 100/300",
+      "Bandejas Portacables Cablofil",
+      "Interruptores Automáticos Legrand RX3/DX3"
+    ]
+  },
+  {
+    "company_name": "Schneider Electric Chile",
+    "primary_email": "atencion.clientes@se.com",
+    "website": "https://www.se.com/cl",
+    "phone": "+56 2 2837 8000",
+    "is_suggested": true,
+    "categories": [
+      "electrico",
+      "electronico"
+    ],
+    "product_categories": [
+      "Distribución Eléctrica de Baja y Media Tensión",
+      "Automatización Industrial",
+      "Sistemas de Eficiencia Energética",
+      "UPS y Data Center"
+    ],
+    "products": [
+      "Interruptores Automáticos Compact NSX / Acti9",
+      "Variadores de Frecuencia Altivar",
+      "UPS APC Smart-UPS",
+      "Tableros de Distribución Pragma"
+    ]
+  },
+  {
+    "company_name": "Fertec",
+    "primary_email": "web@fertec.cl",
+    "website": "https://www.fertec.cl",
+    "phone": "+56 2 2598 9000",
+    "is_suggested": true,
+    "categories": [
+      "ferreteria",
+      "mecanico"
+    ],
+    "product_categories": [
+      "Ferretería Industrial",
+      "Maquinaria de Taller",
+      "Equipos de Levantamiento",
+      "Herramientas Neumáticas"
+    ],
+    "products": [
+      "Tecles Manuales y Eléctricos",
+      "Prensas e Hidráulica de Taller",
+      "Compresores de Aire Industriales",
+      "Herramientas Manuales para Mecánica"
+    ]
+  },
+  {
+    "company_name": "Feram",
+    "primary_email": "contacto@feram.cl",
+    "website": "https://www.feram.cl",
+    "phone": "+56 2 2592 2000",
+    "is_suggested": true,
+    "categories": [
+      "mecanico",
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Herramientas de Corte y Mecanizado",
+      "Instrumentos de Medición Industrial",
+      "Maquinaria Metalmecánica",
+      "Abrasivos"
+    ],
+    "products": [
+      "Fresas y Brocas de Carburo",
+      "Pie de Metro y Micrómetros Mitutoyo",
+      "Tornos y Fresadoras",
+      "Discos de Corte y Desbaste"
+    ]
+  },
+  {
+    "company_name": "Todo Ferretero",
+    "primary_email": "contacto@todoferretero.cl",
+    "website": "https://todoferretero.cl",
+    "phone": "+56 2 2696 2059",
+    "is_suggested": true,
+    "categories": [
+      "ferreteria",
+      "construccion"
+    ],
+    "product_categories": [
+      "Ferretería de Construcción",
+      "Fijaciones y Tornillos",
+      "Herramientas de Mano",
+      "Adhesivos y Sellantes"
+    ],
+    "products": [
+      "Tornillos Autoperforantes Drywall",
+      "Martillos, Alicates y Destornilladores",
+      "Siliconas y Sellantes de Poliuretano",
+      "Brocas para Concreto y Metal"
+    ]
+  },
+  {
+    "company_name": "Empack",
+    "primary_email": "info@empack.cl",
+    "website": "https://www.empack.cl",
+    "phone": "+56 2 2351 8000",
+    "is_suggested": true,
+    "categories": [
+      "mecanico"
+    ],
+    "product_categories": [
+      "Maquinaria de Envasado y Empaque",
+      "Materiales de Embalaje",
+      "Sistemas de Marcaje y Codiﬁcación",
+      "Automatización de Final de Línea"
+    ],
+    "products": [
+      "Envolvedoras de Film Enfardadoras",
+      "Film Stretch Manual e Industrial",
+      "Cintadoras y Cintas Embalaje",
+      "Codificadores Inkjet Industriales"
+    ]
+  },
+  {
+    "company_name": "SKF Chile",
+    "primary_email": "contacto.chile@skf.com",
+    "website": "https://www.skf.com/cl",
+    "phone": "+56 2 2380 9100",
+    "is_suggested": true,
+    "categories": [
+      "mecanico"
+    ],
+    "product_categories": [
+      "Rodamientos y Unidades",
+      "Sellos y Retenes",
+      "Sistemas de Lubricación",
+      "Mantenimiento Predictivo"
+    ],
+    "products": [
+      "Rodamientos Rígidos de Bolas SKF",
+      "Grasas y Lubricantes Industriales SKF",
+      "Alineadores Laser de Ejes",
+      "Retenes Radiales para Ejes"
+    ]
+  },
+  {
+    "company_name": "Indura",
+    "primary_email": "contacto@indura.cl",
+    "website": "https://www.indura.cl",
+    "phone": "+56 2 2530 3000",
+    "is_suggested": true,
+    "categories": [
+      "mecanico",
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Gases Industriales y Medicinales",
+      "Equipos y Máquinas de Soldar",
+      "Consumibles de Soldadura",
+      "Elementos de Protección Personal (EPP)"
+    ],
+    "products": [
+      "Cilindros de Oxígeno / Argón / Acetileno",
+      "Soldadoras MIG/TIG e Inverter Indura",
+      "Electrodos 6011 y 7018",
+      "MÁscaras de Soldar Fotosensibles"
+    ]
+  },
+  {
+    "company_name": "Abastible Industrial",
+    "primary_email": "contacto@abastible.cl",
+    "website": "https://www.abastible.cl",
+    "phone": "600 600 9000",
+    "is_suggested": true,
+    "categories": [
+      "mecanico"
+    ],
+    "product_categories": [
+      "Gas Licuado Industrial (GLP)",
+      "Soluciones de Energía Térmica",
+      "Sistemas de Calefacción Industrial",
+      "Conversión Energética"
+    ],
+    "products": [
+      "Suministro GLP a Granel y Cilindros",
+      "Calderas e Intercambiadores de Calor a Gas",
+      "Generadores Industriales a GLP",
+      "Quemadores Industriales"
+    ]
+  },
+  {
+    "company_name": "Impomak",
+    "primary_email": "ventas@impomak.cl",
+    "website": "https://www.impomak.cl",
+    "phone": "+56 2 2783 1200",
+    "is_suggested": true,
+    "categories": [
+      "mecanico"
+    ],
+    "product_categories": [
+      "Maquinaria Agrícola y Forestal",
+      "Motores a Combustión",
+      "Generadores Eléctricos",
+      "Equipos de Jardinería Industrial"
+    ],
+    "products": [
+      "Generadores Eléctricos a Gasolina/Diesel",
+      "Motobombas de Agua",
+      "Cortacéspedes y Desbrozadoras",
+      "Motores Estacionarios"
+    ]
+  },
+  {
+    "company_name": "Aperlos",
+    "primary_email": "ventas@aperlos.cl",
+    "website": "https://www.aperlos.cl",
+    "phone": "+56 2 2683 5500",
+    "is_suggested": true,
+    "categories": [
+      "ferreteria",
+      "mecanico"
+    ],
+    "product_categories": [
+      "Pernos y Fijaciones Especiales",
+      "Tornillería Industrial",
+      "Anclajes Químicos y Mecánicos",
+      "Herramientas de Ajuste"
+    ],
+    "products": [
+      "Pernos Grado 5 y Grado 8",
+      "Golillas Plana y Presión Cincadas",
+      "Anclajes de Expansión para Hormigón",
+      "Varillas Roscadas de Acero"
+    ]
+  },
+  {
+    "company_name": "Ferreteria O'Higgins (FOH)",
+    "primary_email": "ventas@foh.cl",
+    "website": "https://www.foh.cl",
+    "phone": "+56 2 2589 1500",
+    "is_suggested": true,
+    "categories": [
+      "ferreteria",
+      "construccion"
+    ],
+    "product_categories": [
+      "Herramientas Eléctricas e Inalámbricas",
+      "Maquinaria para Construcción",
+      "Equipos de Protección Personal",
+      "Suministros de Ferretería"
+    ],
+    "products": [
+      "Taladros Rotoperfactores",
+      "Esmeriles Angulares",
+      "Betoneras y Mezcladoras de Hormigón",
+      "Cascos, Guantes y Calzado de Seguridad"
+    ]
+  },
+  {
+    "company_name": "Ferreteria Buale",
+    "primary_email": "contacto@buale.cl",
+    "website": "https://www.buale.cl",
+    "phone": "+56 2 2681 4000",
+    "is_suggested": true,
+    "categories": [
+      "ferreteria",
+      "mecanico"
+    ],
+    "product_categories": [
+      "Herramientas Manuales e Industriales",
+      "Insumos Mecánicos",
+      "Abrasivos y Corte",
+      "Seguridad Industrial"
+    ],
+    "products": [
+      "Juegos de Llaves Dado y Punta Corona",
+      "Discos para Esmeril",
+      "Gatos Hidráulicos de Botella",
+      "Guantes de Nitrilo y Cabritilla"
+    ]
+  },
+  {
+    "company_name": "Prodac",
+    "primary_email": "contacto@prodac.cl",
+    "website": "https://www.prodac.cl",
+    "phone": "+56 2 2482 7000",
+    "is_suggested": true,
+    "categories": [
+      "mecanico",
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Productos de Acero y Alambres",
+      "Mallas Electrosoldadas",
+      "Mallas de Cerco y Gaviones",
+      "Clavos y Clavadoras"
+    ],
+    "products": [
+      "Malla Biselada y Galvanizada para Cierres",
+      "Alambre Púa",
+      "Malla Electrosoldada para Hormigón",
+      "Clavos Eléctricos y Corrientes"
+    ]
+  },
+  {
+    "company_name": "Ferreteria San Francisco",
+    "primary_email": "ventas@fsf.cl",
+    "website": "https://www.fsf.cl",
+    "phone": "+56 2 2555 4000",
+    "is_suggested": true,
+    "categories": [
+      "ferreteria",
+      "construccion"
+    ],
+    "product_categories": [
+      "Materiales de Obra Gruesa",
+      "Herramientas de Carpintería",
+      "Fijaciones y Techumbre",
+      "Ferretería General"
+    ],
+    "products": [
+      "Planchas Zinc Alum",
+      "Clavos de Techo con Golilla Rubber",
+      "Martillos Carpinteros",
+      "Huinchas de Medir"
+    ]
+  },
+  {
+    "company_name": "Equipos Y Herramientas Weber",
+    "primary_email": "contacto@weber.cl",
+    "website": "https://www.weber.cl",
+    "phone": "+56 2 2430 5000",
+    "is_suggested": true,
+    "categories": [
+      "mecanico",
+      "construccion"
+    ],
+    "product_categories": [
+      "Maquinaria de Compactación",
+      "Cortadoras de Pavimento",
+      "Vibradores de Hormigón",
+      "Equipos de Limpieza Industrial"
+    ],
+    "products": [
+      "Placas Compactadoras Reversibles Weber MT",
+      "Rodillos Compactadores",
+      "Vibradores de Inmersión",
+      "Cortadoras de Junta para Asfalto/Hormigón"
+    ]
+  },
+  {
+    "company_name": "Sipetrol Ferreteria",
+    "primary_email": "ventas@sipetrolferreteria.cl",
+    "website": "https://www.sipetrolferreteria.cl",
+    "phone": "+56 2 2556 1200",
+    "is_suggested": true,
+    "categories": [
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Suministros Petroleros e Industriales",
+      "Válvulas y Cañerías",
+      "Herramientas para Tuberías",
+      "Sellantes y Empaquetaduras"
+    ],
+    "products": [
+      "Válvulas de Bola y Mariposa Flangearas",
+      "Llaves para Tubo Ridgid",
+      "Teflón Industrial y Empaquetaduras Garlock",
+      "Cañerías de Acero ASTM A53"
+    ]
+  },
+  {
+    "company_name": "Importadora Tecnica Industrial (ITI)",
+    "primary_email": "contacto@iti.cl",
+    "website": "https://www.iti.cl",
+    "phone": "+56 2 2634 3000",
+    "is_suggested": true,
+    "categories": [
+      "mecanico"
+    ],
+    "product_categories": [
+      "Equipos Neumáticos e Hidráulicos",
+      "Instrumentación Mecánica",
+      "Mangueras Industriales y Acoples",
+      "Transmisión de Potencia"
+    ],
+    "products": [
+      "Mangueras de Alta Presión Hidráulica",
+      "Acoples Rápidos Industriales",
+      "Manómetros e Indicadores de Presión",
+      "Filtros y Reguladores de Aire"
+    ]
+  },
+  {
+    "company_name": "Kaufmann Repuestos e Insumos",
+    "primary_email": "contacto@kaufmann.cl",
+    "website": "https://www.kaufmann.cl",
+    "phone": "600 600 5283",
+    "is_suggested": true,
+    "categories": [
+      "mecanico"
+    ],
+    "product_categories": [
+      "Repuestos para Camiones y Buses",
+      "Lubricantes Automotrices Industriales",
+      "Filtros y Baterías de Uso Pesado",
+      "Insumos Mecánicos"
+    ],
+    "products": [
+      "Filtros de Aceite/Aire Mobil y Mercedes-Benz",
+      "Aceites del Motor Mobil Delvac",
+      "Baterías Heavy Duty 12V",
+      "Repuestos de Frenos y Suspensión"
+    ]
+  },
+  {
+    "company_name": "Wurth Chile",
+    "primary_email": "info@wurth.cl",
+    "website": "https://www.wurth.cl",
+    "phone": "+56 2 2577 1100",
+    "is_suggested": true,
+    "categories": [
+      "ferreteria",
+      "mecanico"
+    ],
+    "product_categories": [
+      "Fijaciones y Tornillería Wurth",
+      "Químicos para Mantenimiento",
+      "Herramientas Manuales Profi",
+      "EPP y Vestuario de Trabajo"
+    ],
+    "products": [
+      "Limpia Contactos y Desgripantes Rost Off",
+      "Tornillos Zebra Autoperforantes",
+      "Siliconas Automotrices RTV",
+      "Calzado de Seguridad Würth"
+    ]
+  },
+  {
+    "company_name": "Makita Chile",
+    "primary_email": "ventas@makita.cl",
+    "website": "https://www.makita.cl",
+    "phone": "+56 2 2583 6000",
+    "is_suggested": true,
+    "categories": [
+      "ferreteria",
+      "mecanico"
+    ],
+    "product_categories": [
+      "Herramientas Electroportátiles Inalámbricas",
+      "Herramientas Eléctricas con Cable",
+      "Maquinaria de Jardín y Bosque",
+      "Accesorios y Brocas Makita"
+    ],
+    "products": [
+      "Taladro Atornillador LXT 18V",
+      "Esmeril Angular 4 1/2\"",
+      "Corta Césped a Batería",
+      "Discos de Corte y Brocas SDS Plus"
+    ]
+  },
+  {
+    "company_name": "Bosch Herramientas Chile",
+    "primary_email": "contacto.bosch@cl.bosch.com",
+    "website": "https://www.bosch-pt.cl",
+    "phone": "+56 2 2520 3000",
+    "is_suggested": true,
+    "categories": [
+      "ferreteria",
+      "mecanico"
+    ],
+    "product_categories": [
+      "Herramientas Eléctricas Profesionales",
+      "Instrumentos de Medición Laser",
+      "Accesorios Bosch (Brocas/Discos)",
+      "Herramientas de Jardín"
+    ],
+    "products": [
+      "Rotomartillo GBH SDS Plus",
+      "Medidor Laser GLM",
+      "Esmeril GWS Profesional",
+      "Sierra Caladora y Circular Bosch"
+    ]
+  },
+  {
+    "company_name": "Sika Chile",
+    "primary_email": "contacto.chile@cl.sika.com",
+    "website": "https://www.sika.cl",
+    "phone": "+56 2 2510 6500",
+    "is_suggested": true,
+    "categories": [
+      "construccion",
+      "mecanico"
+    ],
+    "product_categories": [
+      "Aditivos para Hormigón",
+      "Impermeabilizantes y Sellantes",
+      "Morteros de Reparación y Anclaje",
+      "Adhesivos Elásticos"
+    ],
+    "products": [
+      "SikaFlex 1A / 11FC Sellante",
+      "SikaTop 107 Impermeabilizante",
+      "SikaGrout 212 Mortero Anclaje",
+      "SikaLatex Adhesivo"
+    ]
+  },
+  {
+    "company_name": "El Volcan",
+    "primary_email": "contacto@volcan.cl",
+    "website": "https://www.volcan.cl",
+    "phone": "+56 2 2441 6000",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Sistemas de Aislación Térmica y Acústica",
+      "Placas de Yeso Cartón (Volcanita)",
+      "Soluciones de Siding y Fachadas",
+      "Morteros y Adhesivos Volcán"
+    ],
+    "products": [
+      "Placas Volcanita ST / RH / RF",
+      "Lana de Vidrio Aislan",
+      "Aislan Glass Aislación",
+      "Volcanita Siding Fibrocemento"
+    ]
+  },
+  {
+    "company_name": "Pizarreño Etex",
+    "primary_email": "contacto@pizarreño.cl",
+    "website": "https://www.pizarreño.cl",
+    "phone": "+56 2 2838 1000",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Planchas de Fibrocemento",
+      "Techumbres y Cubiertas",
+      "Placas de Yeso Gyplac",
+      "Sistemas Constructivos Secos"
+    ],
+    "products": [
+      "Planchas de Fibrocemento Duraboard",
+      "Tejas de Fibrocemento Pizarreño",
+      "Placas Gyplac Volcanes",
+      "Siding Fibrocemento Cedral"
+    ]
+  },
+  {
+    "company_name": "Melon Hormigones",
+    "primary_email": "contacto@melon.cl",
+    "website": "https://www.melon.cl",
+    "phone": "600 400 2000",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Hormigón Preparado",
+      "Cemento en Saco y Granel",
+      "Morteros Premezclados",
+      "Áridos para Construcción"
+    ],
+    "products": [
+      "Hormigón Especial Melón",
+      "Cemento Melón Extra / Especial Saco",
+      "Mortero Predosificado Melón",
+      "Gravilla y Arena Fina/Gruesa"
+    ]
+  },
+  {
+    "company_name": "Cintac (Grupo CAP)",
+    "primary_email": "ventas@cintac.cl",
+    "website": "https://www.cintac.cl",
+    "phone": "+56 2 2484 9200",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Perfiles de Acero y Metalcon",
+      "Tubos Estructurales",
+      "Cubiertas y Revestimientos Metálicos",
+      "Paneles Aislantes Polyment"
+    ],
+    "products": [
+      "Perfiles Metalcon Estructural y Perimetral",
+      "Tubos Cuadrados y Rectangulares de Acero",
+      "Planchas PV4 e Instapanel",
+      "Paneles PV6 Aislantes"
+    ]
+  },
+  {
+    "company_name": "Polpaico Soluciones",
+    "primary_email": "contacto@polpaico.cl",
+    "website": "https://www.polpaico.cl",
+    "phone": "+56 2 2707 1000",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Hormigones Industriales",
+      "Cemento en Saco y Granel",
+      "Soluciones de Infraestructura",
+      "Áridos"
+    ],
+    "products": [
+      "Cemento Polpaico Especial 25kg",
+      "Hormigón Autocompactante Polpaico",
+      "Mortero Listo para Uso",
+      "Áridos Seleccionados"
+    ]
+  },
+  {
+    "company_name": "DVP (De Vicente Plasticos)",
+    "primary_email": "ventas@dvp.cl",
+    "website": "https://www.dvp.cl",
+    "phone": "+56 2 2392 0000",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Policarbonato y Polímeros",
+      "Sistemas de Canales de Lluvia",
+      "Perfiles de PVC para Ventanas",
+      "Cielos y Revestimientos PVC"
+    ],
+    "products": [
+      "Planchas de Policarbonato Alveolar y Alveolar",
+      "Canales de Lluvia PVC DVP",
+      "Cielo Falso PVC DVP",
+      "Revestimiento Siding PVC"
+    ]
+  },
+  {
+    "company_name": "Crom S.A.",
+    "primary_email": "contacto@crom.cl",
+    "website": "https://www.crom.cl",
+    "phone": "+56 2 2759 2447",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Revestimientos y Techos",
+      "Planchas Plásticas y Traslúcidas",
+      "Aislantes",
+      "Productos para Techumbre"
+    ],
+    "products": [
+      "Planchas Traslúcidas de Poliéster",
+      "Cumbreras y Accesorios de Techo",
+      "Láminas Aislantes",
+      "Planchas Onduladas de Cubierta"
+    ]
+  },
+  {
+    "company_name": "Mathiesen Chile",
+    "primary_email": "info@mathiesen.cl",
+    "website": "https://www.mathiesen.cl",
+    "phone": "+56 2 2640 1000",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Insumos Químicos Industriales",
+      "Polímeros y Plásticos de Ingeniería",
+      "Paneles y Revestimientos Arquitectónicos",
+      "Materiales para Construcción"
+    ],
+    "products": [
+      "Resinas Plásticas Industriales",
+      "Aditivos Químicos para Hormigón",
+      "Paneles Compuestos de Aluminio",
+      "Películas de Polietileno Industrial"
+    ]
+  },
+  {
+    "company_name": "Techboard (Grupo Mathiesen)",
+    "primary_email": "contacto@techboard.cl",
+    "website": "https://www.techboard.cl",
+    "phone": "+56 2 2640 1200",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Paneles Aislantes Térmicos",
+      "Paneles SIP y Poliestireno",
+      "Sistemas EIFS",
+      "Aislación Térmica Industrial"
+    ],
+    "products": [
+      "Paneles Aislantes con Núcleo EPS",
+      "Chapa Metálica Aislada para Galpones",
+      "Malla y Adhesivos EIFS",
+      "Paneles de Refrigeración"
+    ]
+  },
+  {
+    "company_name": "Knauf Chile",
+    "primary_email": "contacto@knauf.cl",
+    "website": "https://www.knauf.cl",
+    "phone": "+56 2 2580 4000",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Placas de Yeso-Cartón Knauf",
+      "Perfiles Metálicos para Drywall",
+      "Masas y Pastas para Juntas",
+      "Sistemas de Cielos Acústicos"
+    ],
+    "products": [
+      "Placa Knauf Standard / RH Hídrica",
+      "Masa para Juntas Uniflott / Readygips",
+      "Perfiles Knauf Drywall",
+      "Cielos Acústicos Cleaneo"
+    ]
+  },
+  {
+    "company_name": "Sipa Pinturas",
+    "primary_email": "contacto@sipa.cl",
+    "website": "https://www.sipa.cl",
+    "phone": "+56 2 2580 8000",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Pinturas Látex y Esmaltes",
+      "Pinturas de Fachada",
+      "Barnices y Protectores de Madera",
+      "Anticorrosivos e Industriales"
+    ],
+    "products": [
+      "Látex Extra Cubriente Sipa",
+      "Esmalte al Agua Sipa",
+      "Barniz Marino y Protex Madera",
+      "Pintura Anticorrosiva Alquídica"
+    ]
+  },
+  {
+    "company_name": "Sherwin Williams Chile",
+    "primary_email": "atencion.cliente@sherwin.cl",
+    "website": "https://www.sherwin.cl",
+    "phone": "+56 2 2870 5000",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Pinturas Arquitectónicas",
+      "Pinturas Industriales y Marinas",
+      "Esmaltes y Selladores",
+      "Línea Automotriz"
+    ],
+    "products": [
+      "Látex Loxon Fachadas",
+      "Esmalte Rexpar y Kem Lustral",
+      "Pintura Epóxica Industrial Tile-Clad",
+      "Acondicionadores de Superficie"
+    ]
+  },
+  {
+    "company_name": "Pinturas Ceresita",
+    "primary_email": "contacto@ceresita.com",
+    "website": "https://www.ceresita.com",
+    "phone": "600 622 2000",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Pinturas y Revestimientos Hogar",
+      "Línea Madera y Protectores",
+      "Esmaltes y Pastas de Muro",
+      "Pinturas Industriales"
+    ],
+    "products": [
+      "Esmalte al Agua Cerestain / Pieza & Fachada",
+      "Smaltofina Pasta para Muros",
+      "Barniz Ceresita Marítimo",
+      "Esmalte Sintético Sobremuro"
+    ]
+  },
+  {
+    "company_name": "Weber Saint-Gobain Chile",
+    "primary_email": "contacto.chile@saint-gobain.com",
+    "website": "https://www.cl.weber",
+    "phone": "+56 2 2829 1300",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Adhesivos para Ceramica y Porcelanato",
+      "Fragües y Pastas de Juntas",
+      "Impermeabilizantes de Muro/Piso",
+      "Morteros Tecno-Reparación"
+    ],
+    "products": [
+      "Weber Pasta AC / Pasta Porcelanato",
+      "Fragüe Weber Colores",
+      "Impermeabilizante Weber Impac",
+      "Mortero Autonivelante Weber"
+    ]
+  },
+  {
+    "company_name": "Anasac Ambiental",
+    "primary_email": "contacto@anasac.cl",
+    "website": "https://www.anasac.cl",
+    "phone": "+56 2 2486 9000",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Productos de Control de Plagas Industriales",
+      "Insumos Sanitarios y Desinfectantes",
+      "Línea Fitosanitaria",
+      "Soluciones Ambientales"
+    ],
+    "products": [
+      "Insecticidas Concentrados Profesionales",
+      "Raticidas en Bloques y Cebos",
+      "Desinfectantes de Uso Industrial",
+      "Trampas de Control Operativo"
+    ]
+  },
+  {
+    "company_name": "Prefabricados Grau",
+    "primary_email": "ventas@grau.cl",
+    "website": "https://www.grau.cl",
+    "phone": "+56 2 2488 4000",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Tuberías y Colectores de Hormigón",
+      "Soleras y Solerines",
+      "Adoquines de Hormigón",
+      "Cierres Perimetrales Prefabricados"
+    ],
+    "products": [
+      "Tubos de Hormigón Comprimido Grau",
+      "Solera Tipo A y Tipo B",
+      "Adoquines Rectangulares e Intertrabados",
+      "Pasteles y Solerines de Acera"
+    ]
+  },
+  {
+    "company_name": "Ternium Chile",
+    "primary_email": "contacto.chile@ternium.com",
+    "website": "https://www.ternium.com/cl",
+    "phone": "+56 2 2580 6000",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Acero Laminado en Caliente y Frío",
+      "Bobinas Galvanizadas",
+      "Hojalata y Perfiles Industriales",
+      "Varillas de Acero Estructural"
+    ],
+    "products": [
+      "Bobina de Acero Galvanizado",
+      "Planchas de Acero ASTM A36",
+      "Tubos de Acero Estructural",
+      "Perfiles C y Z de Acero"
+    ]
+  },
+  {
+    "company_name": "Armacero",
+    "primary_email": "ventas@armacero.cl",
+    "website": "https://www.armacero.cl",
+    "phone": "+56 2 2594 1000",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Acero Figurado y Cortado",
+      "Mallas Electrosoldadas de Alta Resistencia",
+      "Barras de Acero Estructural",
+      "Mallas Especiales de Ingeniería"
+    ],
+    "products": [
+      "Fierro Estructural Figurado A630-420H",
+      "Mallas Electrosoldadas Armacero Standard",
+      "Pilotes y Estribos de Acero",
+      "Barras Helicoidales"
+    ]
+  },
+  {
+    "company_name": "AZA Aceros",
+    "primary_email": "contacto@aza.cl",
+    "website": "https://www.aza.cl",
+    "phone": "+56 2 2680 8000",
+    "is_suggested": true,
+    "categories": [
+      "construccion"
+    ],
+    "product_categories": [
+      "Barras de Cemento para Hormigón",
+      "Perfiles Comerciales de Acero",
+      "Alambrón",
+      "Pernos de Fortificación"
+    ],
+    "products": [
+      "Barras de Acero Estructural A630-420H AZA",
+      "Ángulos, Canales y Barras Planas de Acero",
+      "Alambrón de Acero para Trefilado",
+      "Barras Helicoidales AZA"
+    ]
+  },
+  {
+    "company_name": "Vinilit Aliaxis",
+    "primary_email": "infovinilit@aliaxis-la.com",
+    "website": "https://www.vinilit.cl",
+    "phone": "+56 2 2836 1000",
+    "is_suggested": true,
+    "categories": [
+      "mecanico",
+      "construccion"
+    ],
+    "product_categories": [
+      "Tuberías y Salidas PVC Sanitarias",
+      "Sistemas de Agua Potable PPR y PEX",
+      "Canalización Eléctrica PVC Conduit",
+      "Válvulas y Fitting Plasticos"
+    ],
+    "products": [
+      "Tubería PVC Sanitaria Vinilit",
+      "Tubos PPR Termofusión para Agua Caliente",
+      "Tubería Conduit PVC Eléctrica",
+      "Fitting de Presión y Válvulas PVC"
+    ]
+  },
+  {
+    "company_name": "Tigre Chile",
+    "primary_email": "serviciocliente@tigre.com",
+    "website": "https://www.tigre.cl",
+    "phone": "+56 2 2829 5000",
+    "is_suggested": true,
+    "categories": [
+      "mecanico",
+      "construccion"
+    ],
+    "product_categories": [
+      "Tuberías PVC y Polietileno (PEAD)",
+      "Fitting para Alcantarillado y Riego",
+      "Canales de Lluvia",
+      "Sistemas de Incendio CPVC"
+    ],
+    "products": [
+      "Tubería PVC Alcantarillado Tigre",
+      "Tubos PEAD para Riego y Minería",
+      "Accesorios de PVC para Soldar/Cimentar",
+      "Tubos CPVC FireNet"
+    ]
+  },
+  {
+    "company_name": "Nibsa",
+    "primary_email": "contacto@nibsa.cl",
+    "website": "https://www.nibsa.cl",
+    "phone": "+56 2 2580 3000",
+    "is_suggested": true,
+    "categories": [
+      "mecanico"
+    ],
+    "product_categories": [
+      "Válvulas de Bronce y Latón",
+      "Grifería Sanitaria y Cocina",
+      "Fitting de Cobre y Bronce para Gas y Agua",
+      "Contadores de Agua"
+    ],
+    "products": [
+      "Válvulas de Bola y Paso Nibsa",
+      "Fitting Cobre para Soldar",
+      "Grifería Monocomando para Lavatorio",
+      "Válvulas de Retención e Inmueble"
+    ]
+  },
+  {
+    "company_name": "Hoffmann Group Chile",
+    "primary_email": "info.cl@hoffmann-group.com",
+    "website": "https://www.hoffmann-group.com",
+    "phone": "+56 2 2938 2000",
+    "is_suggested": true,
+    "categories": [
+      "mecanico"
+    ],
+    "product_categories": [
+      "Herramientas de Mecanizado GARANT/HOLEX",
+      "Taller y Equipamiento de Armarios",
+      "Metrología de Alta Precisión",
+      "Abrasivos y Técnica de Montaje"
+    ],
+    "products": [
+      "Fresas Monolíticas GARANT",
+      "Muebles y Gabinetes de Taller HOLEX",
+      "Calibres y Micrómetros Digitaies",
+      "Brocas de Alto Rendimiento HSS/Carburo"
+    ]
+  },
+  {
+    "company_name": "KSB Chile",
+    "primary_email": "ksbchile@ksb.com",
+    "website": "https://www.ksb.com/es-cl",
+    "phone": "+56 2 2677 8300",
+    "is_suggested": true,
+    "categories": [
+      "mecanico"
+    ],
+    "product_categories": [
+      "Bombas Centrífugas Industriales",
+      "Válvulas Industriales de Control",
+      "Sistemas de Bombeo de Agua y Minería",
+      "Repuestos y Servicios KSB"
+    ],
+    "products": [
+      "Bombas KSB Megachem / Etanorm",
+      "Válvulas de Guillotina y Mariposa KSB",
+      "Bombas Sumergibles de Pozo Profundo",
+      "Sellos Mecánicos y Repuestos"
+    ]
+  },
+  {
+    "company_name": "Veto y Cia.",
+    "primary_email": "veto@veto.cl",
+    "website": "https://www.veto.cl",
+    "phone": "+56 2 2355 4400",
+    "is_suggested": true,
+    "categories": [
+      "electronico",
+      "mecanico"
+    ],
+    "product_categories": [
+      "Instrumentos de Medición y Control",
+      "Manómetros y Termómetros",
+      "Sensores de Nivel y Flujo",
+      "Equipos de Laboratorio e Industria"
+    ],
+    "products": [
+      "Manómetros de Esfera en Acero Inoxidable Veto",
+      "Termómetros Bimetálicos",
+      "Registradores de Temperatura Data Logger",
+      "Flujómetros y Medidores de pH"
+    ]
+  },
+  {
+    "company_name": "Danfoss Chile",
+    "primary_email": "danfoss.chile@danfoss.com",
+    "website": "https://www.danfoss.cl",
+    "phone": "+56 2 2829 0100",
+    "is_suggested": true,
+    "categories": [
+      "mecanico"
+    ],
+    "product_categories": [
+      "Válvulas y Control para Refrigeración",
+      "Variadores de Frecuencia VLT",
+      "Hidráulica Industrial",
+      "Sistemas de Calefacción Urbana"
+    ],
+    "products": [
+      "Variadores de Frecuencia VLT Danfoss",
+      "Válvulas Termostáticas y Solenoides",
+      "Compresores Danfoss Maneurop",
+      "Presostatos y Termostatos KP"
+    ]
+  },
+  {
+    "company_name": "Spirax Sarco Chile",
+    "primary_email": "contacto@cl.spiraxsarco.com",
+    "website": "https://www.spiraxsarco.com/global/es-CL",
+    "phone": "+56 2 2482 1700",
+    "is_suggested": true,
+    "categories": [
+      "mecanico"
+    ],
+    "product_categories": [
+      "Trampas de Vapor",
+      "Válvulas Reguladoras de Presión",
+      "Intercambiadores de Calor",
+      "Sistemas de Control de Condensado"
+    ],
+    "products": [
+      "Trampas de Vapor Termodinámicas y Flotador",
+      "Válvulas Reductoras de Presión Spirax",
+      "Eliminadores de Aire y Purga",
+      "Contadores de Flujo de Vapor"
+    ]
+  },
+  {
+    "company_name": "Helbert Chile",
+    "primary_email": "ventas@helbert.cl",
+    "website": "https://www.helbert.cl",
+    "phone": "+56 2 2551 2000",
+    "is_suggested": true,
+    "categories": [
+      "mecanico"
+    ],
+    "product_categories": [
+      "Válvulas Industriales",
+      "Actuadores Neumáticos y Eléctricos",
+      "Filtros Y e Instrumentación de Flujo",
+      "Juntas de Expansión"
+    ],
+    "products": [
+      "Válvula Mariposa Helbert",
+      "Actuadores Neumáticos Doble Efecto",
+      "Filtros Y en Cobre y Acero",
+      "Válvulas de Bola Inoxidable"
+    ]
+  },
+  {
+    "company_name": "Ingersoll Rand Chile",
+    "primary_email": "contacto.chile@irco.com",
+    "website": "https://www.ingersollrand.com",
+    "phone": "+56 2 2580 2300",
+    "is_suggested": true,
+    "categories": [
+      "mecanico"
+    ],
+    "product_categories": [
+      "Compresores de Aire Industriales",
+      "Herramientas Neumáticas de Impacto",
+      "Bombas ARO de Diafragma",
+      "Sistemas de Tratamiento de Aire"
+    ],
+    "products": [
+      "Compresores de Tornillo Rotativo Ingersoll Rand",
+      "Llaves de Impacto Neumáticas 1/2\" y 1\"",
+      "Bombas Neumáticas de Diafragma ARO",
+      "Secadores de Aire por Refrigeración"
+    ]
+  },
+  {
+    "company_name": "FESTO Chile",
+    "primary_email": "ventas.cl@festo.com",
+    "website": "https://www.festo.com/cl/es/",
+    "phone": "+56 2 2690 2800",
+    "is_suggested": true,
+    "categories": [
+      "mecanico",
+      "electronico"
+    ],
+    "product_categories": [
+      "Cilindros y Actuadores Neumáticos",
+      "Válvulas y Terminales de Válvulas",
+      "Sistemas de Automatización Eléctrica",
+      "Preparación de Aire Comprimido"
+    ],
+    "products": [
+      "Cilindros Neumáticos ISO Festo DNC/DSBC",
+      "Electroválvulas y Mangueras PUN",
+      "Unidades de Mantenimiento FRC",
+      "Sensores de Proximidad SMT"
+    ]
+  },
+  {
+    "company_name": "SMC Corporation Chile",
+    "primary_email": "ventas@smc.cl",
+    "website": "https://www.smc.cl",
+    "phone": "+56 2 2820 8100",
+    "is_suggested": true,
+    "categories": [
+      "mecanico"
+    ],
+    "product_categories": [
+      "Equipos Neumáticos y Control",
+      "Actuadores y Pinzas Neumáticas",
+      "Secadores y Unidades FRL",
+      "Conectores y Tubos Neumáticos"
+    ],
+    "products": [
+      "Cilindros Compactos SMC NCQ2",
+      "Electroválvulas Serie SY",
+      "Reguladores de Presión de Precisión",
+      "Rácores y Tubos de Poliuretano"
+    ]
+  },
+  {
+    "company_name": "Hidrostal Chile",
+    "primary_email": "hidrostal@hidrostal.cl",
+    "website": "https://www.hidrostal.cl",
+    "phone": "+56 2 2598 7000",
+    "is_suggested": true,
+    "categories": [
+      "mecanico"
+    ],
+    "product_categories": [
+      "Bombas de Impulsor Helicoidal",
+      "Bombas Sumergibles de Aguas Servidas",
+      "Equipos de Bombeo Minero e Industrial",
+      "Sistemas de Tratamiento de Agua"
+    ],
+    "products": [
+      "Bomba Sumergible de Aguas Negras Hidrostal",
+      "Bomba de Impulsor Tornillo Helicoidal",
+      "Tableros de Control de Bombeo",
+      "Bombas de Muro Seco"
+    ]
+  },
+  {
+    "company_name": "Franklin Electric Chile",
+    "primary_email": "contacto.chile@fele.com",
+    "website": "https://www.franklin-electric.com",
+    "phone": "+56 2 2898 3000",
+    "is_suggested": true,
+    "categories": [
+      "mecanico",
+      "electrico"
+    ],
+    "product_categories": [
+      "Motores Sumergibles para Pozos",
+      "Bombas Centrífugas Multietapas",
+      "Sistemas de Presión Constante",
+      "Variadores de Velocidad SubDrive"
+    ],
+    "products": [
+      "Motores Sumergibles de 4\" y 6\" Franklin",
+      "Bombas Multietapas Verticales VR",
+      "Variadores de Frecuencia SubDrive",
+      "Bombas de Pozo Profundo"
+    ]
+  },
+  {
+    "company_name": "Atlas Copco Chile",
+    "primary_email": "contacto.chile@atlascopco.com",
+    "website": "https://www.atlascopco.com/es-cl",
+    "phone": "+56 2 2442 3600",
+    "is_suggested": true,
+    "categories": [
+      "mecanico",
+      "construccion"
+    ],
+    "product_categories": [
+      "Compresores de Aire Industriales",
+      "Generadores de Nitrógeno y Oxígeno",
+      "Herramientas Industriales y Torque",
+      "Generadores de Energía"
+    ],
+    "products": [
+      "Compresores de Tornillo GA Atlas Copco",
+      "Generadores Diesel QAS",
+      "Secadores Refrigerativos CD/BD",
+      "Herramientas de Torque de Precisión"
+    ]
+  },
+  {
+    "company_name": "Arauco (Soluciones Arauco)",
+    "primary_email": "contacto@arauco.com",
+    "website": "https://www.arauco.com",
+    "phone": "600 400 6000",
+    "is_suggested": true,
+    "categories": [
+      "madera",
+      "construccion"
+    ],
+    "product_categories": [
+      "Maderas Aserradas y Cepilladas",
+      "Tableros MDF y MDP Arauco",
+      "Tableros Terciados Estructurales (Plywood)",
+      "Soluciones de Melamina MSD"
+    ],
+    "products": [
+      "Mera Madera Aserrada MSD",
+      "Tablero Melamina Vesto",
+      "Terciado Estructural Araucoply",
+      "Tableros MDF Trupan"
+    ]
+  },
+  {
+    "company_name": "CMPC Maderas",
+    "primary_email": "marketingmaderas@cmpc.cl",
+    "website": "https://www.disenamadera.cl",
+    "phone": "+56 2 2441 2832",
+    "is_suggested": true,
+    "categories": [
+      "madera",
+      "construccion"
+    ],
+    "product_categories": [
+      "Madera Aserrada de Pino Radiata",
+      "Tableros Terciados Selex",
+      "Madera para Construcción e Ingeniería",
+      "Molduras de Madera"
+    ],
+    "products": [
+      "Madera Cepillada CMPC C24",
+      "Terciado Estructural Selex",
+      "Molduras de Pino Radiata",
+      "Madera Impregnada CCA"
+    ]
+  },
+  {
+    "company_name": "Masisa Chile",
+    "primary_email": "contacto@masisa.com",
+    "website": "https://www.masisa.com",
+    "phone": "800 221 000",
+    "is_suggested": true,
+    "categories": [
+      "madera"
+    ],
+    "product_categories": [
+      "Tableros de Melamina Decorativa",
+      "Tableros MDF y Enchapados",
+      "Tableros OSB Industriales",
+      "Tapacantos y Herrajes"
+    ],
+    "products": [
+      "Melamina Masisa Diseños Madera/Unicolor",
+      "Tablero MDF Masisa Standard",
+      "Tablero OSB Masisa Estructural",
+      "MDF Desnudo"
+    ]
+  },
+  {
+    "company_name": "Maderera Puelche",
+    "primary_email": "contacto@madererapuelche.cl",
+    "website": "https://www.madererapuelche.cl",
+    "phone": "+56 2 2854 1100",
+    "is_suggested": true,
+    "categories": [
+      "madera"
+    ],
+    "product_categories": [
+      "Maderas Impregnadas en Autoclave",
+      "Polos y Impregnados para Cercos",
+      "Madera de Estructura",
+      "Vigas y Pilares de Madera"
+    ],
+    "products": [
+      "Polines Impregnados CCA",
+      "Madera Aserrada Impregnada Pino",
+      "Vigas de Pino Impregnado",
+      "Tirantes para Techumbre"
+    ]
+  },
+  {
+    "company_name": "Impregno Madera",
+    "primary_email": "ventas@impregnomadera.cl",
+    "website": "https://www.impregnomadera.cl",
+    "phone": "+56 2 2857 2000",
+    "is_suggested": true,
+    "categories": [
+      "madera"
+    ],
+    "product_categories": [
+      "Madera Impregnada CCA",
+      "Polines de Pino Radiata",
+      "Madera para Revestimiento Exterior",
+      "Polos y Postes Eléctricos"
+    ],
+    "products": [
+      "Polines Impregnados con Retención CCA",
+      "Madera Aserrada Impregnada",
+      "Deck de Madera Impregnada para Terrazas",
+      "Postes Eléctricos de Pino"
+    ]
+  },
+  {
+    "company_name": "Maderas Cugat",
+    "primary_email": "contacto@maderascugat.cl",
+    "website": "https://www.maderascugat.cl",
+    "phone": "+56 72 223 1000",
+    "is_suggested": true,
+    "categories": [
+      "madera"
+    ],
+    "product_categories": [
+      "Madera para Construcción y Mueblería",
+      "Tableros y Terciados",
+      "Planchas de Terciado",
+      "Artículos de Carpintería"
+    ],
+    "products": [
+      "Madera Aserrada Pino Radiata Cugat",
+      "Terciado Marino / Ranurado",
+      "Vigas de Madera Nativa y Pino",
+      "Tableros Aglomerados"
+    ]
+  },
+  {
+    "company_name": "Sociedad Maderera de Chile",
+    "primary_email": "sociedadchilemaderas@gmail.com",
+    "website": "https://www.sociedad-madereradechile.cl",
+    "phone": "+56 9 4476 7556",
+    "is_suggested": true,
+    "categories": [
+      "madera"
+    ],
+    "product_categories": [
+      "Maderas Nativas y Mañio/Roble",
+      "Vigas Laminadas",
+      "Madera Estructural Aserrada",
+      "Pisos de Madera"
+    ],
+    "products": [
+      "Vigas Laminadas Estructurales",
+      "Madera Nativa Roble / Raulí / Lenga",
+      "Pisos Parquet y Decks Nativos",
+      "Planchas de Madera"
+    ]
+  },
+  {
+    "company_name": "CLC Maderas del Mundo",
+    "primary_email": "ventaslocales@clcsa.cl",
+    "website": "https://clcsa.cl",
+    "phone": "+56 2 2551 8000",
+    "is_suggested": true,
+    "categories": [
+      "madera"
+    ],
+    "product_categories": [
+      "Maderas Exóticas e Importadas",
+      "Pisos de Madera Sólida",
+      "Maderas Nativas para Muebles",
+      "Cubiertas de Madera"
+    ],
+    "products": [
+      "Madera Importada Caoba / Cumandá / Teca",
+      "Cubiertas de Madera Sólida para Cocina",
+      "Pisos de Madera Exótica",
+      "Maderas Finas para Mueblería"
+    ]
+  },
+  {
+    "company_name": "Maderas Troncoso",
+    "primary_email": "ventas@maderastroncoso.cl",
+    "website": "https://www.maderastroncoso.cl",
+    "phone": "+56 2 2525 3000",
+    "is_suggested": true,
+    "categories": [
+      "madera"
+    ],
+    "product_categories": [
+      "Madera Aserrada y Cepillada",
+      "Vigas de Pino y Nativa",
+      "Revestimientos en Madera (Cielo/Muro)",
+      "Molduras"
+    ],
+    "products": [
+      "Madera Cepillada Pino Radiata",
+      "Machimbrado Pino para Cielos",
+      "Vigas de Pino 2x6 / 2x8",
+      "Molduras de Espuma y Madera"
+    ]
+  },
+  {
+    "company_name": "Maderas Aysen",
+    "primary_email": "contacto@maderasaysen.cl",
+    "website": "https://www.maderasaysen.cl",
+    "phone": "+56 2 2558 1200",
+    "is_suggested": true,
+    "categories": [
+      "madera"
+    ],
+    "product_categories": [
+      "Madera Aserrada del Sur",
+      "Postes e Impregnados",
+      "Vigas Estructurales",
+      "Tableros para Muebles"
+    ],
+    "products": [
+      "Polines Impregnados del Sur",
+      "Madera Structurada Pino Aysén",
+      "Terciado Pino",
+      "Planchas OSB"
+    ]
+  },
+  {
+    "company_name": "Maderera San Pedro",
+    "primary_email": "ventas@madererasanpedro.cl",
+    "website": "https://www.madererasanpedro.cl",
+    "phone": "+56 41 279 1000",
+    "is_suggested": true,
+    "categories": [
+      "madera"
+    ],
+    "product_categories": [
+      "Madera Estructural Pino Radiata",
+      "Molduras y Machimbrados",
+      "Polines y Postes Impregnados",
+      "Tableros Terciados"
+    ],
+    "products": [
+      "Madera Aserrada Dimensionada",
+      "Molduras de Pino San Pedro",
+      "Polines con Presión CCA",
+      "Tableros Estructurales"
+    ]
+  },
+  {
+    "company_name": "Maderas Colonial",
+    "primary_email": "contacto@maderascolonial.cl",
+    "website": "https://www.maderascolonial.cl",
+    "phone": "+56 2 2242 9000",
+    "is_suggested": true,
+    "categories": [
+      "madera"
+    ],
+    "product_categories": [
+      "Maderas Finas y Cepilladas",
+      "Cubiertas y Tableros Enchapados",
+      "Molduras de Estilo",
+      "Pisos y Terrazas"
+    ],
+    "products": [
+      "Madera Cepillada 4 Caras",
+      "Deck de Madera Nativa/Impregnada",
+      "Molduras Decorativas Colonial",
+      "Tableros Enchapados en Encina"
+    ]
+  },
+  {
+    "company_name": "Maderera Silva",
+    "primary_email": "ventas@madererasilva.cl",
+    "website": "https://www.madererasilva.cl",
+    "phone": "+56 2 2527 1000",
+    "is_suggested": true,
+    "categories": [
+      "madera"
+    ],
+    "product_categories": [
+      "Madera para Edificación",
+      "Tableros Mueblistas",
+      "Vigas y Tirantes",
+      "Insumos de Carpintería"
+    ],
+    "products": [
+      "Madera Aserrada Pino Silva",
+      "Tableros MDF y Aglomerados",
+      "Vigas Brutas de Pino",
+      "Planchas Terciadas"
+    ]
+  },
+  {
+    "company_name": "Imperial Madera",
+    "primary_email": "contacto@imperial.cl",
+    "website": "https://www.imperial.cl",
+    "phone": "600 460 5000",
+    "is_suggested": true,
+    "categories": [
+      "madera",
+      "construccion",
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Tableros y Melaminas",
+      "Maderas Aserradas y Cepilladas",
+      "Herrajes y Bisagras",
+      "Servicios de Corte y Tapacantado"
+    ],
+    "products": [
+      "Tableros Melamina Masisa/Arauco",
+      "Madera Cepillada MSD",
+      "Bisagras Cazoleta y Correderas Telescópicas",
+      "Planchas OSB y Terciado"
+    ]
+  },
+  {
+    "company_name": "Proplac Maderas Tecnica",
+    "primary_email": "ventas@proplac.cl",
+    "website": "https://www.proplac.cl",
+    "phone": "+56 2 2554 8000",
+    "is_suggested": true,
+    "categories": [
+      "madera"
+    ],
+    "product_categories": [
+      "Tableros Técnicos e Industriales",
+      "Placas Fenólicas para Encofrado",
+      "Terciados Marinos",
+      "Planchas Contrachapadas Especiales"
+    ],
+    "products": [
+      "Terciado Moldaje Plastificado Proplac",
+      "Tableros Fenólicos de Gran Resistencia",
+      "Placas Térmico-Acústicas de Madera",
+      "Terciado Marino WBP"
+    ]
+  },
+  {
+    "company_name": "Sodimac Venta Empresa",
+    "primary_email": "Venta_empresa@sodimac.cl",
+    "website": "https://www.sodimac.cl",
+    "phone": "600 600 1230",
+    "is_suggested": true,
+    "categories": [
+      "retail",
+      "electrico",
+      "construccion",
+      "ferreteria",
+      "madera"
+    ],
+    "product_categories": [
+      "Construcción y Obra Gruesa",
+      "Herramientas Industriales",
+      "Electricidad y Gasitería",
+      "Terminaciones y Pinturas",
+      "Equipamiento de Protección Personal"
+    ],
+    "products": [
+      "Cemento, Fierro y Hormigón",
+      "Taladros y Herramientas Inalámbricas",
+      "Cables Eléctricos y Tuberías PVC",
+      "Pinturas Industriales y Fachada",
+      "Zapatos de Seguridad y Cascos"
+    ]
+  },
+  {
+    "company_name": "Easy Venta Empresa",
+    "primary_email": "ventaempresa@easy.cl",
+    "website": "https://www.easy.cl",
+    "phone": "600 327 9000",
+    "is_suggested": true,
+    "categories": [
+      "retail",
+      "electrico",
+      "construccion",
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Materiales de Construcción",
+      "Electricidad e Iluminación",
+      "Ferretería y Herramientas",
+      "Plomería y Gasitería"
+    ],
+    "products": [
+      "Planchas de Yeso Cartón y Fibrocemento",
+      "Iluminación LED Comercial",
+      "Herramientas Bauker / DeWalt",
+      "Tuberías PPR y PVC Vinilit"
+    ]
+  },
+  {
+    "company_name": "Ferreterias Imperial",
+    "primary_email": "contacto@imperial.cl",
+    "website": "https://www.imperial.cl",
+    "phone": "600 460 5000",
+    "is_suggested": true,
+    "categories": [
+      "retail",
+      "madera",
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Tableros Mueblistas y Maderas",
+      "Ferretería de Muebles y Herrajes",
+      "Herramientas de Carpintería",
+      "Tapacantos y Adhesivos"
+    ],
+    "products": [
+      "Planchas de Melamina 18mm",
+      "Correderas Telescópicas Ducasse",
+      "Tornillos Cazoleta y Confirmat",
+      "Adhesivos de Contacto y Tapacantos PVC"
+    ]
+  },
+  {
+    "company_name": "Construmart Venta Empresa",
+    "primary_email": "ventaempresa@construmart.cl",
+    "website": "https://www.construmart.cl",
+    "phone": "600 360 0001",
+    "is_suggested": true,
+    "categories": [
+      "retail",
+      "construccion",
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Materiales de Obra Gruesa",
+      "Techumbre y Aislación",
+      "Herramientas para la Construcción",
+      "Ferretería y Fijaciones"
+    ],
+    "products": [
+      "Fierro Estructural AZA",
+      "Cintas Aislantes y Aislan Glass",
+      "Hormigones Premezclados",
+      "Tornillos Autoperforantes"
+    ]
+  },
+  {
+    "company_name": "MTS Red Ferretera",
+    "primary_email": "contacto@mts.cl",
+    "website": "https://www.mts.cl",
+    "phone": "+56 2 2430 2000",
+    "is_suggested": true,
+    "categories": [
+      "retail",
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Ferretería Agrícola e Industrial",
+      "Materiales de Construcción",
+      "Pinturas y Adhesivos",
+      "Herramientas Manuales y Eléctricas"
+    ],
+    "products": [
+      "Mallas de Cerco y Alambres",
+      "Látex y Esmaltes de Pintura",
+      "Cerraduras y Cerrojos",
+      "Herramientas Manuales de Jardín y Taller"
+    ]
+  },
+  {
+    "company_name": "Chilemat Red Ferretera",
+    "primary_email": "contacto@chilemat.cl",
+    "website": "https://www.chilemat.cl",
+    "phone": "+56 2 2783 5000",
+    "is_suggested": true,
+    "categories": [
+      "retail",
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Ferretería para el Hogar y la Obra",
+      "Gasitería y Plomería",
+      "Electricidad Básica",
+      "Herramientas de Mano"
+    ],
+    "products": [
+      "Válvulas y Llaves de Agua",
+      "Cables y Cajas Eléctricas",
+      "Palas, Chuzos y Carretillas",
+      "Siliconas y Sellantes"
+    ]
+  },
+  {
+    "company_name": "Walmart Chile B2B",
+    "primary_email": "contacto.b2b@walmart.com",
+    "website": "https://www.walmartchile.cl",
+    "phone": "600 600 9191",
+    "is_suggested": true,
+    "categories": [
+      "retail"
+    ],
+    "product_categories": [
+      "Abarrotes y Alimentos a Granel",
+      "Artículos de Aseo e Higiene Industrial",
+      "Línea Blanca y Equipamiento",
+      "Insumos Institucionales"
+    ],
+    "products": [
+      "Detergentes e Insumos Limpieza Industrial",
+      "Artículos de Papelería Institucional",
+      "Electrodomésticos y Refrigeración",
+      "Alimentos Secos en Formato Mayorista"
+    ]
+  },
+  {
+    "company_name": "Cencosud Venta Corporativa",
+    "primary_email": "ventacorporativa@cencosud.cl",
+    "website": "https://www.cencosud.com",
+    "phone": "+56 2 2959 0000",
+    "is_suggested": true,
+    "categories": [
+      "retail"
+    ],
+    "product_categories": [
+      "Tarjetas de Regalo y Gift Cards",
+      "Equipamiento de Oficina y Hogar",
+      "Electrodomésticos y Tecnología",
+      "Canastas Corporativas"
+    ],
+    "products": [
+      "Gift Cards Digitales / Físicas Cencosud",
+      "Computadores y Monitores de Oficina",
+      "Televisores y Proyectores",
+      "Artículos de Climatización"
+    ]
+  },
+  {
+    "company_name": "Mercado Libre Chile B2B",
+    "primary_email": "empresas@mercadolibre.cl",
+    "website": "https://www.mercadolibre.cl",
+    "phone": "N/A",
+    "is_suggested": true,
+    "categories": [
+      "retail"
+    ],
+    "product_categories": [
+      "Ferretería e Industria Marketplace",
+      "Electrónica y Computación",
+      "Insumos de Embalaje y Despacho",
+      "Equipamiento para Oficinas"
+    ],
+    "products": [
+      "Cajas de Cartón y Film Stretch",
+      "Herramientas Eléctricas Multimarca",
+      "Insumos de Computación y Papelería",
+      "EPP y Calzado de Trabajo"
+    ]
+  },
+  {
+    "company_name": "Ferreteria Weitzler",
+    "primary_email": "ventas@weitzler.cl",
+    "website": "https://www.weitzler.cl",
+    "phone": "+56 65 220 0200",
+    "is_suggested": true,
+    "categories": [
+      "retail",
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Ferretería Marítima e Industrial",
+      "Materiales de Construcción Sur",
+      "Herramientas y Pinturas",
+      "Equipos de Protección"
+    ],
+    "products": [
+      "Pinturas Marinas e Industriales",
+      "Cabos, Cordeles y Herrajes Marítimos",
+      "Herramientas Manuales",
+      "Calzado Impermeable de Trabajo"
+    ]
+  },
+  {
+    "company_name": "Ferreteria Prat",
+    "primary_email": "contacto@ferreteriaprat.cl",
+    "website": "https://www.ferreteriaprat.cl",
+    "phone": "+56 32 221 3000",
+    "is_suggested": true,
+    "categories": [
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Ferretería General Sanitaria",
+      "Gasitería y Tuberías",
+      "Fijaciones e Insumos Eléctricos",
+      "Pinturas"
+    ],
+    "products": [
+      "Fitting de Cobre y PVC",
+      "Grifería y Llaves de Paso",
+      "Tornillos y Tarugos",
+      "Esmaltes y Anticorrosivos"
+    ]
+  },
+  {
+    "company_name": "Ferreteria El Candado",
+    "primary_email": "ventas@elcandado.cl",
+    "website": "https://www.elcandado.cl",
+    "phone": "+56 2 2698 1200",
+    "is_suggested": true,
+    "categories": [
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Cerrajería y Candados",
+      "Ferretería de Seguridad",
+      "Herramientas de Mano",
+      "Herrajes para Puertas"
+    ],
+    "products": [
+      "Candados de Latón y Acero Cementado",
+      "Cerraduras de Sobreponer y Embutir",
+      "Cilindros de Seguridad",
+      "Cierrapuertas Hidráulicos"
+    ]
+  },
+  {
+    "company_name": "Ferreteria Higueras",
+    "primary_email": "ventas@fhigueras.cl",
+    "website": "https://www.fhigueras.cl",
+    "phone": "+56 41 258 5000",
+    "is_suggested": true,
+    "categories": [
+      "ferreteria",
+      "construccion"
+    ],
+    "product_categories": [
+      "Ferretería Industrial Bío Bío",
+      "Materiales para la Construcción",
+      "Herramientas y Maquinaria",
+      "Insumos Eléctricos"
+    ],
+    "products": [
+      "Fierro de Construcción AZA",
+      "Herramientas Eléctricas Makita / Bosch",
+      "Tubos de Alcantarillado y Agua",
+      "Discos Abrasivos"
+    ]
+  },
+  {
+    "company_name": "Belsport EPP e Industrial",
+    "primary_email": "contacto@belsport.cl",
+    "website": "https://www.belsport.cl",
+    "phone": "+56 2 2433 9000",
+    "is_suggested": true,
+    "categories": [
+      "retail",
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Calzado de Seguridad Industrial",
+      "Ropa Técnica de Trabajo",
+      "Vestuario de Alta Visibilidad",
+      "EPP Deportivo/Industrial"
+    ],
+    "products": [
+      "Zapatos de Seguridad con Puntera de Composite",
+      "Chaquetas Térmicas e Impermeables",
+      "Poleras y Chalecos Geólogos Reflectantes",
+      "Zapatillas de Trabajo Antideslizantes"
+    ]
+  },
+  {
+    "company_name": "Nazar EPP y Equipamiento",
+    "primary_email": "ventas@nazar.cl",
+    "website": "https://www.nazar.cl",
+    "phone": "+56 2 2797 8000",
+    "is_suggested": true,
+    "categories": [
+      "ferreteria"
+    ],
+    "product_categories": [
+      "Elementos de Protección Personal (EPP)",
+      "Protección Respiratoria y Auditiva",
+      "Calzado y Vestuario Industrial",
+      "Arneses y Seguridad en Altura"
+    ],
+    "products": [
+      "Respiradores de Media Cara con Filtro P100",
+      "Tapones y Fono Oído Auditivos",
+      "Arnés de Seguridad Anti-caídas 4 Argollas",
+      "Guantes Anti-corte Nitrilo"
+    ]
+  }
 ]

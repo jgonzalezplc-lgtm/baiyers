@@ -332,7 +332,10 @@ async def detalle_lista(lista_id: str, ctx: AuthContext = Depends(get_auth_conte
                 "definitivo": definitivos_salida.get(it["cotizacion_id"]),
                 "proveedores_recomendados": _recomendaciones_item(
                     it, privados_por_item.get(it["cotizacion_id"], []),
-                    sugeridos_para_categoria(categorias_por_item.get(it["cotizacion_id"])),
+                    sugeridos_para_categoria(
+                        categorias_por_item.get(it["cotizacion_id"]),
+                        it.get("nombre"),
+                    ),
                     selecciones_guardadas,
                 ),
             }
