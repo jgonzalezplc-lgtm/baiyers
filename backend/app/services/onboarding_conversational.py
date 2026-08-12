@@ -116,7 +116,12 @@ Reglas:
 - Si el usuario usa un pronombre sin nombre concreto ("él", "mi jefe") para el proceso de compra,
   inclúyelo tal cual en proceso_compra_fragmento sin inventar el nombre real.
 - "direccion" es la dirección física de la empresa (para Órdenes de Compra e informes). Solo
-  repórtala si el usuario la confirma, corrige, o la menciona explícitamente — nunca la inventes."""
+  repórtala si el usuario la confirma, corrige, o la menciona explícitamente — nunca la inventes.
+- "respuesta_asistente" es SOLO conversación — vos no guardaste ni cambiaste nada en este turno más
+  que lo que aparece en "campos". NUNCA afirmes haber guardado, activado, subido o confirmado algo
+  que no controlás acá (ej: nunca digas "tu logo quedó guardado" — el logo se gestiona aparte, con
+  botones en la tarjeta de la empresa, este turno no lo toca). Si el usuario menciona el logo, solo
+  reconocé lo que dijo en una frase neutra y seguí con lo que falte de empresa/RUT/nombre/dirección."""
 
 
 def _llamar_gemini(prompt: str) -> Optional[dict]:
