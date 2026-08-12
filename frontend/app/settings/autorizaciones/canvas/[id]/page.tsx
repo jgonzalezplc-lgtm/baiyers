@@ -263,26 +263,37 @@ export default function CanvasWorkflowPage() {
     if (seleccionado === id) setSeleccionado(null);
   };
 
-  const iniciarConexion = (id: string) => {
-    if (conectando === id) { setConectando(null); return; }
-    if (conectando) {
-      const origenNodo = nodos.find(n => n.id === conectando);
-      const necesitaResultado = !!origenNodo?.resultados?.length;
-      let resultado: string | undefined;
-      if (necesitaResultado) {
-        const opciones = origenNodo!.resultados || [];
-        const elegido = window.prompt(`¿Con qué resultado va esta conexión? (${opciones.join(", ")})`, opciones[0] || "");
-        if (!elegido) { setConectando(null); return; }
-        resultado = elegido;
-      }
-      setConexiones(prev => [
-        ...prev.filter(c => !(c.origen_nodo_id === conectando && (c.resultado || "default") === (resultado || "default"))),
-        { origen_nodo_id: conectando, destino_nodo_id: id, ...(resultado ? { resultado } : {}) },
-      ]);
-      setConectando(null);
-    } else {
-      setConectando(id);
+  // Punto de salida (derecha de la tarjeta): arma el origen de una conexión
+  // nueva. Nunca termina una conexión — eso es solo el punto de entrada, así
+  // no hay ambigüedad sobre qué extremo se está tocando.
+  const iniciarConexionDesde = (id: string) => {
+    const nodo = nodos.find(n => n.id === id);
+    if (nodo?.tipo === "fin") return;
+    setConectando(prev => (prev === id ? null : id));
+  };
+
+  // Punto de entrada (izquierda de la tarjeta): solo hace algo si ya hay una
+  // conexión armada desde otro nodo — nunca inicia una conexión por sí solo,
+  // así arrastrar/clickear el lado equivocado no puede pisar otra conexión.
+  const completarConexionHacia = (id: string) => {
+    if (!conectando || conectando === id) { setConectando(null); return; }
+    const destinoNodo = nodos.find(n => n.id === id);
+    if (destinoNodo?.tipo === "inicio") { setConectando(null); return; }
+
+    const origenNodo = nodos.find(n => n.id === conectando);
+    const necesitaResultado = !!origenNodo?.resultados?.length;
+    let resultado: string | undefined;
+    if (necesitaResultado) {
+      const opciones = origenNodo!.resultados || [];
+      const elegido = window.prompt(`¿Con qué resultado va esta conexión? (${opciones.join(", ")})`, opciones[0] || "");
+      if (!elegido) { setConectando(null); return; }
+      resultado = elegido;
     }
+    setConexiones(prev => [
+      ...prev.filter(c => !(c.origen_nodo_id === conectando && (c.resultado || "default") === (resultado || "default"))),
+      { origen_nodo_id: conectando, destino_nodo_id: id, ...(resultado ? { resultado } : {}) },
+    ]);
+    setConectando(null);
   };
 
   const eliminarConexion = (idx: number) => {
@@ -458,6 +469,16 @@ export default function CanvasWorkflowPage() {
     x: (n.posicion?.x ?? 0) + NODE_W / 2,
     y: (n.posicion?.y ?? 0) + NODE_H / 2,
   });
+  // Las líneas salen del punto de salida (borde derecho) y entran por el
+  // punto de entrada (borde izquierdo) — mismo lugar donde están los botones.
+  const puntoSalida = (n: Nodo) => ({
+    x: (n.posicion?.x ?? 0) + NODE_W,
+    y: (n.posicion?.y ?? 0) + NODE_H / 2,
+  });
+  const puntoEntrada = (n: Nodo) => ({
+    x: n.posicion?.x ?? 0,
+    y: (n.posicion?.y ?? 0) + NODE_H / 2,
+  });
 
   return (
     <div>
@@ -476,7 +497,7 @@ export default function CanvasWorkflowPage() {
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: "var(--n-900)", margin: "0 0 2px" }}>{workflow.nombre}</h1>
           <p style={{ fontSize: 13, color: "var(--n-600)", margin: 0 }}>
-            {workflow.estado === "activo" ? "Ciclo activo" : "Borrador"} · arrastra los nodos, usa el ícono de enlace para conectar
+            {workflow.estado === "activo" ? "Ciclo activo" : "Borrador"} · arrastra los nodos; conecta desde el punto de salida (derecha) hacia el punto de entrada (izquierda) de otro nodo
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -543,7 +564,7 @@ export default function CanvasWorkflowPage() {
               const o = nodos.find(n => n.id === c.origen_nodo_id);
               const d = nodos.find(n => n.id === c.destino_nodo_id);
               if (!o || !d) return null;
-              const p1 = centro(o), p2 = centro(d);
+              const p1 = puntoSalida(o), p2 = puntoEntrada(d);
               const mx = (p1.x + p2.x) / 2;
               return (
                 <g key={i}>
@@ -584,19 +605,35 @@ export default function CanvasWorkflowPage() {
                 <div style={{ fontSize: 10.5, color: "var(--n-500)", marginTop: 3 }}>
                   {n.roles && n.roles.length > 0 ? n.roles.join(", ") : TIPOS.find(t => t.valor === n.tipo)?.label ?? n.tipo}
                 </div>
-                <button
-                  onMouseDown={e => e.stopPropagation()}
-                  onClick={() => iniciarConexion(n.id)}
-                  title="Conectar desde aquí"
-                  style={{
-                    position: "absolute", right: -10, top: "50%", transform: "translateY(-50%)",
-                    width: 20, height: 20, borderRadius: "50%", border: "1px solid var(--n-300)",
-                    background: enConexion ? "var(--brand)" : "var(--canvas)", color: enConexion ? "#fff" : "var(--n-600)",
-                    display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0,
-                  }}
-                >
-                  <Link2 size={11} />
-                </button>
+                {n.tipo !== "inicio" && (
+                  <button
+                    onMouseDown={e => e.stopPropagation()}
+                    onClick={() => completarConexionHacia(n.id)}
+                    title={conectando && conectando !== n.id ? "Conectar aquí (entrada)" : "Entrada"}
+                    style={{
+                      position: "absolute", left: -8, top: "50%", transform: "translateY(-50%)",
+                      width: 14, height: 14, borderRadius: "50%",
+                      border: `1.5px solid ${conectando && conectando !== n.id ? "var(--brand)" : "var(--n-300)"}`,
+                      background: conectando && conectando !== n.id ? "var(--brand-50)" : "var(--canvas)",
+                      cursor: conectando && conectando !== n.id ? "pointer" : "default", padding: 0,
+                    }}
+                  />
+                )}
+                {n.tipo !== "fin" && (
+                  <button
+                    onMouseDown={e => e.stopPropagation()}
+                    onClick={() => iniciarConexionDesde(n.id)}
+                    title="Salida — clic para empezar una conexión"
+                    style={{
+                      position: "absolute", right: -10, top: "50%", transform: "translateY(-50%)",
+                      width: 20, height: 20, borderRadius: "50%", border: "1px solid var(--n-300)",
+                      background: enConexion ? "var(--brand)" : "var(--canvas)", color: enConexion ? "#fff" : "var(--n-600)",
+                      display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0,
+                    }}
+                  >
+                    <Link2 size={11} />
+                  </button>
+                )}
               </div>
             );
           })}
