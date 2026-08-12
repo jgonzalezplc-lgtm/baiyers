@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { ArrowLeft, Check, Send, Wand2, Camera, ShoppingBag, Mail, ExternalLink, Network, Search } from "lucide-react";
+import { ArrowLeft, Check, Send, Wand2, Camera, ShoppingBag, Mail, ExternalLink, Network, Search, ChevronRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
 import { Card, Badge, BtnPrimary, BtnSecondary, SummaryPanel, Input, SkeletonBox, SkeletonText, CascadeWrapper } from "@/components/ui";
@@ -38,6 +38,10 @@ export interface ProveedorRecomendado {
   origen: "sugerido" | "proveedor";
   origen_label: string;
   match_label: string;
+  match_score?: number;
+  categorias?: string[];
+  categorias_producto?: string[];
+  productos?: string[];
   seleccionado: boolean;
 }
 
@@ -126,6 +130,8 @@ export default function ListaDetallePage() {
   const [tasas, setTasas] = useState<Record<string, number>>({});
   const [guardandoDef, setGuardandoDef] = useState<string | null>(null);
   const [guardandoProveedor, setGuardandoProveedor] = useState<string | null>(null);
+  const [sugeridosAbiertos, setSugeridosAbiertos] = useState<Set<string>>(new Set());
+  const [proveedoresAbiertos, setProveedoresAbiertos] = useState<Set<string>>(new Set());
   const [preparandoComparacion, setPreparandoComparacion] = useState(false);
   const [justificaciones, setJustificaciones] = useState<Record<string, string>>({});
   const [aprobadorEmail, setAprobadorEmail] = useState("");
@@ -143,6 +149,24 @@ export default function ListaDetallePage() {
     items_detectados: { nombre_ocr: string; cotizacion_id: string | null; precio: number | null }[];
   } | null>(null);
   const boletaInputRef = useRef<HTMLInputElement>(null);
+
+  const alternarSugeridos = (cotizacionId: string) => {
+    setSugeridosAbiertos(actual => {
+      const siguiente = new Set(actual);
+      if (siguiente.has(cotizacionId)) siguiente.delete(cotizacionId);
+      else siguiente.add(cotizacionId);
+      return siguiente;
+    });
+  };
+
+  const alternarDetalleProveedor = (clave: string) => {
+    setProveedoresAbiertos(actual => {
+      const siguiente = new Set(actual);
+      if (siguiente.has(clave)) siguiente.delete(clave);
+      else siguiente.add(clave);
+      return siguiente;
+    });
+  };
 
   // Id real de la lista (una vez cargada) — las cotizaciones sueltas se
   // envuelven al vuelo con un id nuevo distinto al de la URL original.
@@ -728,43 +752,93 @@ export default function ListaDetallePage() {
           {it.proveedores_recomendados?.length > 0 && (
             <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--n-200)", background: "var(--surface)" }}>
               {(["proveedor", "sugerido"] as const).map(origen => {
-                const proveedores = it.proveedores_recomendados.filter(p => p.origen === origen);
+                const proveedores = it.proveedores_recomendados
+                  .filter(p => p.origen === origen)
+                  .sort((a, b) => (b.match_score ?? 0) - (a.match_score ?? 0));
                 if (!proveedores.length) return null;
+                const esSugerido = origen === "sugerido";
+                const grupoAbierto = !esSugerido || sugeridosAbiertos.has(it.cotizacion_id);
                 return <div key={origen} style={{ marginBottom: origen === "proveedor" ? 14 : 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 7, textTransform: "uppercase", letterSpacing: ".04em" }}>
-                    {origen === "proveedor" ? "Proveedores de tu empresa" : "Sugeridos por Baiyer"}
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {esSugerido ? (
+                    <button
+                      type="button"
+                      aria-expanded={grupoAbierto}
+                      onClick={() => alternarSugeridos(it.cotizacion_id)}
+                      style={{
+                        width: "100%", display: "flex", alignItems: "center", gap: 7,
+                        border: "none", background: "transparent", padding: "3px 0 8px",
+                        color: "var(--n-700)", cursor: "pointer", textAlign: "left",
+                        fontFamily: "var(--font-sans)", fontSize: 12, fontWeight: 600,
+                        textTransform: "uppercase", letterSpacing: ".04em",
+                      }}
+                    >
+                      <ChevronRight size={15} strokeWidth={2} style={{
+                        flexShrink: 0, transition: "transform .2s ease",
+                        transform: grupoAbierto ? "rotate(90deg)" : "rotate(0deg)",
+                      }} />
+                      Sugeridos por Baiyer
+                      <span style={{ color: "var(--n-400)", fontWeight: 500, letterSpacing: 0, textTransform: "none" }}>
+                        ({proveedores.length})
+                      </span>
+                    </button>
+                  ) : (
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 7, textTransform: "uppercase", letterSpacing: ".04em" }}>
+                      Proveedores de tu empresa
+                    </div>
+                  )}
+                  {grupoAbierto && <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {proveedores.map(proveedor => {
                       const clave = `${it.cotizacion_id}:${proveedor.id}`;
+                      const detalleAbierto = proveedoresAbiertos.has(clave);
                       return <div key={proveedor.id} style={{
-                        display: "flex", alignItems: "center", gap: 10, padding: "9px 10px",
                         border: `1px solid ${proveedor.seleccionado ? "var(--brand)" : "var(--n-200)"}`,
                         borderRadius: "var(--r-md)", background: proveedor.seleccionado ? "var(--brand-50)" : "var(--canvas)",
                         minWidth: 280, flex: "1 1 320px", maxWidth: 460,
                       }}>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                            <strong style={{ fontSize: 13.5, color: "var(--n-900)" }}>{proveedor.nombre}</strong>
-                            <span style={{ fontSize: 10.5, color: "var(--brand)", border: "1px solid var(--brand)", borderRadius: "var(--r-sm)", padding: "1px 5px" }}>{proveedor.match_label}</span>
+                        <div
+                          role="button" tabIndex={0} aria-expanded={detalleAbierto}
+                          onClick={() => alternarDetalleProveedor(clave)}
+                          onKeyDown={e => { if (e.key === "Enter" || e.key === " ") alternarDetalleProveedor(clave); }}
+                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", cursor: "pointer" }}
+                        >
+                          <ChevronRight size={15} style={{ flexShrink: 0, color: "var(--n-400)", transform: detalleAbierto ? "rotate(90deg)" : undefined, transition: "transform .2s ease" }} />
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                              <strong style={{ fontSize: 13.5, color: "var(--n-900)" }}>{proveedor.nombre}</strong>
+                              <span style={{ fontSize: 10.5, color: "var(--brand)", border: "1px solid var(--brand)", borderRadius: "var(--r-sm)", padding: "1px 5px" }}>{proveedor.match_label}</span>
+                            </div>
+                            <div style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11.5, color: "var(--n-500)", marginTop: 3, overflow: "hidden" }}>
+                              <Mail size={12} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{proveedor.email || "Sin correo"}</span>
+                            </div>
                           </div>
-                          <div style={{ display: "flex", gap: 5, alignItems: "center", fontSize: 11.5, color: "var(--n-500)", marginTop: 3, overflow: "hidden" }}>
-                            <Mail size={12} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{proveedor.email || "Sin correo"}</span>
-                          </div>
+                          <button onClick={e => { e.stopPropagation(); void alternarProveedor(it, proveedor); }} disabled={guardandoProveedor === clave || !proveedor.email} style={{
+                            border: `1px solid ${proveedor.seleccionado ? "var(--brand)" : "var(--n-300)"}`,
+                            background: proveedor.seleccionado ? "var(--brand)" : "var(--surface)",
+                            color: proveedor.seleccionado ? "white" : "var(--brand)", borderRadius: "var(--r-md)",
+                            padding: "6px 9px", fontSize: 12, fontWeight: 600, cursor: proveedor.email ? "pointer" : "not-allowed",
+                          }}>{proveedor.seleccionado ? "Seleccionado" : "Agregar"}</button>
                         </div>
-                        <button onClick={() => alternarProveedor(it, proveedor)} disabled={guardandoProveedor === clave || !proveedor.email} style={{
-                          border: `1px solid ${proveedor.seleccionado ? "var(--brand)" : "var(--n-300)"}`,
-                          background: proveedor.seleccionado ? "var(--brand)" : "var(--surface)",
-                          color: proveedor.seleccionado ? "white" : "var(--brand)", borderRadius: "var(--r-md)",
-                          padding: "6px 9px", fontSize: 12, fontWeight: 600, cursor: proveedor.email ? "pointer" : "not-allowed",
-                        }}>{proveedor.seleccionado ? "Seleccionado" : "Agregar"}</button>
+                        {detalleAbierto && <div style={{ borderTop: "1px solid var(--n-200)", padding: "10px 12px 12px 37px", background: "var(--surface)" }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-800)", marginBottom: 7 }}>Por qué puede cotizar este ítem</div>
+                          <div style={{ fontSize: 12.5, color: "var(--n-600)", lineHeight: 1.5, marginBottom: 8 }}>
+                            {proveedor.match_label}. El proveedor está asociado a la categoría del ítem y estas capacidades provienen del catálogo Baiyer.
+                          </div>
+                          {!!proveedor.categorias_producto?.length && <div style={{ marginBottom: 7 }}>
+                            <span style={{ fontSize: 11.5, color: "var(--n-500)" }}>Especialidades: </span>
+                            <span style={{ fontSize: 11.5, color: "var(--n-700)" }}>{proveedor.categorias_producto.join(" · ")}</span>
+                          </div>}
+                          {!!proveedor.productos?.length && <div>
+                            <span style={{ fontSize: 11.5, color: "var(--n-500)" }}>Ejemplos del catálogo: </span>
+                            <span style={{ fontSize: 11.5, color: "var(--n-700)" }}>{proveedor.productos.join(" · ")}</span>
+                          </div>}
+                        </div>}
                       </div>;
                     })}
-                  </div>
+                  </div>}
                 </div>;
               })}
               <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--n-500)" }}>
-                “Posible match” se basa en la categoría del ítem; confirma disponibilidad y precio al cotizar.
+                Las sugerencias se ordenan por coincidencia con productos, especialidades y categoría. Confirma disponibilidad y precio al cotizar.
               </div>
             </div>
           )}
