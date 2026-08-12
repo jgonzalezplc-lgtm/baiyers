@@ -404,17 +404,20 @@ def interpretar_correccion(descripcion: str, grafo_actual: dict, contexto: str =
     requiere_aclaracion=True sin operaciones, nunca inventa un cambio."""
     from app.config import settings
 
-    vacio_seguro = {
-        "resumen": "", "operaciones": [],
-        "requiere_aclaracion": True,
-        "preguntas": ["La interpretación tardó más de lo esperado. Intenta de nuevo en unos segundos."],
-    }
+    def vacio_seguro(mensaje: str) -> dict:
+        return {
+            "resumen": "", "operaciones": [],
+            "requiere_aclaracion": True,
+            "preguntas": [mensaje],
+        }
+
+    MENSAJE_GENERICO = "Tuve un problema interpretando eso. Intenta de nuevo en unos segundos."
 
     texto = (descripcion or "").strip()
     if not texto:
-        return vacio_seguro
+        return vacio_seguro(MENSAJE_GENERICO)
     if not settings.gemini_api_key:
-        return vacio_seguro
+        return vacio_seguro(MENSAJE_GENERICO)
 
     ids_nodos = {n.get("id") for n in (grafo_actual.get("nodos") or []) if n.get("id")}
 
@@ -439,8 +442,16 @@ def interpretar_correccion(descripcion: str, grafo_actual: dict, contexto: str =
                 text = text[4:]
         data = json.loads(text.strip())
     except Exception as e:
-        print(f"[WorkflowConversational] error interpretando corrección: {e}")
-        return vacio_seguro
+        detalle = f"{type(e).__name__}: {e}"
+        print(f"[WorkflowConversational] error interpretando corrección: {detalle}")
+        detalle_lower = detalle.lower()
+        if "quota" in detalle_lower or "429" in detalle_lower or "resourceexhausted" in detalle_lower:
+            mensaje = "Se agotó la cuota gratuita de Gemini por ahora — intenta de nuevo en un rato."
+        elif "timeout" in detalle_lower or "deadline" in detalle_lower:
+            mensaje = "La interpretación tardó más de lo esperado. Intenta de nuevo en unos segundos."
+        else:
+            mensaje = MENSAJE_GENERICO
+        return vacio_seguro(mensaje)
 
     # Filtrado secuencial: un nodo que se agrega en esta misma corrección debe
     # quedar disponible para las operaciones que le siguen (conectarlo, etc.),
