@@ -5,7 +5,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
   ArrowLeft, Check, Send, Wand2, Camera, ShoppingBag, Mail, ExternalLink,
-  Network, Search, ChevronRight, Cpu, Building2, Hammer, HeartPulse, Factory,
+  Search, ChevronRight, Cpu, Building2, Hammer, HeartPulse, Factory,
   Wrench, Zap, Droplets, Wind, Briefcase, Package, Boxes, GitBranch,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -160,7 +160,7 @@ export default function ListaDetallePage() {
   const [guardandoDef, setGuardandoDef] = useState<string | null>(null);
   const [guardandoProveedor, setGuardandoProveedor] = useState<string | null>(null);
   const [sugeridosAbiertos, setSugeridosAbiertos] = useState<Set<string>>(new Set());
-  const [empresaAbiertos, setEmpresaAbiertos] = useState<Set<string>>(new Set());
+  const [confianzaAbiertos, setConfianzaAbiertos] = useState<Set<string>>(new Set());
   const [proveedoresAbiertos, setProveedoresAbiertos] = useState<Set<string>>(new Set());
   const [preparandoComparacion, setPreparandoComparacion] = useState(false);
   const [justificaciones, setJustificaciones] = useState<Record<string, string>>({});
@@ -189,8 +189,8 @@ export default function ListaDetallePage() {
     });
   };
 
-  const alternarProveedoresEmpresa = (cotizacionId: string) => {
-    setEmpresaAbiertos(actual => {
+  const alternarProveedoresConfianza = (cotizacionId: string) => {
+    setConfianzaAbiertos(actual => {
       const siguiente = new Set(actual);
       if (siguiente.has(cotizacionId)) siguiente.delete(cotizacionId);
       else siguiente.add(cotizacionId);
@@ -591,11 +591,6 @@ export default function ListaDetallePage() {
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
             {!lista.aprobacion && (
-              <BtnPrimary onClick={() => router.push(`/listas/${lista.id}/proveedores-confianza`)} icon={Network}>
-                Proveedores de confianza
-              </BtnPrimary>
-            )}
-            {!lista.aprobacion && (
               <BtnSecondary onClick={() => router.push(`/listas/${lista.id}/busqueda-complementaria`)} icon={Search}>
                 Completar cobertura
               </BtnSecondary>
@@ -809,12 +804,12 @@ export default function ListaDetallePage() {
                 const esSugerido = origen === "sugerido";
                 const grupoAbierto = esSugerido
                   ? sugeridosAbiertos.has(it.cotizacion_id)
-                  : empresaAbiertos.has(it.cotizacion_id);
+                  : confianzaAbiertos.has(it.cotizacion_id);
                 return <div key={origen} style={{ marginBottom: origen === "proveedor" ? 14 : 0 }}>
                   <button
                     type="button"
                     aria-expanded={grupoAbierto}
-                    onClick={() => esSugerido ? alternarSugeridos(it.cotizacion_id) : alternarProveedoresEmpresa(it.cotizacion_id)}
+                    onClick={() => esSugerido ? alternarSugeridos(it.cotizacion_id) : alternarProveedoresConfianza(it.cotizacion_id)}
                     style={{
                       width: "100%", display: "flex", alignItems: "center", gap: 7,
                       border: "none", background: "transparent", padding: "3px 0 8px",
@@ -827,7 +822,7 @@ export default function ListaDetallePage() {
                       flexShrink: 0, transition: "transform .3s cubic-bezier(.4,0,.2,1)",
                       transform: grupoAbierto ? "rotate(90deg)" : "rotate(0deg)",
                     }} />
-                    {esSugerido ? "Sugeridos por Baiyer" : "Proveedores de tu empresa"}
+                    {esSugerido ? "Sugeridos por Baiyer" : "Proveedores de confianza"}
                     <span style={{ color: "var(--n-400)", fontWeight: 500, letterSpacing: 0, textTransform: "none" }}>
                       ({proveedores.length})
                     </span>
@@ -877,7 +872,9 @@ export default function ListaDetallePage() {
                             <div style={{ borderTop: "1px solid var(--n-200)", padding: "10px 12px 12px 37px", background: "var(--surface)" }}>
                               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-800)", marginBottom: 7 }}>Por qué puede cotizar este ítem</div>
                               <div style={{ fontSize: 12.5, color: "var(--n-600)", lineHeight: 1.5, marginBottom: 8 }}>
-                                {proveedor.match_label}. El proveedor está asociado a la categoría del ítem y estas capacidades provienen del catálogo Baiyer.
+                                {proveedor.match_label}. {proveedor.origen === "sugerido"
+                                  ? "El proveedor está asociado a la categoría del ítem y estas capacidades provienen del catálogo Baiyer."
+                                  : "Este proveedor pertenece al directorio de tu organización y tiene capacidad registrada para la categoría del ítem."}
                               </div>
                               {!!proveedor.categorias_producto?.length && <div style={{ marginBottom: 7 }}>
                                 <span style={{ fontSize: 11.5, color: "var(--n-500)" }}>Especialidades: </span>
