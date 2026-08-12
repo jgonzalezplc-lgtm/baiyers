@@ -550,6 +550,19 @@ export default function CanvasWorkflowPage() {
     return { x: centroPropio.x + dx * escala, y: centroPropio.y + dy * escala };
   };
 
+  // Cuando hay más de una conexión entre el mismo par de tarjetas (típico:
+  // "aprobado" en un sentido, "rechazado" en el otro), dibujarlas ambas sobre
+  // la misma diagonal las hace indistinguibles — parece una sola flecha. Se
+  // separan con un offset perpendicular estable (mismo para ambos sentidos),
+  // para que queden como líneas paralelas, cada una con su propia flecha.
+  const clavePar = (idA: string, idB: string) => [idA, idB].sort().join("|");
+  const gruposPorPar = new Map<string, number[]>();
+  conexiones.forEach((c, i) => {
+    if (!nodos.some(n => n.id === c.origen_nodo_id) || !nodos.some(n => n.id === c.destino_nodo_id)) return;
+    const clave = clavePar(c.origen_nodo_id, c.destino_nodo_id);
+    gruposPorPar.set(clave, [...(gruposPorPar.get(clave) || []), i]);
+  });
+
   return (
     <div>
       {toast && (
@@ -638,7 +651,27 @@ export default function CanvasWorkflowPage() {
               const d = nodos.find(n => n.id === c.destino_nodo_id);
               if (!o || !d) return null;
               const centroO = centro(o), centroD = centro(d);
-              const p1 = bordeHacia(centroO, centroD), p2 = bordeHacia(centroD, centroO);
+              let p1 = bordeHacia(centroO, centroD), p2 = bordeHacia(centroD, centroO);
+
+              const grupo = gruposPorPar.get(clavePar(c.origen_nodo_id, c.destino_nodo_id)) || [i];
+              if (grupo.length > 1) {
+                // Dirección perpendicular estable: se calcula sobre el par
+                // de nodos ordenado por id, no sobre origen/destino de esta
+                // conexión en particular — así las dos direcciones (A→B y
+                // B→A) se separan hacia lados opuestos en vez de cancelarse.
+                const [idA] = [c.origen_nodo_id, c.destino_nodo_id].sort();
+                const nodoA = idA === o.id ? o : d;
+                const nodoB = idA === o.id ? d : o;
+                const cA = centro(nodoA), cB = centro(nodoB);
+                const dxCanon = cB.x - cA.x, dyCanon = cB.y - cA.y;
+                const largoCanon = Math.hypot(dxCanon, dyCanon) || 1;
+                const nx = -dyCanon / largoCanon, ny = dxCanon / largoCanon;
+                const posicion = grupo.indexOf(i);
+                const offset = (posicion - (grupo.length - 1) / 2) * 14;
+                p1 = { x: p1.x + nx * offset, y: p1.y + ny * offset };
+                p2 = { x: p2.x + nx * offset, y: p2.y + ny * offset };
+              }
+
               const mx = (p1.x + p2.x) / 2;
               const clave = colorClaveResultado(c.resultado);
               const color = COLOR_RESULTADO[clave];
