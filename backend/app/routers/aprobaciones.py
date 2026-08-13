@@ -324,7 +324,16 @@ async def decidir(token: str, req: DecisionRequest):
                             from app.services.gmail_conversation_agent import iniciar_proceso_compra_resultados
                             iniciar_proceso_compra_resultados(proy.data["user_id"], resultado_ids)
                         except Exception as e:
-                            print(f"[Aprobaciones] inicio de compra agrupado falló: {e}")
+                            print(f"[Aprobaciones] inicio de compra agrupado (Gmail) falló: {e}")
+                        try:
+                            # Un proveedor puede haber respondido por Gmail y
+                            # otro por Outlook en la misma lista — cada agente
+                            # sólo actúa sobre las conversaciones que él mismo
+                            # abrió, así que ambas llamadas conviven sin pisarse.
+                            from app.services.outlook_conversation_agent import iniciar_proceso_compra_resultados as iniciar_proceso_compra_resultados_outlook
+                            iniciar_proceso_compra_resultados_outlook(proy.data["user_id"], resultado_ids)
+                        except Exception as e:
+                            print(f"[Aprobaciones] inicio de compra agrupado (Outlook) falló: {e}")
                         try:
                             from app.services.supplier_capability_intelligence import registrar_evento_para_resultado
                             for resultado_id in resultado_ids:
