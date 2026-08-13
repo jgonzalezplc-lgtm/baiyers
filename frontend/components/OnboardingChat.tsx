@@ -63,6 +63,7 @@ interface Msg { rol: Rol; texto?: string; card?: Investigacion; }
  * compras ahora. proceso: misma conversación, ahora hablando de ETAPAS del
  * proceso de compras (idéntico a /settings/autorizaciones). */
 type Fase = "perfil" | "transicion" | "proceso";
+type PasoPerfil = "nombre" | "empresa" | "confirmar_empresa" | "logo" | "rut" | "direccion" | "listo";
 
 interface Props {
   /** Estilo compacto para panel flotante (sin header de página completa). */
@@ -85,6 +86,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   const [draft, setDraft] = useState<Draft>({});
   const [completo, setCompleto] = useState(false);
   const [fase, setFase] = useState<Fase>("perfil");
+  const [pasoPerfil, setPasoPerfil] = useState<PasoPerfil>("nombre");
   const [sugerenciasPendientes, setSugerenciasPendientes] = useState<{ campo: "rut" | "direccion"; valor: string }[]>([]);
   const [propuestaWorkflow, setPropuestaWorkflow] = useState<Propuesta | null>(null);
   const [cargandoInicial, setCargandoInicial] = useState(true);
@@ -196,25 +198,16 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
 
       if ((sesion.mensajes || []).length > 0) {
         setMsgs(sesion.mensajes.map(mm => ({ rol: mm.rol === "usuario" ? "user" : "bot", texto: mm.texto })));
+        if (!sesion.draft?.nombre_usuario?.valor) setPasoPerfil("nombre");
+        else if (!sesion.draft?.empresa?.valor) setPasoPerfil("empresa");
+        else if (!sesion.draft?.rut?.valor) setPasoPerfil("rut");
+        else setPasoPerfil("direccion");
         setCargandoInicial(false);
         return;
       }
 
-      // Sesión nueva: saludo + investigación automática de la empresa, igual
-      // que antes, pero ahora la confirmación/corrección se hace en lenguaje
-      // libre (el backend la interpreta), no con botones de fase fija.
-      addBot(`¡Hola! Soy el asistente de Baiyer. Dame un segundo, estoy revisando tu empresa a partir de tu correo (${correo})…`);
-      const d = await investigar(correo);
-      setInvestigacion(d);
-      if (d.es_empresa_conocida && d.empresa) {
-        await espera(300);
-        addBot(undefined, d);
-        await espera(200);
-        addBot("¿Cuál es el nombre de tu empresa?");
-      } else {
-        await espera(300);
-        addBot("No reconocí tu empresa automáticamente. ¿Cuál es el nombre de tu empresa?");
-      }
+      addBot("¡Hola! Soy el asistente de Baiyer. Para comenzar, ¿cómo te llamas?");
+      setPasoPerfil("nombre");
       setCargandoInicial(false);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -226,7 +219,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   // lógica — el backend nunca inventa un valor que no esté literalmente en
   // el mensaje, así que "confirmar con un clic" en realidad manda ese valor
   // como si el usuario lo hubiera escrito, no un simple "sí".
-  const enviarMensajePerfil = async (mensaje: string) => {
+  const enviarMensajePerfil = async (mensaje: string, paso: PasoPerfil = pasoPerfil) => {
     if (!mensaje || !sessionId || busy) return;
     addUser(mensaje);
     setSugerenciasPendientes([]);
@@ -234,7 +227,10 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     try {
       const res = await authFetch(`${API_URL}/api/onboarding/sesion/${sessionId}/turno`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mensaje }),
+        body: JSON.stringify({
+          mensaje: paso === "empresa" && draft.empresa?.valor ? `No, la empresa correcta es ${mensaje}` : mensaje,
+          silenciar_respuesta: ["empresa", "rut", "direccion"].includes(paso),
+        }),
         signal: AbortSignal.timeout(30000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -244,35 +240,40 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
       setPropuestaWorkflow(data.propuesta_workflow ?? null);
       setMsgs((data.mensajes || []).map((mm: { rol: string; texto: string }) => ({ rol: mm.rol === "usuario" ? "user" : "bot", texto: mm.texto })));
 
-      // El usuario recién dio (o corrigió) el nombre de la empresa: la
-      // buscamos por nombre para traer RUT/logo — el turno de texto libre
-      // no pasa por /investigar-empresa, así que sin esto nunca se
-      // enriquecía con datos reales ni se ofrecía elegir logo.
-      const nombreEmpresa: string | undefined = data.draft?.empresa?.valor;
-      if (nombreEmpresa && nombreEmpresa !== investigacion?.empresa) {
+      if (paso === "nombre") {
+        setPasoPerfil("empresa");
+      } else if (paso === "empresa") {
+        const nombreEmpresa: string | undefined = data.draft?.empresa?.valor;
+        addBot("Ok, déjame investigar tu empresa…");
         const d = await investigar(email, nombreEmpresa);
         setInvestigacion(d);
         setLogoIdx(0);
         setLogoUrlFinal(null);
         if (d.empresa) {
           addBot(undefined, d);
+          addBot("¿Es esta tu empresa?");
+          setPasoPerfil("confirmar_empresa");
+        } else {
+          addBot("No pude identificarla con seguridad. ¿Puedes escribir el nombre legal o el sitio web de la empresa?");
+          setPasoPerfil("empresa");
         }
-        // El RUT/dirección que encuentra el scraping se muestran en la
-        // tarjeta, pero eso NO llena el draft de la sesión (draft.rut solo
-        // se completa con lo que el usuario escribe en el chat) — sin esto
-        // el bot los volvía a pedir como si no los hubiera encontrado. Se
-        // ofrece un botón de un clic en vez de pedirle al usuario que los
-        // reescriba a mano.
-        const nuevasSugerencias: { campo: "rut" | "direccion"; valor: string }[] = [];
-        if (d.rut && !data.draft?.rut?.valor) {
-          addBot(`Encontré este RUT: ${d.rut}. ¿Es correcto?`);
-          nuevasSugerencias.push({ campo: "rut", valor: d.rut });
+      } else if (paso === "rut") {
+        if ((data.campos_rechazados || []).includes("rut")) {
+          addBot("Ese RUT no parece válido. ¿Puedes revisarlo y escribirlo nuevamente?");
+          return;
         }
-        if (d.direccion && !data.draft?.direccion?.valor) {
-          addBot(`Encontré esta dirección: ${d.direccion}. ¿Es correcta?`);
-          nuevasSugerencias.push({ campo: "direccion", valor: d.direccion });
+        setCompleto(false);
+        setPasoPerfil("direccion");
+        if (investigacion?.direccion) {
+          addBot(`Encontré esta dirección: ${investigacion.direccion}. ¿Es correcta?`);
+          setSugerenciasPendientes([{ campo: "direccion", valor: investigacion.direccion }]);
+        } else {
+          addBot("¿Cuál es la dirección de la empresa?");
         }
-        if (nuevasSugerencias.length) setSugerenciasPendientes(nuevasSugerencias);
+      } else if (paso === "direccion") {
+        setPasoPerfil("listo");
+        setCompleto(true);
+        addBot("Perfecto, ya tengo los datos de tu empresa. Revisa la información y continuamos.");
       }
     } catch {
       addBot("Tuve un problema procesando eso. Puedes intentarlo de nuevo.");
@@ -286,6 +287,23 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     if (!mensaje) return;
     setInput("");
     enviarMensajePerfil(mensaje);
+  };
+
+  const confirmarEmpresa = () => {
+    addUser("Sí, esa es mi empresa");
+    setPasoPerfil("logo");
+    addBot("¿El logo que aparece es correcto? Puedes usarlo, subir otro u omitir este paso.");
+  };
+
+  const corregirEmpresa = () => {
+    addUser("No, no es mi empresa");
+    setPasoPerfil("empresa");
+    addBot("¿Cuál es el nombre correcto de tu empresa?");
+  };
+
+  const avanzarARut = () => {
+    setPasoPerfil("rut");
+    addBot("¿Cuál es el RUT de la empresa?");
   };
 
   const confirmarSugerencia = (s: { campo: "rut" | "direccion"; valor: string }) => {
@@ -362,6 +380,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
       const { logo_url } = await res.json();
       setLogoUrlFinal(logo_url);
       addBot("Logo guardado.");
+      avanzarARut();
     } catch {
       addBot("No pude guardar ese logo. Puedes subir el tuyo o seguir sin logo por ahora.");
     } finally {
@@ -380,6 +399,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
       const { logo_url } = await res.json();
       setLogoUrlFinal(logo_url);
       addBot("Tu logo quedó guardado.");
+      avanzarARut();
     } catch {
       addBot("No pude subir ese archivo. Prueba con un PNG/JPG de menos de 3 MB.");
     } finally {
@@ -522,7 +542,9 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     }
   };
 
-  const entradaDeshabilitada = cargandoInicial || busy || (fase === "perfil" && completo) || fase === "transicion";
+  const entradaDeshabilitada = cargandoInicial || busy || (fase === "perfil" && (
+    completo || pasoPerfil === "confirmar_empresa" || pasoPerfil === "logo"
+  )) || fase === "transicion";
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -534,12 +556,26 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
             extra: m.card ? (
               <EmpresaCard
                 d={m.card} logoIdx={logoIdx} logoUrlFinal={logoUrlFinal} logoOcupado={logoOcupado}
+                mostrarAccionesLogo={pasoPerfil === "logo"}
                 onLogoError={() => setLogoIdx(x => x + 1)}
                 onUsarLogo={usarLogoCandidato}
                 onSubirArchivo={() => fileInputRef.current?.click()}
               />
             ) : undefined,
           }))} />
+
+          {fase === "perfil" && pasoPerfil === "confirmar_empresa" && (
+            <div style={{ marginLeft: 36, display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <BtnPrimary onClick={confirmarEmpresa} size="sm">Sí, es mi empresa</BtnPrimary>
+              <BtnGhost onClick={corregirEmpresa} size="sm">No, es otra</BtnGhost>
+            </div>
+          )}
+
+          {fase === "perfil" && pasoPerfil === "logo" && (
+            <div style={{ marginLeft: 36 }}>
+              <BtnGhost onClick={() => { addUser("Omitir logo"); avanzarARut(); }} size="sm">Omitir este paso</BtnGhost>
+            </div>
+          )}
 
           {Object.keys(draft).length > 0 && fase === "perfil" && (
             <div style={{ marginLeft: 36, display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -585,7 +621,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
             </div>
           )}
 
-          {fase === "perfil" && completo && (
+          {fase === "perfil" && completo && pasoPerfil === "listo" && (
             <div style={{ marginLeft: 36 }}>
               <BtnPrimary onClick={confirmarYGuardar} disabled={finalizando}>
                 {finalizando ? "Guardando…" : "Confirmar y continuar"}
@@ -640,8 +676,9 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   );
 }
 
-function EmpresaCard({ d, logoIdx, logoUrlFinal, logoOcupado, onLogoError, onUsarLogo, onSubirArchivo }: {
+function EmpresaCard({ d, logoIdx, logoUrlFinal, logoOcupado, mostrarAccionesLogo, onLogoError, onUsarLogo, onSubirArchivo }: {
   d: Investigacion; logoIdx: number; logoUrlFinal: string | null; logoOcupado: boolean;
+  mostrarAccionesLogo: boolean;
   onLogoError: () => void; onUsarLogo: () => void; onSubirArchivo: () => void;
 }) {
   const logo = logoUrlFinal ?? d.logo_candidatos?.[logoIdx];
@@ -664,14 +701,9 @@ function EmpresaCard({ d, logoIdx, logoUrlFinal, logoOcupado, onLogoError, onUsa
             {d.industria}{d.pais ? ` · ${d.pais}` : ""}
           </div>
           {d.descripcion && <div style={{ fontSize: 12.5, color: "var(--n-600)", lineHeight: 1.55 }}>{d.descripcion}</div>}
-          {d.rut && (
-            <div style={{ fontSize: 12, color: "var(--n-500)", marginTop: 6, fontFamily: "var(--font-mono)", fontVariantNumeric: "tabular-nums" }}>
-              RUT: {d.rut}
-            </div>
-          )}
         </div>
       </div>
-      {!logoUrlFinal && (
+      {mostrarAccionesLogo && !logoUrlFinal && (
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={onUsarLogo} disabled={logoOcupado || !d.logo_candidatos?.[logoIdx]} className="btn-swiss-secondary" style={{ fontSize: 12 }}>
             {logoOcupado ? "…" : "Usar este logo"}

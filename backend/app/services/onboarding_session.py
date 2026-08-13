@@ -13,8 +13,9 @@ sesión como `completado`.
 from datetime import datetime, timezone
 from typing import Optional
 
-# El orden también define la entrevista: una pregunta por turno.
-CAMPOS_CRITICOS = ("empresa", "rut", "nombre_usuario")
+# El orden también define la entrevista: primero conocemos a la persona y
+# recién después investigamos su empresa.
+CAMPOS_CRITICOS = ("nombre_usuario", "empresa", "rut")
 
 
 def _sb():

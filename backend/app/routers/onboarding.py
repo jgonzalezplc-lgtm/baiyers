@@ -259,6 +259,7 @@ async def investigar_empresa(req: InvestigarRequest):
 
 class TurnoRequest(BaseModel):
     mensaje: str
+    silenciar_respuesta: bool = False
 
 
 class LogoCandidatoRequest(BaseModel):
@@ -303,11 +304,12 @@ async def turno(session_id: str, req: TurnoRequest, ctx: AuthContext = Depends(g
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    mensajes_asistente = [] if req.silenciar_respuesta else resultado["mensajes_asistente"]
     actualizada = sesiones.guardar_turno(
         session_id=session_id,
         user_id=ctx.actor_user_id,
         mensaje_usuario=mensaje,
-        mensajes_asistente=resultado["mensajes_asistente"],
+        mensajes_asistente=mensajes_asistente,
         draft_nuevo=resultado["draft"],
         preguntas_pendientes=resultado["preguntas_pendientes"],
         propuesta_workflow=resultado["propuesta_workflow"],

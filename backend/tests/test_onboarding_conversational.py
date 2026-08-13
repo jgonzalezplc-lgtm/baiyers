@@ -99,8 +99,8 @@ class ProcesarTurnoTest(unittest.TestCase):
         }
         with self._mock_gemini(data):
             resultado = conv.procesar_turno(_sesion(), "mi empresa es Acme")
-        self.assertEqual(resultado["mensajes_asistente"], ["¿Cuál es el RUT de la empresa?"])
-        self.assertEqual(resultado["preguntas_pendientes"], ["¿Cuál es el RUT de la empresa?"])
+        self.assertEqual(resultado["mensajes_asistente"], ["¿Cómo te llamas?"])
+        self.assertEqual(resultado["preguntas_pendientes"], ["¿Cómo te llamas?"])
 
     def test_no_se_marca_completo_por_gemini_alucinando_campo_extra(self):
         data = {
