@@ -49,9 +49,23 @@ async def descargar_y_validar_url(url: str) -> bytes:
         raise ValueError("No se permite descargar desde direcciones privadas")
 
     async with httpx.AsyncClient(timeout=6.0, follow_redirects=False) as client:
-        resp = await client.get(url)
-        if resp.status_code in (301, 302, 303, 307, 308):
-            raise ValueError("No se siguen redirects al descargar el logo")
+        actual = url
+        # Clearbit y Google suelen redirigir el recurso aunque la imagen se
+        # renderice bien en el navegador. Seguimos pocos saltos, validando
+        # esquema, DNS e IP en CADA destino para conservar la protección SSRF.
+        for _ in range(4):
+            resp = await client.get(actual)
+            if resp.status_code not in (301, 302, 303, 307, 308):
+                break
+            destino = str(resp.url.join(resp.headers.get("location", "")))
+            parsed_destino = urlparse(destino)
+            if parsed_destino.scheme not in _ESQUEMAS_PERMITIDOS or not parsed_destino.hostname:
+                raise ValueError("Redirección de logo no permitida")
+            if _host_es_privado(parsed_destino.hostname):
+                raise ValueError("No se permite redirigir a direcciones privadas")
+            actual = destino
+        else:
+            raise ValueError("Demasiadas redirecciones al descargar el logo")
         if resp.status_code != 200:
             raise ValueError(f"El servidor respondió {resp.status_code}")
 
@@ -63,6 +77,22 @@ async def descargar_y_validar_url(url: str) -> bytes:
         if len(contenido) > TAMANO_MAXIMO_BYTES:
             raise ValueError("El archivo supera el tamaño máximo permitido")
         return contenido
+
+
+def detectar_content_type(contenido: bytes, fallback: str = "image/png") -> str:
+    """Detecta el formato real; las URLs de logos casi nunca tienen extensión."""
+    inicio = contenido[:512].lstrip()
+    if inicio.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if inicio.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if inicio.startswith((b"RIFF",)) and contenido[8:12] == b"WEBP":
+        return "image/webp"
+    if inicio.startswith((b"<svg", b"<?xml")):
+        return "image/svg+xml"
+    if inicio.startswith(b"\x00\x00\x01\x00"):
+        return "image/x-icon"
+    return fallback
 
 
 def validar_archivo_subido(content_type: str, contenido: bytes) -> None:

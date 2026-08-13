@@ -108,6 +108,17 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   // Contexto de la fase "proceso" — solo los turnos de esa fase, no arrastra
   // las preguntas de perfil (empresa/RUT/nombre) como contexto ruidoso.
   const procesoDesdeRef = useRef(0);
+  const [pasoProceso, setPasoProceso] = useState(0);
+  const respuestasProcesoRef = useRef<string[]>([]);
+  const entrevistaProcesoCompletaRef = useRef(false);
+
+  const PREGUNTAS_PROCESO = [
+    "¿Quién o quiénes se encargan de cotizar? Indica sus nombres y correos.",
+    "¿Quién o quiénes autorizan los presupuestos? Indica nombres y correos. ¿Alguno necesita otra autorización? Dime de quién, su correo y rol.",
+    "¿Cómo homologan a los proveedores nuevos y quién se encarga? Indica su nombre y correo si lo tienes.",
+    "¿Se solicita autorización a partir de un monto? Indica el monto, o responde que no.",
+    "¿Quién envía la orden de compra? Indica su nombre y correo.",
+  ];
 
   const omitirPorAhora = () => {
     if (onSkip) {
@@ -199,10 +210,10 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
         await espera(300);
         addBot(undefined, d);
         await espera(200);
-        addBot("¿Es tu empresa? Cuéntame lo que haga falta corregir, o dime de una vez el RUT de la empresa y cómo te llamas tú — todo junto si quieres.");
+        addBot("¿Cuál es el nombre de tu empresa?");
       } else {
         await espera(300);
-        addBot("No reconocí tu empresa automáticamente. Cuéntame su nombre, el RUT de la empresa y cómo te llamas tú — puedes darlo todo en un solo mensaje.");
+        addBot("No reconocí tu empresa automáticamente. ¿Cuál es el nombre de tu empresa?");
       }
       setCargandoInicial(false);
     });
@@ -293,19 +304,34 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     if (!mensaje || busy) return;
     setInput("");
     addUser(mensaje);
+    const respuestas = [...respuestasProcesoRef.current, mensaje];
+    respuestasProcesoRef.current = respuestas;
+    if (!entrevistaProcesoCompletaRef.current && pasoProceso < PREGUNTAS_PROCESO.length - 1) {
+      const siguiente = pasoProceso + 1;
+      setPasoProceso(siguiente);
+      addBot(PREGUNTAS_PROCESO[siguiente]);
+      return;
+    }
+    entrevistaProcesoCompletaRef.current = true;
     setBusy(true);
     setPropuestaWorkflow(null);
     try {
       const res = await fetch(`${API_URL}/api/workflows/interpretar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ descripcion: mensaje, contexto: contextoProceso() }),
+        body: JSON.stringify({
+          descripcion: [
+            ...PREGUNTAS_PROCESO.map((pregunta, i) => `${pregunta}\nRespuesta: ${respuestas[i] || "Sin respuesta"}`),
+            ...respuestas.slice(PREGUNTAS_PROCESO.length).map(r => `Aclaración adicional:\n${r}`),
+          ].join("\n\n"),
+          contexto: contextoProceso(),
+        }),
         signal: AbortSignal.timeout(40000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: Propuesta = await res.json();
       if (data.requiere_aclaracion) {
-        const pregunta = data.preguntas?.length ? data.preguntas.join(" ") : "¿Puedes darme un poco más de detalle?";
+        const pregunta = data.preguntas?.[0] || "¿Puedes darme un poco más de detalle?";
         addBot(pregunta);
       } else {
         addBot(data.resumen || "Esto es lo que entendí:");
@@ -407,7 +433,10 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   const empezarProceso = () => {
     setFase("proceso");
     procesoDesdeRef.current = msgs.length + 1;
-    addBot("Cuéntame cómo funciona hoy tu proceso de compras. Puede ser informal — por ejemplo: \"Los cotizadores preparan la comparación, después la revisa mi jefe, y si es sobre $500.000 también tiene que aprobar finanzas.\"");
+    setPasoProceso(0);
+    respuestasProcesoRef.current = [];
+    entrevistaProcesoCompletaRef.current = false;
+    addBot(PREGUNTAS_PROCESO[0]);
   };
 
   const ofrecerConfigurarProceso = async () => {

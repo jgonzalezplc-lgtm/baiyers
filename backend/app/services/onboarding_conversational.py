@@ -104,7 +104,7 @@ Responde SOLO JSON válido, sin markdown, con esta forma exacta:
   }},
   "proceso_compra_fragmento": "texto textual sobre cómo compra/quién participa/roles/personas/montos si lo mencionó, o vacío",
   "quiere_omitir": false,
-  "respuesta_asistente": "1-2 frases naturales, cálidas, sin repetir lo ya confirmado; si faltan varios datos agrúpalos en una sola pregunta"
+  "respuesta_asistente": "una frase breve y cálida; pregunta SOLO por el siguiente dato faltante, nunca por varios a la vez"
 }}
 
 Reglas:
@@ -250,21 +250,20 @@ def procesar_turno(sesion: dict, mensaje: str) -> dict:
     if rechazados:
         campos_txt = " y ".join(rechazados)
         mensajes_asistente.append(f"El {campos_txt} que me diste no parece válido, ¿me lo confirmas de nuevo?")
-    respuesta = (data.get("respuesta_asistente") or "").strip()
-    if respuesta:
-        mensajes_asistente.append(respuesta)
-    elif not mensajes_asistente:
+    # La secuencia la decide código, no Gemini: una sola pregunta por turno.
+    # Así una respuesta parcial nunca queda ambiguamente asociada a 2-3
+    # campos distintos. Dirección es opcional y no bloquea el onboarding.
+    if not mensajes_asistente:
         if faltantes:
-            etiquetas = {"empresa": "el nombre de tu empresa", "rut": "el RUT de la empresa", "nombre_usuario": "tu nombre"}
-            pedir = ", ".join(etiquetas.get(f, f) for f in faltantes)
-            mensajes_asistente.append(f"¿Me confirmas {pedir}?")
+            etiquetas = {"empresa": "¿Cuál es el nombre de tu empresa?", "rut": "¿Cuál es el RUT de la empresa?", "nombre_usuario": "¿Cómo te llamas?"}
+            mensajes_asistente.append(etiquetas[faltantes[0]])
         else:
             mensajes_asistente.append("Perfecto, ya tengo lo esencial. Gracias.")
 
     preguntas_pendientes = []
     if faltantes:
         etiquetas = {"empresa": "¿Cuál es el nombre de tu empresa?", "rut": "¿Cuál es el RUT de la empresa?", "nombre_usuario": "¿Cómo te llamas?"}
-        preguntas_pendientes = [etiquetas[f] for f in faltantes]
+        preguntas_pendientes = [etiquetas[faltantes[0]]]
 
     quiere_omitir = bool(data.get("quiere_omitir")) or quiere_omitir_heuristico
     if quiere_omitir and faltantes:

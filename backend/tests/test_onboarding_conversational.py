@@ -91,6 +91,17 @@ class ProcesarTurnoTest(unittest.TestCase):
         self.assertFalse(resultado["completo"])
         self.assertTrue(campos_faltantes(resultado["draft"]))
 
+    def test_pregunta_solo_por_un_dato_faltante(self):
+        data = {
+            "campos": {"empresa": {"valor": "Acme", "confianza": "alta"}},
+            "proceso_compra_fragmento": "",
+            "respuesta_asistente": "Dime el RUT y también tu nombre.",
+        }
+        with self._mock_gemini(data):
+            resultado = conv.procesar_turno(_sesion(), "mi empresa es Acme")
+        self.assertEqual(resultado["mensajes_asistente"], ["¿Cuál es el RUT de la empresa?"])
+        self.assertEqual(resultado["preguntas_pendientes"], ["¿Cuál es el RUT de la empresa?"])
+
     def test_no_se_marca_completo_por_gemini_alucinando_campo_extra(self):
         data = {
             "campos": {

@@ -241,6 +241,11 @@ async def investigar_empresa(req: InvestigarRequest):
     gem_res.setdefault("sitio_web", f"https://{dom_empresa or dominio}")
     if not gem_res.get("rut"):
         gem_res["rut"] = scrape.get("rut")
+    # La investigación (incluido el modelo) solo puede sugerir un RUT que
+    # pase módulo 11. Aun siendo válido, el usuario siempre debe confirmarlo.
+    if gem_res.get("rut"):
+        from app.services.rut import formatear_rut, validar_rut
+        gem_res["rut"] = formatear_rut(gem_res["rut"]) if validar_rut(gem_res["rut"]) else None
     if not gem_res.get("direccion"):
         gem_res["direccion"] = scrape.get("direccion")
     return {**base, **gem_res}
@@ -370,7 +375,7 @@ async def confirmar_sesion(session_id: str, ctx: AuthContext = Depends(get_auth_
 
 @router.post("/sesion/{session_id}/logo/candidato")
 async def confirmar_logo_candidato(session_id: str, req: LogoCandidatoRequest, ctx: AuthContext = Depends(get_auth_context)):
-    from app.services.logo_upload import descargar_y_validar_url, subir_logo
+    from app.services.logo_upload import descargar_y_validar_url, detectar_content_type, subir_logo
     from app.services.organizacion import resolver_organizacion
 
     _sesion_o_404(session_id, ctx)
@@ -388,6 +393,7 @@ async def confirmar_logo_candidato(session_id: str, req: LogoCandidatoRequest, c
         if req.url.lower().endswith(f".{ext}"):
             content_type = tipo
             break
+    content_type = detectar_content_type(contenido, content_type)
 
     try:
         logo_url = subir_logo(ctx_org.organizacion_id, content_type, contenido)

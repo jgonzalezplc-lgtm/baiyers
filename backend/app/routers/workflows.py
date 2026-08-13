@@ -78,7 +78,25 @@ async def crear_workflow(req: CrearWorkflowRequest, ctx: AuthContext = Depends(g
     invitaciones = []
     if req.responsables:
         from app.services.organizacion import invitar_a_organizacion
+        # Un correo representa una persona. Si el chat la detectó en varias
+        # etapas, acumulamos roles y enviamos una sola invitación.
+        consolidados: dict[str, ResponsableSemilla] = {}
+        sin_email: list[ResponsableSemilla] = []
         for r in req.responsables:
+            email_key = (r.email or "").strip().lower()
+            if not email_key:
+                sin_email.append(r)
+                continue
+            if email_key not in consolidados:
+                consolidados[email_key] = r.model_copy(update={"email": email_key, "roles": list(dict.fromkeys(r.roles))})
+            else:
+                anterior = consolidados[email_key]
+                consolidados[email_key] = anterior.model_copy(update={
+                    "nombre": anterior.nombre or r.nombre,
+                    "roles": list(dict.fromkeys([*anterior.roles, *r.roles])),
+                    "invitar": anterior.invitar or r.invitar,
+                })
+        for r in [*consolidados.values(), *sin_email]:
             nombre = (r.nombre or "").strip()
             email = (r.email or "").strip().lower() or None
             if not nombre and not email:
