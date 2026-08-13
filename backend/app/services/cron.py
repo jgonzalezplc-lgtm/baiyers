@@ -71,11 +71,27 @@ def _sincronizar_gmail():
         print(f"[Cron] Error en sync de Gmail: {e}")
 
 
+def _sincronizar_outlook():
+    """Equivalente a `_sincronizar_gmail` pero para el agente de Outlook —
+    mismo cron de 1 minuto, job aparte para que un error en un proveedor no
+    afecte al otro."""
+    import asyncio
+    from app.routers.outlook import sincronizar_todos_los_usuarios_outlook
+
+    try:
+        resultado = asyncio.run(sincronizar_todos_los_usuarios_outlook())
+        if resultado.get("usuarios_revisados"):
+            print(f"[Cron] Outlook sync: {resultado}")
+    except Exception as e:
+        print(f"[Cron] Error en sync de Outlook: {e}")
+
+
 def start_cron():
     scheduler = BackgroundScheduler()
     scheduler.add_job(_enviar_ratings_pendientes, "interval", hours=1, id="ratings_cron")
     scheduler.add_job(_check_recurrencias, "interval", hours=1, id="recurrencias_cron")
     scheduler.add_job(_sincronizar_gmail, "interval", minutes=1, id="gmail_sync_cron")
+    scheduler.add_job(_sincronizar_outlook, "interval", minutes=1, id="outlook_sync_cron")
     scheduler.start()
-    print("[Cron] Scheduler iniciado — ratings/recurrencias cada 1h, Gmail cada 1min")
+    print("[Cron] Scheduler iniciado — ratings/recurrencias cada 1h, Gmail y Outlook cada 1min")
     return scheduler
