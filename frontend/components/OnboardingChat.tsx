@@ -286,17 +286,43 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     const mensaje = input.trim();
     if (!mensaje) return;
     setInput("");
+    const normalizado = mensaje.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (pasoPerfil === "confirmar_empresa") {
+      if (/^(si|correcto|esa es|es esa)/.test(normalizado)) confirmarEmpresa(mensaje);
+      else if (/^(no|incorrecto|otra)/.test(normalizado)) corregirEmpresa(mensaje);
+      else addBot("Puedes responder sí o no, o usar uno de los botones.");
+      return;
+    }
+    if (pasoPerfil === "logo") {
+      if (/(subir|otro logo|cambiar)/.test(normalizado)) {
+        addUser(mensaje);
+        fileInputRef.current?.click();
+      } else if (/(omitir|sin logo|despues|no)/.test(normalizado)) {
+        addUser(mensaje);
+        avanzarARut();
+      } else if (/^(si|correcto|usar|ese)/.test(normalizado)) {
+        addUser(mensaje);
+        usarLogoCandidato();
+      } else {
+        addBot("Puedes decirme si quieres usar ese logo, subir otro u omitirlo.");
+      }
+      return;
+    }
     enviarMensajePerfil(mensaje);
   };
 
-  const confirmarEmpresa = () => {
-    addUser("Sí, esa es mi empresa");
+  const confirmarEmpresa = (respuesta = "Sí, esa es mi empresa") => {
+    addUser(respuesta);
+    if (!investigacion?.logo_candidatos?.[logoIdx] && !logoUrlFinal) {
+      avanzarARut();
+      return;
+    }
     setPasoPerfil("logo");
     addBot("¿El logo que aparece es correcto? Puedes usarlo, subir otro u omitir este paso.");
   };
 
-  const corregirEmpresa = () => {
-    addUser("No, no es mi empresa");
+  const corregirEmpresa = (respuesta = "No, no es mi empresa") => {
+    addUser(respuesta);
     setPasoPerfil("empresa");
     addBot("¿Cuál es el nombre correcto de tu empresa?");
   };
@@ -543,7 +569,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   };
 
   const entradaDeshabilitada = cargandoInicial || busy || (fase === "perfil" && (
-    completo || pasoPerfil === "confirmar_empresa" || pasoPerfil === "logo"
+    completo
   )) || fase === "transicion";
 
   return (
@@ -555,25 +581,26 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
             texto: m.texto,
             extra: m.card ? (
               <EmpresaCard
-                d={m.card} logoIdx={logoIdx} logoUrlFinal={logoUrlFinal} logoOcupado={logoOcupado}
-                mostrarAccionesLogo={pasoPerfil === "logo"}
+                d={m.card} logoIdx={logoIdx} logoUrlFinal={logoUrlFinal}
                 onLogoError={() => setLogoIdx(x => x + 1)}
-                onUsarLogo={usarLogoCandidato}
-                onSubirArchivo={() => fileInputRef.current?.click()}
               />
             ) : undefined,
           }))} />
 
           {fase === "perfil" && pasoPerfil === "confirmar_empresa" && (
             <div style={{ marginLeft: 36, display: "flex", flexWrap: "wrap", gap: 8 }}>
-              <BtnPrimary onClick={confirmarEmpresa} size="sm">Sí, es mi empresa</BtnPrimary>
-              <BtnGhost onClick={corregirEmpresa} size="sm">No, es otra</BtnGhost>
+              <BtnPrimary onClick={() => confirmarEmpresa()} size="sm">Sí, es mi empresa</BtnPrimary>
+              <BtnGhost onClick={() => corregirEmpresa()} size="sm">No, es otra</BtnGhost>
             </div>
           )}
 
           {fase === "perfil" && pasoPerfil === "logo" && (
-            <div style={{ marginLeft: 36 }}>
-              <BtnGhost onClick={() => { addUser("Omitir logo"); avanzarARut(); }} size="sm">Omitir este paso</BtnGhost>
+            <div style={{ marginLeft: 36, display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <BtnPrimary onClick={() => { addUser("Sí, usar este logo"); usarLogoCandidato(); }} disabled={logoOcupado || !investigacion?.logo_candidatos?.[logoIdx]} size="sm">
+                Sí, usar este logo
+              </BtnPrimary>
+              <BtnGhost onClick={() => fileInputRef.current?.click()} disabled={logoOcupado} size="sm">Subir otro logo</BtnGhost>
+              <BtnGhost onClick={() => { addUser("Continuar sin logo"); avanzarARut(); }} size="sm">Continuar sin logo</BtnGhost>
             </div>
           )}
 
@@ -676,10 +703,9 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   );
 }
 
-function EmpresaCard({ d, logoIdx, logoUrlFinal, logoOcupado, mostrarAccionesLogo, onLogoError, onUsarLogo, onSubirArchivo }: {
-  d: Investigacion; logoIdx: number; logoUrlFinal: string | null; logoOcupado: boolean;
-  mostrarAccionesLogo: boolean;
-  onLogoError: () => void; onUsarLogo: () => void; onSubirArchivo: () => void;
+function EmpresaCard({ d, logoIdx, logoUrlFinal, onLogoError }: {
+  d: Investigacion; logoIdx: number; logoUrlFinal: string | null;
+  onLogoError: () => void;
 }) {
   const logo = logoUrlFinal ?? d.logo_candidatos?.[logoIdx];
   return (
@@ -703,16 +729,6 @@ function EmpresaCard({ d, logoIdx, logoUrlFinal, logoOcupado, mostrarAccionesLog
           {d.descripcion && <div style={{ fontSize: 12.5, color: "var(--n-600)", lineHeight: 1.55 }}>{d.descripcion}</div>}
         </div>
       </div>
-      {mostrarAccionesLogo && !logoUrlFinal && (
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={onUsarLogo} disabled={logoOcupado || !d.logo_candidatos?.[logoIdx]} className="btn-swiss-secondary" style={{ fontSize: 12 }}>
-            {logoOcupado ? "…" : "Usar este logo"}
-          </button>
-          <button onClick={onSubirArchivo} disabled={logoOcupado} className="btn-swiss-secondary" style={{ fontSize: 12 }}>
-            Subir mi logo
-          </button>
-        </div>
-      )}
     </div>
   );
 }
