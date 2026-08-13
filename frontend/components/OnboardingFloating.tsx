@@ -16,13 +16,23 @@ export default function OnboardingFloating() {
   const [listo, setListo] = useState(false);
 
   useEffect(() => {
-    const omitido = typeof window !== "undefined" && sessionStorage.getItem(DISMISS_KEY) === "1";
-    if (!omitido) setAbierto(true);
-    setListo(true);
+    import("@/lib/supabase/client").then(({ createClient }) => createClient().auth.getSession()).then(({ data }) => {
+      const sesionActual = data.session?.access_token || "";
+      const omitidoEn = typeof window !== "undefined" ? sessionStorage.getItem(DISMISS_KEY) : null;
+      if (!sesionActual || omitidoEn !== sesionActual) setAbierto(true);
+      setListo(true);
+    }).catch(() => {
+      setAbierto(true);
+      setListo(true);
+    });
   }, []);
 
-  const omitir = () => {
-    try { sessionStorage.setItem(DISMISS_KEY, "1"); } catch { /* ignore */ }
+  const omitir = async () => {
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const { data } = await createClient().auth.getSession();
+      sessionStorage.setItem(DISMISS_KEY, data.session?.access_token || "sesion-actual");
+    } catch { /* ignore */ }
     setAbierto(false);
   };
 

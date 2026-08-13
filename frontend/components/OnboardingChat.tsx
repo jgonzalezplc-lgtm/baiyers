@@ -63,7 +63,7 @@ interface Msg { rol: Rol; texto?: string; card?: Investigacion; }
  * compras ahora. proceso: misma conversación, ahora hablando de ETAPAS del
  * proceso de compras (idéntico a /settings/autorizaciones). */
 type Fase = "perfil" | "transicion" | "proceso";
-type PasoPerfil = "nombre" | "empresa" | "confirmar_empresa" | "logo" | "rut" | "direccion" | "listo";
+type PasoPerfil = "nombre" | "empresa" | "confirmar_empresa" | "logo" | "confirmar_rut" | "rut" | "direccion" | "listo";
 
 interface Props {
   /** Estilo compacto para panel flotante (sin header de página completa). */
@@ -122,14 +122,17 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     "¿Quién envía la orden de compra? Indica su nombre y correo.",
   ];
 
-  const omitirPorAhora = () => {
+  const omitirPorAhora = async () => {
     if (onSkip) {
-      onSkip();
+      await onSkip();
       return;
     }
     // No marca el onboarding como completo: el usuario puede retomarlo desde
     // el panel y el asistente flotante no lo interrumpe durante esta sesión.
-    try { sessionStorage.setItem("baiyer-onboarding-omitido", "1"); } catch { /* ignore */ }
+    try {
+      const { data } = await createClient().auth.getSession();
+      sessionStorage.setItem("baiyer-onboarding-omitido", data.session?.access_token || "sesion-actual");
+    } catch { /* ignore */ }
     router.replace("/dashboard");
   };
 
@@ -308,6 +311,12 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
       }
       return;
     }
+    if (pasoPerfil === "confirmar_rut") {
+      if (/^(si|correcto|ese es|es ese)/.test(normalizado)) confirmarRutEncontrado(mensaje);
+      else if (/^(no|incorrecto|otro)/.test(normalizado)) solicitarRutCorrecto(mensaje);
+      else addBot("Puedes confirmar si ese RUT es correcto o decir que no para ingresar otro.");
+      return;
+    }
     enviarMensajePerfil(mensaje);
   };
 
@@ -328,8 +337,25 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   };
 
   const avanzarARut = () => {
+    if (investigacion?.rut) {
+      setPasoPerfil("confirmar_rut");
+      addBot(`Encontré este RUT para ${investigacion.empresa || "tu empresa"}: ${investigacion.rut}. ¿Es correcto?`);
+      return;
+    }
     setPasoPerfil("rut");
     addBot("¿Cuál es el RUT de la empresa?");
+  };
+
+  const confirmarRutEncontrado = (respuesta = "Sí, ese es el RUT") => {
+    if (!investigacion?.rut) return;
+    addUser(respuesta);
+    enviarMensajePerfil(investigacion.rut, "rut");
+  };
+
+  const solicitarRutCorrecto = (respuesta = "No, ingresaré otro RUT") => {
+    addUser(respuesta);
+    setPasoPerfil("rut");
+    addBot("¿Cuál es el RUT correcto de la empresa?");
   };
 
   const confirmarSugerencia = (s: { campo: "rut" | "direccion"; valor: string }) => {
@@ -350,13 +376,20 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     addUser(mensaje);
     const respuestas = [...respuestasProcesoRef.current, mensaje];
     respuestasProcesoRef.current = respuestas;
-    if (!entrevistaProcesoCompletaRef.current && pasoProceso < PREGUNTAS_PROCESO.length - 1) {
-      const siguiente = pasoProceso + 1;
-      setPasoProceso(siguiente);
-      addBot(PREGUNTAS_PROCESO[siguiente]);
+    const procesoAcumulado = respuestas.join("\n").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const dimensionesCubiertas = [
+      /(cotiz|presupuesto|comparacion)/.test(procesoAcumulado),
+      /(autoriz|aprob|jefe|gerente)/.test(procesoAcumulado),
+      /(homolog|proveedor nuevo|alta de proveedor)/.test(procesoAcumulado),
+      /(monto|umbral|desde |sobre |a partir|sin limite|no se solicita autorizacion)/.test(procesoAcumulado),
+      /(orden de compra|\boc\b|ejecuta la compra)/.test(procesoAcumulado),
+    ];
+    const siguienteFaltante = dimensionesCubiertas.findIndex(cubierta => !cubierta);
+    if (!entrevistaProcesoCompletaRef.current && siguienteFaltante >= 0) {
+      setPasoProceso(siguienteFaltante);
+      addBot(PREGUNTAS_PROCESO[siguienteFaltante]);
       return;
     }
-    entrevistaProcesoCompletaRef.current = true;
     setBusy(true);
     setPropuestaWorkflow(null);
     try {
@@ -365,8 +398,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           descripcion: [
-            ...PREGUNTAS_PROCESO.map((pregunta, i) => `${pregunta}\nRespuesta: ${respuestas[i] || "Sin respuesta"}`),
-            ...respuestas.slice(PREGUNTAS_PROCESO.length).map(r => `Aclaración adicional:\n${r}`),
+            ...respuestas.map((r, i) => `Información entregada ${i + 1}:\n${r}`),
           ].join("\n\n"),
           contexto: contextoProceso(),
         }),
@@ -375,9 +407,16 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: Propuesta = await res.json();
       if (data.requiere_aclaracion) {
-        const pregunta = data.preguntas?.[0] || "¿Puedes darme un poco más de detalle?";
-        addBot(pregunta);
+        if (!entrevistaProcesoCompletaRef.current && pasoProceso < PREGUNTAS_PROCESO.length - 1) {
+          const siguiente = pasoProceso + 1;
+          setPasoProceso(siguiente);
+          addBot(PREGUNTAS_PROCESO[siguiente]);
+        } else {
+          entrevistaProcesoCompletaRef.current = true;
+          addBot(data.preguntas?.[0] || "¿Puedes darme un poco más de detalle?");
+        }
       } else {
+        entrevistaProcesoCompletaRef.current = true;
         addBot(data.resumen || "Esto es lo que entendí:");
         setPropuestaWorkflow(data);
         setAInvitarWorkflow(new Set((data.responsables_detectados || []).filter(r => r.email).map(r => r.email)));
@@ -392,7 +431,27 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     }
   };
 
-  const enviar = () => (fase === "proceso" ? enviarProceso() : enviarPerfil());
+  const responderTransicion = (configurar: boolean, respuesta: string) => {
+    addUser(respuesta);
+    if (configurar) empezarProceso();
+    else irAlPanel();
+  };
+
+  const enviarTransicion = () => {
+    const mensaje = input.trim();
+    if (!mensaje) return;
+    setInput("");
+    const normalizado = mensaje.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (/^(si|vamos|configur|continu)/.test(normalizado)) responderTransicion(true, mensaje);
+    else if (/^(no|ahora no|despues|omitir)/.test(normalizado)) responderTransicion(false, mensaje);
+    else addBot("Puedes responder que sí para configurarlo ahora, o que no para continuar al panel.");
+  };
+
+  const enviar = () => {
+    if (fase === "proceso") enviarProceso();
+    else if (fase === "transicion") enviarTransicion();
+    else enviarPerfil();
+  };
 
   const usarLogoCandidato = async () => {
     if (!investigacion?.logo_candidatos?.[logoIdx] || logoOcupado) return;
@@ -570,7 +629,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
 
   const entradaDeshabilitada = cargandoInicial || busy || (fase === "perfil" && (
     completo
-  )) || fase === "transicion";
+  ));
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -601,6 +660,14 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
               </BtnPrimary>
               <BtnGhost onClick={() => fileInputRef.current?.click()} disabled={logoOcupado} size="sm">Subir otro logo</BtnGhost>
               <BtnGhost onClick={() => { addUser("Continuar sin logo"); avanzarARut(); }} size="sm">Continuar sin logo</BtnGhost>
+            </div>
+          )}
+
+          {fase === "perfil" && pasoPerfil === "confirmar_rut" && (
+            <div style={{ marginLeft: 36, display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <BtnPrimary onClick={() => confirmarRutEncontrado()} size="sm">Sí, ese es el RUT</BtnPrimary>
+              <BtnGhost onClick={() => solicitarRutCorrecto()} size="sm">No, ingresar otro</BtnGhost>
+              <BtnGhost onClick={omitirPorAhora} size="sm">Omitir por ahora</BtnGhost>
             </div>
           )}
 
@@ -658,8 +725,8 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
 
           {fase === "transicion" && (
             <div style={{ marginLeft: 36, display: "flex", gap: 8 }}>
-              <BtnPrimary onClick={empezarProceso} size="sm">Sí, configurémoslo</BtnPrimary>
-              <BtnGhost onClick={irAlPanel} size="sm">Ahora no</BtnGhost>
+              <BtnPrimary onClick={() => responderTransicion(true, "Sí, configurémoslo")} size="sm">Sí, configurémoslo</BtnPrimary>
+              <BtnGhost onClick={() => responderTransicion(false, "Ahora no")} size="sm">Ahora no</BtnGhost>
             </div>
           )}
 
