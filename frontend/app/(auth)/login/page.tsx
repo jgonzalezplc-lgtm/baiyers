@@ -68,7 +68,7 @@ function LoginInner() {
     setError("");
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=/onboarding` },
+      options: { redirectTo: `${window.location.origin}/auth/callback?next=/onboarding&conectar_gmail=1` },
     });
     if (error) setError(`No se pudo iniciar con Google: ${error.message}`);
   };
@@ -79,10 +79,10 @@ function LoginInner() {
       provider: "azure",
       options: {
         scopes: "openid profile email",
-        redirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
+        redirectTo: `${window.location.origin}/auth/callback?next=/onboarding&conectar_outlook=1`,
       },
     });
-    if (error) setError("Outlook aún no está habilitado. Usa Google o email por ahora.");
+    if (error) setError(`No se pudo iniciar con Outlook: ${error.message}`);
   };
 
   const handleRecovery = async () => {
@@ -281,12 +281,9 @@ function LoginInner() {
               style={{ width: "100%", marginBottom: 8 }}>
               <GoogleIcon /> Continuar con Google
             </button>
-            {/* Outlook oculto hasta configurar Azure AD (cuenta Microsoft de trabajo). Reactivar: false → true */}
-            {false && (
-              <button onClick={handleOutlook} className="btn-swiss-secondary" style={{ width: "100%" }}>
-                <OutlookIcon /> Continuar con Outlook
-              </button>
-            )}
+            <button onClick={handleOutlook} className="btn-swiss-secondary" style={{ width: "100%" }}>
+              <OutlookIcon /> Continuar con Outlook
+            </button>
             <p style={{ textAlign: "center", fontSize: 13.5, color: "var(--n-600)", marginTop: 20 }}>
               ¿No tienes cuenta?{" "}
               <Link href="/register" style={{ color: "var(--brand)", textDecoration: "none", fontWeight: 500 }}>

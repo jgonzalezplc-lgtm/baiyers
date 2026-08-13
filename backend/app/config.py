@@ -9,12 +9,20 @@ class Settings(BaseSettings):
     serper_api_key: str = ""   # Serper.dev (alternativa más barata a SerpAPI)
     anthropic_api_key: str = ""
     environment: str = "development"
+    # Si no se define, los jobs automáticos sólo corren en producción. Esto
+    # evita que un clon de QA sincronice Gmail o envíe correos por accidente.
+    cron_enabled: bool | None = None
     google_redirect_uri: str = "http://localhost:8000/api/gmail/callback"
     frontend_url: str = "http://localhost:3000"
     # OAuth de Google (Gmail). En producción se definen por variable de entorno;
     # en local, si están vacías, se cae al archivo backend/app/credentials.json.
     google_client_id: str = ""
     google_client_secret: str = ""
+    # OAuth de Microsoft (Outlook, vía Graph). Mismo patrón que Google: en
+    # producción por variable de entorno, sin fallback a archivo local.
+    microsoft_client_id: str = ""
+    microsoft_client_secret: str = ""
+    microsoft_redirect_uri: str = "http://localhost:8000/api/outlook/callback"
     # Etapa 9 — nuevas fuentes
     mouser_api_key: str = ""
     digikey_client_id: str = ""
@@ -29,6 +37,12 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+
+    @property
+    def should_run_cron(self) -> bool:
+        if self.cron_enabled is not None:
+            return self.cron_enabled
+        return self.environment.lower() == "production"
 
 
 settings = Settings()

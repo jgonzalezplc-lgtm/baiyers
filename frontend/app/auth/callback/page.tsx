@@ -9,6 +9,45 @@ import { Suspense, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+/**
+ * Si el login vino con "conectar_gmail=1" (botón de Google en login/registro),
+ * encadena el consentimiento de correo real (/api/gmail/auth) cuando el usuario
+ * todavía no lo tiene conectado, para no exigir un segundo paso manual desde el
+ * dashboard. Si ya está conectado, o el chequeo falla, sigue al destino normal.
+ */
+async function resolverDestinoGmail(accessToken: string | undefined, userId: string, next: string): Promise<string> {
+  if (!accessToken) return next;
+  try {
+    const resp = await fetch(`${API_URL}/api/gmail/status`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!resp.ok) return next;
+    const data = await resp.json();
+    if (data.connected) return next;
+  } catch {
+    return next;
+  }
+  return `${API_URL}/api/gmail/auth?user_id=${encodeURIComponent(userId)}&next=${encodeURIComponent(next)}`;
+}
+
+/** Mismo patrón que resolverDestinoGmail, para el login con Outlook. */
+async function resolverDestinoOutlook(accessToken: string | undefined, userId: string, next: string): Promise<string> {
+  if (!accessToken) return next;
+  try {
+    const resp = await fetch(`${API_URL}/api/outlook/status`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!resp.ok) return next;
+    const data = await resp.json();
+    if (data.connected) return next;
+  } catch {
+    return next;
+  }
+  return `${API_URL}/api/outlook/auth?user_id=${encodeURIComponent(userId)}&next=${encodeURIComponent(next)}`;
+}
+
 function CallbackInner() {
   const params = useSearchParams();
   const yaCorrio = useRef(false);   // evita el doble intercambio (StrictMode/remount)
@@ -20,6 +59,8 @@ function CallbackInner() {
     const code = params.get("code");
     const next = params.get("next") || "/onboarding";
     const isRecovery = params.get("flow") === "recovery";
+    const conectarGmail = params.get("conectar_gmail") === "1";
+    const conectarOutlook = params.get("conectar_outlook") === "1";
     const supabase = createClient();
 
     const irA = (destino: string) => window.location.replace(destino);
@@ -36,6 +77,18 @@ function CallbackInner() {
           }
           sessionStorage.setItem("baiyer_password_recovery", "verified");
           sessionStorage.setItem("baiyer_password_recovery_user_id", data.user.id);
+          irA(next);
+          return;
+        }
+        if (conectarGmail && data.user?.id) {
+          const destino = await resolverDestinoGmail(data.session?.access_token, data.user.id, next);
+          irA(destino);
+          return;
+        }
+        if (conectarOutlook && data.user?.id) {
+          const destino = await resolverDestinoOutlook(data.session?.access_token, data.user.id, next);
+          irA(destino);
+          return;
         }
         irA(next);
         return;

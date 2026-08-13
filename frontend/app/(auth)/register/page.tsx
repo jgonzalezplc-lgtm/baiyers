@@ -81,7 +81,7 @@ export default function RegisterPage() {
     setError("");
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=/onboarding` },
+      options: { redirectTo: `${window.location.origin}/auth/callback?next=/onboarding&conectar_gmail=1` },
     });
     if (error) setError(`No se pudo continuar con Google: ${error.message}`);
   };
@@ -92,10 +92,10 @@ export default function RegisterPage() {
       provider: "azure",
       options: {
         scopes: "openid profile email",
-        redirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
+        redirectTo: `${window.location.origin}/auth/callback?next=/onboarding&conectar_outlook=1`,
       },
     });
-    if (error) setError("Outlook aún no está habilitado. Usa Google o email por ahora.");
+    if (error) setError(`No se pudo continuar con Outlook: ${error.message}`);
   };
 
   return (
@@ -166,14 +166,10 @@ export default function RegisterPage() {
             style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12 }}>
             <GoogleIcon /> Continuar con Google
           </button>
-          {/* Outlook oculto hasta configurar Azure AD (cuenta Microsoft de trabajo).
-              Reactivar: cambiar false → true. El resto (handleOutlook) ya está listo. */}
-          {false && (
-            <button onClick={handleOutlook} className="btn-swiss-secondary"
-              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12 }}>
-              <OutlookIcon /> Continuar con Outlook
-            </button>
-          )}
+          <button onClick={handleOutlook} className="btn-swiss-secondary"
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 12 }}>
+            <OutlookIcon /> Continuar con Outlook
+          </button>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px 0" }}>

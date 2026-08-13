@@ -32,19 +32,26 @@ def _make_code_challenge(verifier: str) -> str:
     digest = hashlib.sha256(verifier.encode()).digest()
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
-def _encode_state(user_id: str, verifier: str) -> str:
-    payload = f"{user_id}:{verifier}"
+def _next_seguro(next_path: Optional[str]) -> str:
+    """Sólo permite redirigir a una ruta relativa propia — nunca a otro host."""
+    if not next_path or not next_path.startswith("/") or next_path.startswith("//"):
+        return "/dashboard"
+    return next_path
+
+def _encode_state(user_id: str, verifier: str, next_path: str = "/dashboard") -> str:
+    payload = json.dumps({"u": user_id, "v": verifier, "n": _next_seguro(next_path)})
     return base64.urlsafe_b64encode(payload.encode()).decode()
 
-def _decode_state(state: str) -> tuple[str, str]:
-    payload = base64.urlsafe_b64decode(state + "==").decode()
-    user_id, verifier = payload.split(":", 1)
-    return user_id, verifier
+def _decode_state(state: str) -> tuple[str, str, str]:
+    payload = json.loads(base64.urlsafe_b64decode(state + "==").decode())
+    return payload["u"], payload["v"], _next_seguro(payload.get("n"))
 
 
 @router.get("/auth")
-async def gmail_auth(user_id: str):
-    """Redirige al usuario a Google OAuth con PKCE."""
+async def gmail_auth(user_id: str, next: str = "/dashboard"):
+    """Redirige al usuario a Google OAuth con PKCE. `next` es a dónde volver
+    en el frontend una vez conectado (ej. /onboarding cuando viene encadenado
+    desde el login con Google)."""
     from app.config import settings
     from app.services.gmail_service import load_client_secrets
 
@@ -56,7 +63,7 @@ async def gmail_auth(user_id: str):
 
     verifier = _make_code_verifier()
     challenge = _make_code_challenge(verifier)
-    state = _encode_state(user_id, verifier)
+    state = _encode_state(user_id, verifier, next)
 
     params = {
         "response_type": "code",
@@ -82,7 +89,7 @@ async def gmail_callback(code: str, state: str):
     from app.services.supabase import get_supabase
 
     try:
-        user_id, verifier = _decode_state(state)
+        user_id, verifier, next_path = _decode_state(state)
     except Exception:
         raise HTTPException(status_code=400, detail="State inválido")
 
@@ -141,7 +148,8 @@ async def gmail_callback(code: str, state: str):
         on_conflict="user_id,provider",
     ).execute()
 
-    return RedirectResponse(url=f"{settings.frontend_url}/dashboard?gmail=conectado")
+    separador = "&" if "?" in next_path else "?"
+    return RedirectResponse(url=f"{settings.frontend_url}{next_path}{separador}gmail=conectado")
 
 
 @router.get("/status")
