@@ -56,6 +56,7 @@ async def oauth_authorization_server_metadata(request: Request):
 
 
 @router.get("/.well-known/oauth-protected-resource")
+@router.get("/.well-known/oauth-protected-resource/api/mcp")
 async def oauth_protected_resource_metadata(request: Request):
     return {
         "resource": settings.mcp_resource_url.rstrip("/"),

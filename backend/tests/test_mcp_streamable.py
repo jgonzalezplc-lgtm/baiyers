@@ -34,6 +34,7 @@ def test_discovery_publica_endpoint_unico_y_scopes(client):
     assert resource.json()["resource"].endswith("/api/mcp")
     assert resource_path.status_code == 200
     assert resource_path.json()["resource"].endswith("/api/mcp")
+    assert "lists:read" in resource_path.json()["scopes_supported"]
 
 
 def test_oauth_error_no_se_envuelve_en_detail(client):
