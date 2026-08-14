@@ -42,6 +42,26 @@ def test_authorize_exige_cliente_redirect_pkce_state_y_resource():
     save.assert_not_called()
 
 
+def test_authorize_valido_renderiza_consentimiento_escapado():
+    redirect_uri = "http://127.0.0.1:9999/callback"
+    client = {
+        "client_id": "c1",
+        "client_name": "<Codex>",
+        "redirect_uris": [redirect_uri],
+    }
+    with patch("app.mcp.oauth._cliente", return_value=client), \
+         patch("app.mcp.oauth._guardar_estado") as save:
+        response = asyncio.run(authorize(
+            "c1", redirect_uri, "code", "lists:read", "state-valid",
+            "a" * 43, "S256", "http://localhost:8000/api/mcp",
+        ))
+
+    assert response.status_code == 200
+    assert b"&lt;Codex&gt;" in response.body
+    assert b"<Codex>" not in response.body
+    save.assert_called_once()
+
+
 def test_token_verifica_pkce_client_redirect_y_resource():
     verifier = "a" * 50
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()

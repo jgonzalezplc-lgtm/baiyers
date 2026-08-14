@@ -175,7 +175,7 @@ async def authorize(
     safe_state = html.escape(state, quote=True)
     cancel_url = html.escape(redirect_uri + "?" + urlencode({"error": "access_denied", "state": state}), quote=True)
 
-    html = f"""<!DOCTYPE html>
+    consent_page = f"""<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
@@ -224,7 +224,7 @@ async def authorize(
   </div>
 </body>
 </html>"""
-    return HTMLResponse(html)
+    return HTMLResponse(consent_page)
 
 
 @router.post("/consent")
