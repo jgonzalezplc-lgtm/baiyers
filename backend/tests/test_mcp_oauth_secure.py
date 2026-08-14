@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from app.mcp.oauth import _redirect_uri_valida, _validar_scopes, authorize, registrar_cliente, token
+from app.mcp.oauth import _redirect_uri_valida, _validar_scopes, authorize, consent, registrar_cliente, token
 
 
 def test_redirect_uri_solo_https_o_loopback_http():
@@ -60,6 +60,20 @@ def test_authorize_valido_renderiza_consentimiento_escapado():
     assert b"&lt;Codex&gt;" in response.body
     assert b"<Codex>" not in response.body
     save.assert_called_once()
+
+
+def test_consent_no_consume_estado_si_credenciales_son_invalidas():
+    pending = {"redirect_uri": "http://127.0.0.1/callback", "state": "state"}
+    fake_client = MagicMock()
+    fake_client.auth.sign_in_with_password.side_effect = RuntimeError("invalid")
+    with patch("app.mcp.oauth._leer_estado_vigente", return_value=pending), \
+         patch("app.mcp.oauth._leer_y_consumir_estado") as consume, \
+         patch("app.mcp.oauth.create_client", return_value=fake_client), \
+         pytest.raises(HTTPException) as error:
+        asyncio.run(consent("state", "user@example.com", "incorrecta", "allow"))
+
+    assert error.value.status_code == 401
+    consume.assert_not_called()
 
 
 def test_token_verifica_pkce_client_redirect_y_resource():

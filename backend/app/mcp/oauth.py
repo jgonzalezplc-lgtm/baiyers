@@ -55,6 +55,20 @@ def _leer_y_consumir_estado(key: str) -> Optional[dict]:
     return respuesta.data or None
 
 
+def _leer_estado_vigente(key: str) -> Optional[dict]:
+    """Previsualiza un estado sin consumirlo.
+
+    El consentimiento lo consume sólo después de autenticar al usuario, para
+    que una contraseña mal escrita no invalide todo el flujo OAuth.
+    """
+    response = ejecutar_maybe_single(
+        SUPABASE.table("mcp_auth_codes").select("data")
+        .eq("key", key).is_("consumed_at", "null")
+        .gt("expires_at", datetime.now(timezone.utc).isoformat()).maybe_single()
+    )
+    return (response.data or {}).get("data") if response.data else None
+
+
 def _redirect_uri_valida(uri: str) -> bool:
     try:
         parsed = urlparse(uri)
@@ -235,7 +249,8 @@ async def consent(
     action: str = Form("allow"),
 ):
     """Process user consent and issue auth code."""
-    pending = _leer_y_consumir_estado(f"pending_{state}")
+    pending_key = f"pending_{state}"
+    pending = _leer_estado_vigente(pending_key)
     if not pending:
         raise HTTPException(400, "Estado de autorización inválido o expirado")
 
@@ -259,6 +274,12 @@ async def consent(
         user_id = auth.user.id
     except Exception:
         raise HTTPException(401, "Credenciales invalidas")
+
+    # Consumir sólo después de autenticar. La RPC conserva atomicidad y evita
+    # que dos submits simultáneos emitan dos códigos para el mismo state.
+    pending = _leer_y_consumir_estado(pending_key)
+    if not pending:
+        raise HTTPException(400, "Estado de autorización inválido o ya utilizado")
 
     # Generate auth code
     code = secrets.token_urlsafe(32)
