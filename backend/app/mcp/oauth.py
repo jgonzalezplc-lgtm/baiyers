@@ -215,8 +215,8 @@ async def authorize(
     </div>
     <form method="post" action="/api/mcp/oauth/consent">
       <input type="hidden" name="state" value="{safe_state}">
-      <input type="text" name="email" placeholder="Email de tu cuenta Baiyer" autocomplete="email">
-      <input type="password" name="password" placeholder="Contrasena">
+      <input type="email" name="email" placeholder="Email de tu cuenta Baiyer" autocomplete="email" required>
+      <input type="password" name="password" placeholder="Contrasena" autocomplete="current-password" required>
       <button type="submit" name="action" value="allow" class="btn-allow">Autorizar acceso</button>
       <a href="{cancel_url}" class="btn-deny">Cancelar</a>
     </form>
