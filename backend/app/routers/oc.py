@@ -60,7 +60,7 @@ class CrearOCRequest(BaseModel):
     nombre_item: str
     proveedor_nombre: str
     proveedor_email: Optional[str] = None
-    cantidad: int = 1
+    cantidad: float = 1
     precio_unitario: float
     moneda: str = "CLP"
     condiciones_pago: str = "30 días"
@@ -160,7 +160,18 @@ async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_co
 
     sb = get_supabase()
 
-    pdf_bytes = base64.b64decode(req.pdf_base64)
+    try:
+        pdf_bytes = base64.b64decode(req.pdf_base64, validate=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="PDF base64 inválido") from exc
+
+    oc_actual = sb.table("ordenes_compra").select("id,estado").eq("id", req.oc_id).in_(
+        "user_id", ctx.user_ids_organizacion
+    ).limit(1).execute().data or []
+    if not oc_actual:
+        raise HTTPException(status_code=404, detail="OC no encontrada")
+    if oc_actual[0].get("estado") != "borrador":
+        raise HTTPException(status_code=409, detail="La OC ya no está en borrador")
 
     # Subir PDF a Supabase Storage
     filename = f"{req.oc_id}.pdf"
@@ -174,12 +185,6 @@ async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_co
         pdf_url = sb.storage.from_("ordenes-compra").get_public_url(filename)
     except Exception as e:
         print(f"[Storage] Error subiendo PDF: {e}")
-
-    # Actualizar OC
-    sb.table("ordenes_compra").update({
-        "pdf_url": pdf_url,
-        "estado": "enviada",
-    }).eq("id", req.oc_id).execute()
 
     # Tokens Gmail
     gmail_res = sb.table("user_integrations").select("*").eq("user_id", ctx.actor_user_id).eq("provider", "gmail").single().execute()
@@ -233,7 +238,13 @@ async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_co
             except Exception as e:
                 print(f"[OC] registrar_envio falló (correo ya enviado, solo auditoría): {e}")
         except Exception as e:
-            print(f"[OC] Error enviando al proveedor: {e}")
+            sb.table("ordenes_compra").update({"estado": "delivery_uncertain", "pdf_url": pdf_url}).eq("id", req.oc_id).execute()
+            raise HTTPException(status_code=502, detail="No se pudo confirmar el envío de la OC; revisa Gmail antes de reintentar") from e
+
+    sb.table("ordenes_compra").update({
+        "pdf_url": pdf_url,
+        "estado": "enviada",
+    }).eq("id", req.oc_id).in_("user_id", ctx.user_ids_organizacion).execute()
 
     # Supplier Intelligence — registrar OC enviada
     try:

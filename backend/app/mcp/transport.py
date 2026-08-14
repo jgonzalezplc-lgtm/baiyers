@@ -62,11 +62,11 @@ async def manifest(request: Request):
     base = _base(request)
     return {
         "schema_version": "v1",
-        "name_for_human": "Claria — Cotizador Inteligente",
-        "name_for_model": "claria_cotizador",
+        "name_for_human": "Baiyer — Procurement Inteligente",
+        "name_for_model": "baiyer_procurement",
         "description_for_human": "Cotiza productos, busca proveedores, emite OCs y analiza gastos de procurement en Chile.",
         "description_for_model": (
-            "Claria es un sistema de procurement inteligente para empresas chilenas. "
+            "Baiyer es un sistema de procurement inteligente para empresas chilenas. "
             "Puedes cotizar cualquier item en multiples proveedores, ver historial de precios, "
             "emitir ordenes de compra, crear recurrencias y analizar gastos. "
             "Todos los precios son en CLP (pesos chilenos)."
@@ -74,7 +74,7 @@ async def manifest(request: Request):
         "auth": {
             "type": "oauth",
             "client_url": f"{settings.frontend_url}/mcp/autorizar",
-            "scope": "read write",
+            "scope": " ".join(["lists:read", "quotes:read", "suppliers:read", "jobs:read", "data:read"]),
             "authorization_url": f"{base}/api/mcp/oauth/authorize",
             "token_url": f"{base}/api/mcp/oauth/token",
             "registration_url": f"{base}/api/mcp/oauth/register",

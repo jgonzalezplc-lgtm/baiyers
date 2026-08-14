@@ -238,6 +238,79 @@ Railway ~$5-10/mes · Supabase free · Serper 2.500 gratis→$50/50k · Gemini f
 3. Probar el onboarding conversacional de punta a punta con una segunda cuenta invitada real: aceptar la invitación, confirmar que queda como responsable y que puede iniciar sesión.
 4. Migrar los 3 sitios de correo que quedaron fuera de la Fase 6 (copia interna de OC, aviso de proveedor confirmó recepción, encuesta de satisfacción) si se decide agregar eventos nuevos al catálogo para ellos.
 5. Probar en producción el seguimiento de OC por correo (023): responder "recibido, gracias" desde otra cuenta y verificar que `ordenes_compra.estado` pasa a `recibido_conforme` solo, vía el cron de 1 min.
+
+## MCP Baiyer — Fases 0 y 1 (2026-08-13)
+- El contrato operativo completo está en `MCP_FASE_0_CONTRATO.md` (tools,
+  resources, prompts, scopes, confirmaciones, jobs y brechas). Es la fuente de
+  verdad del proyecto MCP.
+- Fase 1 implementada en código: `services/mcp_context.py`,
+  `services/lista_service.py`, `services/mcp_jobs.py` y
+  `services/semantic_query.py`. Crear/listar listas ya delega en el servicio
+  compartido manteniendo el API web actual.
+- `backend/migrations/038_mcp_data_foundation.sql` crea jobs/drafts y la RPC
+  transaccional proyecto/documento → cotizaciones + lista. **Aplicada y
+  confirmada en Supabase producción el 2026-08-14** mediante consultas reales
+  a `integration_jobs` e `integration_drafts` (ambas vacías, estado esperado).
+  La RPC no se invocó para no crear datos productivos de prueba.
+- El transporte y OAuth MCP siguen siendo legado/no estándar y corresponden a
+  Fase 2. No conectar todavía clientes externos a `/api/mcp/sse` o `/rpc`.
+
+## MCP Baiyer — Fase 2 (2026-08-14)
+- Streamable HTTP estándar implementado en `/api/mcp` con tools iniciales de
+  Fase 1. Diseño y operación en `MCP_AUTH_TRANSPORT.md`.
+
+## MCP Baiyer — Fase 3 (2026-08-14)
+- Proyectos, carga de documentos y CRUD de listas implementados como tools
+  MCP. Flujo seguro de draft/preview → confirmación → commit transaccional.
+- Documento operativo: `MCP_FASE_3_PROYECTOS_DOCUMENTOS_LISTAS.md`.
+- Reutiliza migraciones 038/039; no requiere SQL adicional.
+- Migración 039 aplicada y confirmada. Pendiente configurar Railway, desplegar
+  y validar OAuth/tools reales con Codex y Claude.
+
+## MCP Baiyer — Fase 4 (2026-08-14)
+- Búsqueda web normal/ampliada por ítem o lista mediante jobs persistidos.
+- Progreso parcial, cancelación cooperativa y recuperación tras restart.
+- Lectura de ofertas y cobertura de lista disponibles como tools MCP.
+- Documento operativo: `MCP_FASE_4_BUSQUEDA_WEB_COTIZACIONES.md`.
+- 23 tools MCP totales; no requiere migración adicional.
+
+## MCP Baiyer — Fase 5 (2026-08-14)
+- Matriz de proveedores, preparación/edición/envío Gmail de RFQ, estados,
+  sincronización de respuestas y revisión de propuestas expuestos como tools.
+- Confirmación explícita para enviar, sincronizar y aplicar/rechazar datos.
+- Documento operativo: `MCP_FASE_5_PROVEEDORES_RFQ_CORREO.md`.
+- 36 tools MCP totales; no requiere migración adicional.
+- Pendientes honestos: follow-up manual y envío RFQ agrupado vía Outlook.
+
+## MCP Baiyer — Fase 6 (2026-08-14)
+- Comparativos por ítem/lista, recomendación explicable, selección definitiva,
+  ruta/estado/eventos y decisiones de aprobación expuestos como tools MCP.
+- Aprobar/rechazar exige `responsable.usuario_baiyer_id == actor_user_id`; el
+  flujo legacy por email sólo se decide por magic link.
+- Corregido el snapshot de aprobación: ahora incluye alternativas reales.
+- Documento operativo: `MCP_FASE_6_COMPARACION_APROBACIONES.md`.
+- 47 tools MCP totales; no requiere migración adicional.
+
+## MCP Baiyer — Fase 7 (2026-08-14)
+- OC: preview, crear, listar, leer, editar, enviar PDF y tracking.
+- Facturas: preview/commit documental, listar/leer, conciliar/vincular OC,
+  marcar pagada y escanear inbox.
+- Endurecido `/api/oc/enviar` contra acceso cruzado y estados falsos.
+- Documento operativo: `MCP_FASE_7_OC_FACTURAS.md`.
+- 62 tools MCP totales; no requiere migración adicional.
+
+## MCP Baiyer — Fase 8 (2026-08-14)
+- Proveedores/importación, informes, métricas, 9 resources y 9 prompts.
+- Auditoría transversal sin argumentos ni respuestas sensibles.
+- 76 tools MCP totales; 241 pruebas generales aprobadas.
+- Documento: `MCP_FASE_8_PROVEEDORES_REPORTES_RESOURCES_AUDITORIA.md`.
+- Migración `040_mcp_audit_log.sql` aplicada y verificada en producción.
+- OAuth endurecido: DCR, PKCE S256, state/redirect/resource obligatorios,
+  tokens opacos hashados, refresh rotativo y revocación de familia.
+- `backend/migrations/039_mcp_oauth_secure.sql` fue aplicada y confirmada en
+  Supabase. Variables MCP configuradas en Railway; falta el despliegue de Fase 9.
+- `/api/mcp/sse` y `/rpc` son solo legado temporal; los clientes nuevos deben
+  usar Streamable HTTP en `/api/mcp`.
 6. Probar Supplier Capability Intelligence (024) con datos reales: completar un onboarding y confirmar que aparece la fila en `procurement_profiles`; hacer una búsqueda y confirmar que se crea `search_sessions`; usar "Rebuscar con contexto" y confirmar que cae en `search_feedback`.
 7. Verificar visualmente Fases 4–6 de Supplier Capability Intelligence con proveedores categorizados, enviar una RFQ agrupada de prueba desde Gmail y recorrer una búsqueda complementaria hasta el comparador.
 8. Considerar si vale la pena arreglar o eliminar `procurement.py` (endpoint roto usado por el botón "+ Lista") y el sistema de Gantt sin uso (`proyectos.py`) — no tocado, solo detectado.

@@ -10,6 +10,8 @@ Vive en la raíz del dominio (`/.well-known/...`), fuera del prefijo
 `/api/mcp` — así lo exige el estándar, los clientes lo piden ahí directo.
 """
 from fastapi import APIRouter, Request
+from app.config import settings
+from app.mcp.oauth import VALID_SCOPES
 
 router = APIRouter(tags=["mcp-discovery"])
 
@@ -36,26 +38,28 @@ def _base(request: Request) -> str:
 
 @router.get("/.well-known/oauth-authorization-server")
 async def oauth_authorization_server_metadata(request: Request):
-    base = _base(request)
+    issuer = settings.mcp_issuer_url.rstrip("/")
     return {
-        "issuer": base,
-        "authorization_endpoint": f"{base}/api/mcp/oauth/authorize",
-        "token_endpoint": f"{base}/api/mcp/oauth/token",
-        "registration_endpoint": f"{base}/api/mcp/oauth/register",
-        "userinfo_endpoint": f"{base}/api/mcp/oauth/userinfo",
-        "revocation_endpoint": f"{base}/api/mcp/oauth/revoke",
+        "issuer": issuer,
+        "authorization_endpoint": f"{issuer}/api/mcp/oauth/authorize",
+        "token_endpoint": f"{issuer}/api/mcp/oauth/token",
+        "registration_endpoint": f"{issuer}/api/mcp/oauth/register",
+        "userinfo_endpoint": f"{issuer}/api/mcp/oauth/userinfo",
+        "revocation_endpoint": f"{issuer}/api/mcp/oauth/revoke",
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "code_challenge_methods_supported": ["S256"],
         "token_endpoint_auth_methods_supported": ["none"],
-        "scopes_supported": ["read", "write", "admin"],
+        "scopes_supported": sorted(VALID_SCOPES),
+        "resource_indicators_supported": True,
     }
 
 
 @router.get("/.well-known/oauth-protected-resource")
 async def oauth_protected_resource_metadata(request: Request):
-    base = _base(request)
     return {
-        "resource": f"{base}/api/mcp/sse",
-        "authorization_servers": [base],
+        "resource": settings.mcp_resource_url.rstrip("/"),
+        "authorization_servers": [settings.mcp_issuer_url.rstrip("/")],
+        "scopes_supported": sorted(VALID_SCOPES),
+        "resource_name": "Baiyer Procurement MCP",
     }

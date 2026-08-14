@@ -39,8 +39,17 @@ app.add_middleware(
 # middleware de CORS (FastAPI lo intercepta antes de llegar al
 # ServerErrorMiddleware), así que cualquier error no manejado se ve como un
 # 500 JSON normal, con CORS, en vez de una falla opaca de red.
-from fastapi import Request
+from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
+
+
+@app.exception_handler(HTTPException)
+async def manejador_http_exception(request: Request, exc: HTTPException):
+    # OAuth requiere `error` en el nivel superior (RFC 6749/7591), mientras
+    # FastAPI normalmente lo envolvería dentro de `detail`.
+    if request.url.path.startswith("/api/mcp/oauth") and isinstance(exc.detail, dict) and exc.detail.get("error"):
+        return JSONResponse(status_code=exc.status_code, content=exc.detail, headers=exc.headers)
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers)
 
 
 @app.exception_handler(Exception)
@@ -95,12 +104,23 @@ register_error_handlers(app)
 @app.on_event("startup")
 async def startup_event():
     from app.config import settings
+    from app.mcp.streamable import start_streamable_server
+
+    await start_streamable_server()
 
     if settings.should_run_cron:
+        from app.services.web_quote_service import recover_web_quote_jobs
+        await recover_web_quote_jobs()
         from app.services.cron import start_cron
         start_cron()
     else:
         print(f"[Cron] Deshabilitado en environment={settings.environment}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    from app.mcp.streamable import stop_streamable_server
+    await stop_streamable_server()
 
 
 @app.get("/")
@@ -113,3 +133,9 @@ async def root():
         "version": "0.1.0",
         "environment": settings.environment,
     }
+
+
+# Debe ir al final: el mount raíz recibe /api/mcp y los well-known con path,
+# mientras los routers FastAPI anteriores conservan prioridad.
+from app.mcp.streamable import streamable_http_app
+app.mount("/", streamable_http_app)

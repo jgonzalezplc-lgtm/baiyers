@@ -97,22 +97,13 @@ class CrearListaRequest(BaseModel):
 @router.post("")
 async def crear_lista(req: CrearListaRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
+    from app.services.lista_service import ListItemInput, create_list
+    from app.services.mcp_context import ApplicationActorContext
     sb = get_supabase()
-
-    data = {
-        "tipo": MARCA_LISTA,
-        "items": [{"cotizacion_id": it.cotizacion_id, "nombre": it.nombre, "cantidad": it.cantidad, "unidad": it.unidad, "partida": it.partida, "comparado": False} for it in req.items],
-        "definitivos": {},
-    }
-    row = {
-        "user_id": ctx.actor_user_id,
-        "nombre": req.nombre,
-        "descripcion": json.dumps(data, ensure_ascii=False),
-        "estado": "borrador",
-        "monto_total": 0,
-    }
-    res = sb.table("proyectos").insert(row).execute()
-    return {"id": res.data[0]["id"], **data}
+    actor = ApplicationActorContext.from_auth_context(ctx)
+    return create_list(sb, actor, req.nombre, [
+        ListItemInput(**it.model_dump()) for it in req.items
+    ])
 
 
 @router.get("")
@@ -123,57 +114,10 @@ async def listar_listas(ctx: AuthContext = Depends(get_auth_context)):
     hasta que el usuario las abre, momento en que se envuelven de verdad
     (ver `_resolver_o_envolver`)."""
     from app.services.supabase import get_supabase
+    from app.services.lista_service import list_lists as list_lists_service
+    from app.services.mcp_context import ApplicationActorContext
     sb = get_supabase()
-    ids = ctx.user_ids_organizacion
-
-    res = sb.table("proyectos").select("*").in_("user_id", ids).order("created_at", desc=True).execute()
-    listas = []
-    cotizacion_ids_en_listas: set[str] = set()
-    for p in res.data or []:
-        data = _parse_lista(p)
-        if data:
-            n_items = len(data.get("items", []))
-            for it in data.get("items", []):
-                cotizacion_ids_en_listas.add(it["cotizacion_id"])
-            listas.append({
-                "id": p["id"],
-                "nombre": p["nombre"],
-                "created_at": p.get("created_at"),
-                "monto_total": p.get("monto_total") or 0,
-                "n_items": n_items,
-                "n_comparados": sum(1 for it in data.get("items", []) if it.get("comparado")),
-                "n_definitivos": len(data.get("definitivos", {})),
-                "aprobacion_estado": (data.get("aprobacion") or {}).get("estado"),
-                "es_cotizacion_simple": False,
-                # Fase D — para el "creada por X" del frontend.
-                "creado_por": p.get("user_id"),
-            })
-
-    # Cotizaciones sueltas (no envueltas todavía en ninguna lista)
-    try:
-        cots = sb.table("cotizaciones").select(
-            "id, nombre_identificado, estado, created_at, user_id"
-        ).in_("user_id", ids).order("created_at", desc=True).execute()
-    except Exception:
-        cots = None
-    for c in (cots.data or []) if cots else []:
-        if c["id"] in cotizacion_ids_en_listas:
-            continue
-        listas.append({
-            "id": c["id"],
-            "nombre": c.get("nombre_identificado") or "Ítem sin nombre",
-            "created_at": c.get("created_at"),
-            "monto_total": 0,
-            "n_items": 1,
-            "n_comparados": 0,
-            "n_definitivos": 0,
-            "aprobacion_estado": None,
-            "es_cotizacion_simple": True,
-            "creado_por": c.get("user_id"),
-        })
-
-    listas.sort(key=lambda l: l.get("created_at") or "", reverse=True)
-    return listas
+    return list_lists_service(sb, ApplicationActorContext.from_auth_context(ctx))
 
 
 def _envolver_cotizacion_suelta(sb, cotizacion_id: str, user_id: str) -> Optional[dict]:
@@ -890,6 +834,7 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest, c
             cid = it["cotizacion_id"]
             d = definitivos.get(cid)
             if d:
+                alternativas_actuales = _comparador_de(sb, cid)
                 resumen_items.append({
                     "cotizacion_id": cid,
                     "nombre": it["nombre"],
@@ -907,7 +852,7 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest, c
                         "precio_clp": c.get("precio_cotizado") if c.get("precio_cotizado") is not None else c.get("precio"),
                         "moneda": "CLP" if c.get("precio_cotizado") is not None else c.get("moneda", "CLP"),
                         "url": c.get("url"),
-                    } for c in (it.get("comparados") or [])],
+                    } for c in alternativas_actuales],
                 })
 
         monto_total = _monto_total(data)

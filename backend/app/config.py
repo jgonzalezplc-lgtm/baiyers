@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     hunter_api_key: str = ""
     # Etapa 10 — MCP
     mcp_jwt_secret: str = "claria-mcp-secret-change-me-in-production"
+    mcp_issuer_url: str = "http://localhost:8000"
+    mcp_resource_url: str = "http://localhost:8000/api/mcp"
+    mcp_access_token_minutes: int = 60
+    mcp_refresh_token_days: int = 30
+    mcp_allowed_hosts: str = "localhost:*,127.0.0.1:*,testserver"
+    mcp_allowed_origins: str = "http://localhost:*"
 
     class Config:
         env_file = ".env"

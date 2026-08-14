@@ -1,0 +1,6 @@
+[mcp_servers.baiyer]
+url = "https://baiyers-production.up.railway.app/api/mcp"
+auth = "oauth"
+default_tools_approval_mode = "writes"
+startup_timeout_sec = 20
+tool_timeout_sec = 120

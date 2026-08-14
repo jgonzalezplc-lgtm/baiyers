@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "baiyer": {
+      "type": "http",
+      "url": "https://baiyers-production.up.railway.app/api/mcp"
+    }
+  }
+}

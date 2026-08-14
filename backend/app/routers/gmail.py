@@ -954,6 +954,8 @@ async def rechazar_propuesta(propuesta_id: str, req: RevisarPropuestaRequest, ct
     p = ejecutar_maybe_single(sb.table("item_field_updates").select("id,estado").eq("id", propuesta_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
     if not p:
         raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    if p["estado"] != "propuesta":
+        raise HTTPException(status_code=400, detail=f"Ya estaba '{p['estado']}'")
     sb.table("item_field_updates").update({
         "estado": "descartado", "reviewed_at": datetime.now(timezone.utc).isoformat(), "reviewed_by": ctx.actor_user_id,
     }).eq("id", propuesta_id).execute()
