@@ -113,6 +113,11 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   const [pasoProceso, setPasoProceso] = useState(0);
   const respuestasProcesoRef = useRef<string[]>([]);
   const entrevistaProcesoCompletaRef = useRef(false);
+  // Cuántos mensajes del asistente (guardados server-side) ya están
+  // reflejados en `msgs` — permite sólo AGREGAR los nuevos en cada turno en
+  // vez de reemplazar todo el historial (eso borraba preguntas/tarjetas que
+  // sólo existían localmente, ej. cuando silenciar_respuesta=true).
+  const mensajesAsistenteSincronizadosRef = useRef(0);
 
   const PREGUNTAS_PROCESO = [
     "¿Quién o quiénes se encargan de cotizar? Indica sus nombres y correos.",
@@ -201,6 +206,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
 
       if ((sesion.mensajes || []).length > 0) {
         setMsgs(sesion.mensajes.map(mm => ({ rol: mm.rol === "usuario" ? "user" : "bot", texto: mm.texto })));
+        mensajesAsistenteSincronizadosRef.current = sesion.mensajes.filter(mm => mm.rol !== "usuario").length;
         if (!sesion.draft?.nombre_usuario?.valor) setPasoPerfil("nombre");
         else if (!sesion.draft?.empresa?.valor) setPasoPerfil("empresa");
         else if (!sesion.draft?.rut?.valor) setPasoPerfil("rut");
@@ -241,10 +247,30 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
       setDraft(data.draft || {});
       setCompleto(!!data.completo);
       setPropuestaWorkflow(data.propuesta_workflow ?? null);
-      setMsgs((data.mensajes || []).map((mm: { rol: string; texto: string }) => ({ rol: mm.rol === "usuario" ? "user" : "bot", texto: mm.texto })));
+      // Sólo AGREGA los mensajes del asistente que el backend generó de nuevo
+      // en este turno — nunca reemplaza el historial completo, porque eso
+      // borraba preguntas/tarjetas que sólo existen localmente (ej. cuando
+      // silenciar_respuesta=true, el backend no persiste su propio texto).
+      const mensajesBot = (data.mensajes || []).filter((mm: { rol: string }) => mm.rol !== "usuario");
+      const nuevosBot = mensajesBot.slice(mensajesAsistenteSincronizadosRef.current);
+      mensajesAsistenteSincronizadosRef.current = mensajesBot.length;
+      nuevosBot.forEach((mm: { texto: string }) => addBot(mm.texto));
 
       if (paso === "nombre") {
-        setPasoPerfil("empresa");
+        // Antes de preguntar el nombre de la empresa, intenta reconocerla
+        // sólo con el dominio del correo (ej. @inacap.cl → INACAP) — si
+        // vuelve confiado, se salta la pregunta y va directo a confirmar.
+        const d = await investigar(email);
+        if (d.empresa && d.es_empresa_conocida) {
+          setInvestigacion(d);
+          setLogoIdx(0);
+          setLogoUrlFinal(null);
+          addBot(undefined, d);
+          addBot("¿Es esta tu empresa?");
+          setPasoPerfil("confirmar_empresa");
+        } else {
+          setPasoPerfil("empresa");
+        }
       } else if (paso === "empresa") {
         const nombreEmpresa: string | undefined = data.draft?.empresa?.valor;
         addBot("Ok, déjame investigar tu empresa…");
@@ -320,8 +346,33 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     enviarMensajePerfil(mensaje);
   };
 
-  const confirmarEmpresa = (respuesta = "Sí, esa es mi empresa") => {
+  // El botón "Sí, es mi empresa" solo confirmaba en la UI local — nunca le
+  // avisaba al backend, así que `draft.empresa` quedaba sin confirmar y
+  // "Confirmar y continuar" fallaba al final diciendo que faltaba. Se manda
+  // el nombre confirmado como si el usuario lo hubiera escrito (mismo
+  // patrón que `confirmarRutEncontrado`), silenciado porque la UI ya
+  // maneja la siguiente pregunta acá mismo.
+  const persistirEmpresaConfirmada = async (nombreEmpresa: string) => {
+    if (!sessionId) return;
+    try {
+      const res = await authFetch(`${API_URL}/api/onboarding/sesion/${sessionId}/turno`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mensaje: nombreEmpresa, silenciar_respuesta: true }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setDraft(data.draft || {});
+    } catch { /* si falla, "Confirmar y continuar" lo va a rechazar con un mensaje claro */ }
+  };
+
+  const confirmarEmpresa = async (respuesta = "Sí, esa es mi empresa") => {
     addUser(respuesta);
+    if (investigacion?.empresa) {
+      setBusy(true);
+      await persistirEmpresaConfirmada(investigacion.empresa);
+      setBusy(false);
+    }
     if (!investigacion?.logo_candidatos?.[logoIdx] && !logoUrlFinal) {
       avanzarARut();
       return;
