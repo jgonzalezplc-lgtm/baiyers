@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ExternalLink, Paperclip, Check, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
@@ -8,13 +8,15 @@ import { Card, Badge, BtnPrimary, BtnSecondary, SkeletonText, SkeletonChatBubble
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+type Proveedor = "gmail" | "outlook";
+
 interface Conversacion {
   id: string;
   proveedor_nombre: string | null;
   proveedor_email: string | null;
   subject: string | null;
   estado: string;
-  gmail_url: string;
+  gmail_url: string | null;
 }
 interface Mensaje {
   id: string;
@@ -72,6 +74,8 @@ function fmtFechaHora(iso: string) {
 export default function ConversacionDetallePage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const proveedor: Proveedor = searchParams.get("proveedor") === "outlook" ? "outlook" : "gmail";
   const [userId, setUserId] = useState<string | null>(null);
   const [conv, setConv] = useState<Conversacion | null>(null);
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
@@ -82,7 +86,7 @@ export default function ConversacionDetallePage() {
 
   const cargar = useCallback((uid: string) => {
     setLoading(true);
-    authFetch(`${API_URL}/api/gmail/conversaciones/${id}`)
+    authFetch(`${API_URL}/api/${proveedor}/conversaciones/${id}`)
       .then(r => r.json())
       .then(d => {
         setConv(d.conversacion);
@@ -91,7 +95,7 @@ export default function ConversacionDetallePage() {
         setPropuestas(d.propuestas || []);
       })
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, proveedor]);
 
   useEffect(() => {
     createClient().auth.getUser().then(({ data }) => {
@@ -106,7 +110,7 @@ export default function ConversacionDetallePage() {
     if (!userId) return;
     setProcesando(propuestaId);
     try {
-      const res = await authFetch(`${API_URL}/api/gmail/propuestas/${propuestaId}/${accion}`, {
+      const res = await authFetch(`${API_URL}/api/${proveedor}/propuestas/${propuestaId}/${accion}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
@@ -161,9 +165,11 @@ export default function ConversacionDetallePage() {
             {conv.proveedor_nombre || conv.proveedor_email} {conv.proveedor_email && conv.proveedor_nombre ? `· ${conv.proveedor_email}` : ""}
           </div>
         </div>
-        <a href={conv.gmail_url} target="_blank" rel="noreferrer" className="btn-swiss-secondary" style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <ExternalLink size={15} strokeWidth={1.75} /> Abrir en Gmail
-        </a>
+        {conv.gmail_url && (
+          <a href={conv.gmail_url} target="_blank" rel="noreferrer" className="btn-swiss-secondary" style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <ExternalLink size={15} strokeWidth={1.75} /> Abrir en Gmail
+          </a>
+        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20, alignItems: "start" }}>

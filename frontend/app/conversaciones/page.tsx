@@ -11,6 +11,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const COLS = "1fr 1.4fr 160px 130px 120px 32px";
 
+type Proveedor = "gmail" | "outlook";
+
 interface Conversacion {
   id: string;
   proveedor_nombre: string | null;
@@ -18,9 +20,12 @@ interface Conversacion {
   subject: string | null;
   estado: string;
   last_message_at: string | null;
-  gmail_url: string;
+  gmail_url: string | null;
   propuestas_pendientes: number;
+  proveedor_correo: Proveedor;
 }
+
+const PROVEEDOR_LABEL: Record<Proveedor, string> = { gmail: "Gmail", outlook: "Outlook" };
 
 const ESTADO_LABEL: Record<string, { label: string; tipo: "success" | "warning" | "error" | "info" | "default" }> = {
   draft: { label: "Borrador", tipo: "default" },
@@ -53,10 +58,18 @@ export default function ConversacionesPage() {
 
   const cargar = useCallback((uid: string) => {
     setLoading(true);
-    authFetch(`${API_URL}/api/gmail/conversaciones`)
-      .then(r => (r.ok ? r.json() : []))
-      .then(setConvs)
-      .catch(() => {})
+    Promise.all([
+      authFetch(`${API_URL}/api/gmail/conversaciones`).then(r => (r.ok ? r.json() : [])).catch(() => []),
+      authFetch(`${API_URL}/api/outlook/conversaciones`).then(r => (r.ok ? r.json() : [])).catch(() => []),
+    ])
+      .then(([gmail, outlook]) => {
+        const todas: Conversacion[] = [
+          ...(gmail as Conversacion[]).map(c => ({ ...c, proveedor_correo: "gmail" as const })),
+          ...(outlook as Conversacion[]).map(c => ({ ...c, proveedor_correo: "outlook" as const })),
+        ];
+        todas.sort((a, b) => (b.last_message_at || "").localeCompare(a.last_message_at || ""));
+        setConvs(todas);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -74,11 +87,14 @@ export default function ConversacionesPage() {
     setSincronizando(true);
     setError("");
     try {
-      const res = await authFetch(`${API_URL}/api/gmail/sincronizar-respuestas`, { method: "POST" });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || "No se pudo sincronizar");
-      }
+      const resultados = await Promise.allSettled([
+        authFetch(`${API_URL}/api/gmail/sincronizar-respuestas`, { method: "POST" }),
+        authFetch(`${API_URL}/api/outlook/sincronizar-respuestas`, { method: "POST" }),
+      ]);
+      // Sólo falla si AMBAS fuentes fallaron — es normal que alguien tenga
+      // conectado un solo proveedor de correo.
+      const algunaOk = resultados.some(r => r.status === "fulfilled" && r.value.ok);
+      if (!algunaOk) throw new Error("No se pudo sincronizar (¿tienes Gmail u Outlook conectado?)");
       cargar(userId);
     } catch (e) {
       setError((e as Error).message);
@@ -150,10 +166,15 @@ export default function ConversacionesPage() {
           {convs.map((c, i) => {
             const est = ESTADO_LABEL[c.estado] ?? { label: c.estado, tipo: "default" as const };
             return (
-              <TableRow key={c.id} cols={COLS} onClick={() => router.push(`/conversaciones/${c.id}`)} last={i === convs.length - 1}>
+              <TableRow key={`${c.proveedor_correo}:${c.id}`} cols={COLS} onClick={() => router.push(`/conversaciones/${c.id}?proveedor=${c.proveedor_correo}`)} last={i === convs.length - 1}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 500, color: "var(--n-900)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.proveedor_nombre || c.proveedor_email || "Proveedor"}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ fontWeight: 500, color: "var(--n-900)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {c.proveedor_nombre || c.proveedor_email || "Proveedor"}
+                    </div>
+                    <span title={PROVEEDOR_LABEL[c.proveedor_correo]} style={{ fontSize: 11, color: "var(--n-400)", flexShrink: 0 }}>
+                      · {PROVEEDOR_LABEL[c.proveedor_correo]}
+                    </span>
                   </div>
                   {c.proveedor_email && <div style={{ fontSize: 12, color: "var(--n-500)" }}>{c.proveedor_email}</div>}
                 </div>
@@ -167,14 +188,16 @@ export default function ConversacionesPage() {
                   )}
                 </span>
                 <span style={{ color: "var(--n-500)", fontSize: 13 }}>{fmtFecha(c.last_message_at)}</span>
-                <a
-                  href={c.gmail_url} target="_blank" rel="noreferrer"
-                  onClick={e => e.stopPropagation()}
-                  title="Abrir en Gmail"
-                  style={{ color: "var(--n-500)", display: "inline-flex" }}
-                >
-                  <ExternalLink size={15} strokeWidth={1.75} />
-                </a>
+                {c.gmail_url ? (
+                  <a
+                    href={c.gmail_url} target="_blank" rel="noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    title="Abrir en Gmail"
+                    style={{ color: "var(--n-500)", display: "inline-flex" }}
+                  >
+                    <ExternalLink size={15} strokeWidth={1.75} />
+                  </a>
+                ) : <span />}
               </TableRow>
             );
           })}

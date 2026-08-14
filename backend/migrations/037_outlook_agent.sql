@@ -78,3 +78,34 @@ CREATE TABLE IF NOT EXISTS public.outlook_attachments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_outlook_attachments_message ON public.outlook_attachments(message_id);
+
+-- ─── RLS ────────────────────────────────────────────────────────────────────
+-- Las tablas equivalentes de Gmail (gmail_conversations/messages/attachments,
+-- migración 019) nunca quedaron con RLS habilitado — gap preexistente que no
+-- se replica acá. El backend usa el service key (bypassea RLS) para todo el
+-- acceso real; esto es sólo defensa en profundidad si algún día se consulta
+-- con el anon/authenticated key directo. Mismo patrón que 031_rls_organizacion.sql.
+
+ALTER TABLE public.outlook_conversations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS outlook_conversations_org ON public.outlook_conversations;
+CREATE POLICY outlook_conversations_org ON public.outlook_conversations
+    FOR ALL USING (public.es_miembro_de_organizacion(auth.uid(), user_id));
+
+ALTER TABLE public.outlook_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS outlook_messages_org ON public.outlook_messages;
+CREATE POLICY outlook_messages_org ON public.outlook_messages
+    FOR ALL USING (EXISTS (
+        SELECT 1 FROM public.outlook_conversations c
+        WHERE c.id = outlook_messages.conversation_id
+          AND public.es_miembro_de_organizacion(auth.uid(), c.user_id)
+    ));
+
+ALTER TABLE public.outlook_attachments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS outlook_attachments_org ON public.outlook_attachments;
+CREATE POLICY outlook_attachments_org ON public.outlook_attachments
+    FOR ALL USING (EXISTS (
+        SELECT 1 FROM public.outlook_messages m
+        JOIN public.outlook_conversations c ON c.id = m.conversation_id
+        WHERE m.id = outlook_attachments.message_id
+          AND public.es_miembro_de_organizacion(auth.uid(), c.user_id)
+    ));
