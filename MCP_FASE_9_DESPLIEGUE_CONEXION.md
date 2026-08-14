@@ -1,6 +1,6 @@
 # Baiyer MCP — Fase 9: despliegue y conexión
 
-Estado: **variables configuradas; despliegue y autenticación externa pendientes**
+Estado: **desplegada; Codex validado y Claude MCP autenticado**
 Fecha: 2026-08-14
 
 ## Resultado esperado
@@ -103,7 +103,12 @@ Después de autenticar cada cliente:
 
 - Las seis variables MCP fueron cargadas manualmente en el backend Railway el
   2026-08-14.
-- GitHub CLI tiene credenciales vencidas; el push necesita reautenticación o
-  credenciales Git válidas.
-- La versión actualmente publicada todavía responde `404` en discovery y
-  `/api/mcp`; por eso no se debe intentar OAuth antes del nuevo deploy.
+- Backend desplegado en Railway y discovery/401 validados en producción.
+- Codex autenticado y `baiyer_status` ejecutado correctamente para la
+  organización `Claria Soluciones de Software`.
+- Claude Code autenticó correctamente el MCP y confirmó `Connected to baiyer`.
+  La prueba de tool quedó pendiente únicamente porque expiró la sesión general
+  de Claude Pro del CLI; renovar con `claude auth login` y repetir
+  `baiyer_status`.
+- Últimos arreglos productivos: pin del SDK MCP, metadata scoped, render del
+  consentimiento y consumo del estado OAuth posterior a la autenticación.
