@@ -18,5 +18,7 @@ google-api-python-client>=2.190.0
 google-auth>=2.55.0
 google-auth-oauthlib>=1.4.0
 # MCP server y JWT (se importan al arrancar main.py)
-mcp>=1.28.0
+# Pin exacto: Railway reutilizó una capa antigua/incompleta llamada `mcp` que
+# no incluía mcp.server.fastmcp. Esta es la distribución oficial verificada.
+mcp==1.28.1
 python-jose[cryptography]>=3.3.0
