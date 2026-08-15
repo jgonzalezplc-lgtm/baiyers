@@ -45,8 +45,8 @@ correo, mensajes ni respuestas de proveedores.
 ## Verificación
 
 - 64 pruebas específicas MCP aprobadas.
-- 241 pruebas generales aprobadas salvo el test preexistente con Gemini vivo.
-- 76 tools, 9 resource templates y 9 prompts.
+- 272 pruebas generales aprobadas salvo el test preexistente con Gemini vivo.
+- 77 tools, 9 resource templates y 9 prompts.
 - No se realizaron importaciones ni escrituras productivas.
 
 ## Migración

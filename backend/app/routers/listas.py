@@ -368,6 +368,24 @@ async def seleccionar_proveedor_item(lista_id: str, req: SeleccionarProveedorIte
                 sb.table("proveedores").update({
                     "sitio_web": banco.get("website"), "telefono": banco.get("phone")
                 }).eq("id", proveedor_id).execute()
+                # Elegir explícitamente un proveedor del banco confirma que
+                # puede abastecer la categoría de este ítem. Persistimos la
+                # capacidad mediante el log auditable existente para que en
+                # listas futuras también aparezca como proveedor privado.
+                item = next(it for it in data.get("items", []) if it["cotizacion_id"] == req.cotizacion_id)
+                categoria = item.get("categoria")
+                if not categoria:
+                    cotizacion = ejecutar_maybe_single(
+                        sb.table("cotizaciones").select("categoria")
+                        .eq("id", req.cotizacion_id).maybe_single()
+                    ).data or {}
+                    categoria = cotizacion.get("categoria")
+                if categoria:
+                    from app.services.supplier_capability_intelligence import registrar_evento
+                    registrar_evento(
+                        ctx.actor_user_id, proveedor_id, "manual_category_assigned",
+                        categoria_confirmada=categoria, estricto=True,
+                    )
         elif proveedor_id:
             proveedor = ejecutar_maybe_single(sb.table("proveedores").select("id,nombre,email").eq("id", proveedor_id).in_("user_id", ctx.user_ids_organizacion).maybe_single()).data
             if not proveedor:

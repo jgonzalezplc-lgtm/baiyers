@@ -16,6 +16,53 @@ async def get_supplier_matrix(actor: ApplicationActorContext, list_id: str) -> d
     return await matriz_proveedores_confianza(list_id, actor.to_auth_context())
 
 
+async def suggest_suppliers(actor: ApplicationActorContext, list_id: str) -> dict:
+    """Devuelve la recomendación completa que ve la aplicación web.
+
+    La matriz de confianza contiene solamente proveedores privados con una
+    capacidad aprendida. El banco global curado por Baiyer se incorpora en
+    ``detalle_lista`` y no debe copiarse masivamente al directorio privado.
+    Exponer ese mismo resultado evita que MCP y la web recomienden universos
+    distintos.
+    """
+    from app.routers.listas import detalle_lista
+
+    detail = await detalle_lista(list_id, actor.to_auth_context())
+    items = []
+    for item in detail.get("items", []):
+        recommendations = item.get("proveedores_recomendados") or []
+        items.append({
+            "cotizacion_id": item.get("cotizacion_id"),
+            "nombre": item.get("nombre"),
+            "cantidad": float(item.get("cantidad") or 1),
+            "unidad": item.get("unidad") or "un",
+            "categoria": item.get("categoria") or "otro",
+            "n_candidatos": len(recommendations),
+            "proveedores_recomendados": recommendations,
+        })
+    return {"list_id": list_id, "items": items}
+
+
+async def select_supplier_for_item(
+    actor: ApplicationActorContext, list_id: str, cotizacion_id: str, *,
+    origin: str, supplier_id: Optional[str] = None, email: Optional[str] = None,
+    selected: bool = True,
+) -> dict:
+    """Selecciona tanto proveedores privados como sugeridos del banco Baiyer.
+
+    El router existente materializa un sugerido sólo al seleccionarlo y
+    sincroniza la matriz RFQ; así no se contamina el directorio de la empresa
+    con todo el catálogo global.
+    """
+    from app.routers.listas import SeleccionarProveedorItemRequest, seleccionar_proveedor_item
+
+    request = SeleccionarProveedorItemRequest(
+        cotizacion_id=cotizacion_id, origen=origin, proveedor_id=supplier_id,
+        email=email, seleccionado=selected,
+    )
+    return await seleccionar_proveedor_item(list_id, request, actor.to_auth_context())
+
+
 async def set_supplier_matrix(actor: ApplicationActorContext, list_id: str, selections: list[dict[str, Any]]) -> dict:
     from app.routers.listas import GuardarMatrizConfianzaRequest, guardar_matriz_proveedores_confianza
     try:

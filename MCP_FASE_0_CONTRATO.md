@@ -168,6 +168,7 @@ minutos.
 | `suggest_suppliers` | `suppliers:read` | none | existing | capability intelligence + sugeridos |
 | `get_supplier_matrix` | `rfq:read` | none | existing | proveedores-confianza |
 | `set_supplier_matrix` | `rfq:write` | none | existing | PUT proveedores-confianza |
+| `select_supplier_for_item` | `rfq:write` | none | existing | materializa sólo sugeridos elegidos |
 | `prepare_rfq` | `rfq:write` | none | existing | `POST /{lista}/rfq/preparar` |
 | `get_rfq_preview` | `rfq:read` | none | existing | `GET /{lista}/rfq` |
 | `update_rfq_draft` | `rfq:write` | none | existing | PATCH batch |

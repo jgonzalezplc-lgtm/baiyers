@@ -331,7 +331,7 @@ async def get_list_coverage(list_id: str) -> dict:
 @mcp.tool(name="suggest_suppliers", description="Sugiere proveedores explicables para cada ítem de una lista.", annotations=ToolAnnotations(readOnlyHint=True))
 async def suggest_suppliers(list_id: str) -> dict:
     actor = await asyncio.to_thread(_actor, "suppliers:read")
-    from app.services.rfq_mcp_service import get_supplier_matrix as service
+    from app.services.rfq_mcp_service import suggest_suppliers as service
     return await service(actor, list_id)
 
 
@@ -347,6 +347,23 @@ async def set_supplier_matrix(list_id: str, selections: list[dict[str, Any]]) ->
     actor = await asyncio.to_thread(_actor, "rfq:write")
     from app.services.rfq_mcp_service import set_supplier_matrix as service
     return await service(actor, list_id, selections)
+
+
+@mcp.tool(
+    name="select_supplier_for_item",
+    description="Selecciona o quita un proveedor privado o sugerido por Baiyer para un ítem.",
+)
+async def select_supplier_for_item(
+    list_id: str, cotizacion_id: str, origin: str,
+    supplier_id: Optional[str] = None, email: Optional[str] = None,
+    selected: bool = True,
+) -> dict:
+    actor = await asyncio.to_thread(_actor, "rfq:write")
+    from app.services.rfq_mcp_service import select_supplier_for_item as service
+    return await service(
+        actor, list_id, cotizacion_id, origin=origin,
+        supplier_id=supplier_id, email=email, selected=selected,
+    )
 
 
 @mcp.tool(name="prepare_rfq", description="Prepara borradores de correo agrupados por proveedor sin enviarlos.")

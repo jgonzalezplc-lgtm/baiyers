@@ -77,6 +77,7 @@ def test_initialize_y_tools_list_usan_jsonrpc_estandar(client, monkeypatch):
         "get_job", "list_jobs", "cancel_job", "start_web_quote",
         "search_alternatives", "get_web_quote", "get_item_quotes", "get_list_coverage",
         "suggest_suppliers", "get_supplier_matrix", "set_supplier_matrix",
+        "select_supplier_for_item",
         "prepare_rfq", "get_rfq_preview", "update_rfq_draft", "send_rfq",
         "get_rfq_status", "sync_supplier_replies", "list_supplier_replies",
         "get_supplier_reply", "apply_reply_proposal", "reject_reply_proposal",

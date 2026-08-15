@@ -279,7 +279,10 @@ Railway ~$5-10/mes · Supabase free · Serper 2.500 gratis→$50/50k · Gemini f
   sincronización de respuestas y revisión de propuestas expuestos como tools.
 - Confirmación explícita para enviar, sincronizar y aplicar/rechazar datos.
 - Documento operativo: `MCP_FASE_5_PROVEEDORES_RFQ_CORREO.md`.
-- 36 tools MCP totales; no requiere migración adicional.
+- `suggest_suppliers` combina ahora el directorio privado con el banco global
+  categorizado que ya usa la web; `select_supplier_for_item` materializa sólo
+  el sugerido elegido y registra su capacidad para listas futuras.
+- 37 tools MCP acumuladas al cierre de esta fase; no requiere migración adicional.
 - Pendientes honestos: follow-up manual y envío RFQ agrupado vía Outlook.
 
 ## MCP Baiyer — Fase 6 (2026-08-14)
@@ -302,7 +305,8 @@ Railway ~$5-10/mes · Supabase free · Serper 2.500 gratis→$50/50k · Gemini f
 ## MCP Baiyer — Fase 8 (2026-08-14)
 - Proveedores/importación, informes, métricas, 9 resources y 9 prompts.
 - Auditoría transversal sin argumentos ni respuestas sensibles.
-- 76 tools MCP totales; 241 pruebas generales aprobadas.
+- 77 tools MCP totales; 272 pruebas generales aprobadas y una deseleccionada
+  porque llama Gemini en vivo.
 - Documento: `MCP_FASE_8_PROVEEDORES_REPORTES_RESOURCES_AUDITORIA.md`.
 - Migración `040_mcp_audit_log.sql` aplicada y verificada en producción.
 - OAuth endurecido: DCR, PKCE S256, state/redirect/resource obligatorios,

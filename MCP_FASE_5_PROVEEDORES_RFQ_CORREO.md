@@ -17,10 +17,13 @@ agentes productivos; no crea un flujo paralelo.
 - `suggest_suppliers(list_id)`
 - `get_supplier_matrix(list_id)`
 - `set_supplier_matrix(list_id, selections)`
+- `select_supplier_for_item(list_id, cotizacion_id, origin, supplier_id?, email?, selected?)`
 
-Las recomendaciones provienen del directorio privado y de
-`supplier_capabilities`, excluyen proveedores bloqueados y explican por qué
-un proveedor abastece una categoría.
+Las recomendaciones combinan el directorio privado (`supplier_capabilities`)
+con el banco global categorizado de Baiyer, igual que la interfaz web. Un
+proveedor global sólo se materializa en el directorio privado cuando el
+usuario lo selecciona mediante `select_supplier_for_item`; esa selección
+registra además su capacidad auditable para listas futuras.
 
 ### Preparación y envío
 
@@ -55,6 +58,7 @@ tomada no puede invertirse accidentalmente desde MCP.
 suggest_suppliers
 get_supplier_matrix
 set_supplier_matrix
+select_supplier_for_item
 prepare_rfq
 get_rfq_preview
 update_rfq_draft (si hace falta)
@@ -80,9 +84,10 @@ confirmar apply_reply_proposal o reject_reply_proposal
 ## Verificación
 
 - 51 pruebas específicas de MCP aprobadas.
-- 228 pruebas generales aprobadas, excluyendo únicamente el test preexistente
-  que llama Gemini en vivo.
-- 36 tools publicadas en el catálogo MCP total.
+- 272 pruebas generales aprobadas y una deseleccionada porque llama Gemini en
+  vivo.
+- 77 tools publicadas en el catálogo MCP total después de la unificación con
+  el banco global.
 - No se envió ningún correo real durante las pruebas.
 - No requiere migración SQL adicional.
 
