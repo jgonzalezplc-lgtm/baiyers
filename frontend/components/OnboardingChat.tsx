@@ -184,7 +184,9 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
       const faltan = camposFaltantes(m);
 
       if (floating && faltan.length === 0) { onDone?.(); return; }
-      if (!floating && u.user_metadata?.onboarding_completo && faltan.length === 0) { router.replace("/dashboard"); return; }
+      // Cuentas legado pueden tener el perfil completo sin el flag nuevo.
+      // La completitud real de campos basta para no reiniciar el chat.
+      if (!floating && faltan.length === 0) { router.replace("/dashboard"); return; }
 
       const correo = u.email ?? "";
       setEmail(correo);

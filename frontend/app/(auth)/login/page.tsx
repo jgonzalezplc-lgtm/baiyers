@@ -68,7 +68,11 @@ function LoginInner() {
     setError("");
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=/onboarding&conectar_gmail=1` },
+      // Login y onboarding son decisiones distintas. Un usuario que vuelve
+      // entra al dashboard; ahí el perfil incompleto se ofrece de forma
+      // flotante. `conectar_gmail=1` conserva el consentimiento encadenado,
+      // pero Gmail también debe volver al dashboard.
+      options: { redirectTo: `${window.location.origin}/auth/callback?next=/dashboard&conectar_gmail=1` },
     });
     if (error) setError(`No se pudo iniciar con Google: ${error.message}`);
   };

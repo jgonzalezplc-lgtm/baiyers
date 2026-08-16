@@ -108,7 +108,7 @@ def obtener_perfil_organizacion(organizacion_id: str) -> dict:
     sb = _sb()
     try:
         resp = sb.table("organizaciones").select(
-            "nombre, rut, direccion, logo_url"
+            "nombre, rut, direccion, logo_url, industria, pais, sitio_web"
         ).eq("id", organizacion_id).maybe_single().execute()
         return (resp.data if resp else None) or {}
     except Exception:

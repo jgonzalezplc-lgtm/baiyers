@@ -57,7 +57,10 @@ function CallbackInner() {
     yaCorrio.current = true;
 
     const code = params.get("code");
-    const next = params.get("next") || "/onboarding";
+    // Un callback sin destino explícito corresponde a un login, no a un
+    // registro. El onboarding decide por completitud del perfil, nunca por
+    // el mero hecho de haber usado Google OAuth.
+    const next = params.get("next") || "/dashboard";
     const isRecovery = params.get("flow") === "recovery";
     const conectarGmail = params.get("conectar_gmail") === "1";
     const conectarOutlook = params.get("conectar_outlook") === "1";

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { AlertCircle, Workflow, Mail } from "lucide-react";
 import { BtnPrimary, Input, PageHeader, Card, SkeletonBox, CascadeWrapper } from "@/components/ui";
+import { authFetch } from "@/lib/authFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -45,13 +46,18 @@ export default function SettingsPage() {
       if (!user) { window.location.href = "/login"; return; }
       setEmail(user.email ?? "");
       const m = user.user_metadata ?? {};
+      let org: Record<string, string | null> = {};
+      try {
+        const res = await authFetch(`${API_URL}/api/organizacion/mia`);
+        if (res.ok) org = await res.json();
+      } catch { /* compatibilidad defensiva con despliegues antiguos */ }
       setPerfil({
-        empresa: m.empresa ?? "",
-        industria: m.industria ?? "",
-        rut: m.rut ?? "",
+        empresa: org.nombre ?? m.empresa ?? "",
+        industria: org.industria ?? m.industria ?? "",
+        rut: org.rut ?? m.rut ?? "",
         nombre_usuario: m.nombre_usuario ?? "",
-        pais: m.pais ?? "",
-        sitio_web: m.sitio_web ?? "",
+        pais: org.pais ?? m.pais ?? "",
+        sitio_web: org.sitio_web ?? m.sitio_web ?? "",
         autorizador_email: m.autorizador_email ?? "",
       });
       setLogoUrl(m.logo_url ?? null);
@@ -64,6 +70,17 @@ export default function SettingsPage() {
 
   const handleGuardar = async () => {
     setGuardando(true);
+    const orgRes = await authFetch(`${API_URL}/api/organizacion/mia`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nombre: perfil.empresa,
+        industria: perfil.industria || null,
+        rut: perfil.rut || null,
+        pais: perfil.pais || null,
+        sitio_web: perfil.sitio_web || null,
+      }),
+    });
     const { error } = await supabase.auth.updateUser({
       data: {
         empresa: perfil.empresa.trim() || null,
@@ -76,7 +93,7 @@ export default function SettingsPage() {
       },
     });
     setGuardando(false);
-    setToast(error ? "Error guardando configuración." : "Datos guardados");
+    setToast(error || !orgRes.ok ? "Error guardando configuración." : "Datos guardados");
     setTimeout(() => setToast(""), 3000);
   };
 
