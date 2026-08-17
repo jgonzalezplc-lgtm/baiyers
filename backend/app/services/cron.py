@@ -86,12 +86,25 @@ def _sincronizar_outlook():
         print(f"[Cron] Error en sync de Outlook: {e}")
 
 
+def _procesar_workflow_actions():
+    """Procesa acciones durables; el lease evita envíos duplicados."""
+    from app.services.workflow_scheduler import procesar_acciones_vencidas
+
+    try:
+        resultado = procesar_acciones_vencidas()
+        if resultado.get("procesadas") or resultado.get("errores"):
+            print(f"[Cron] Workflow scheduler: {resultado}")
+    except Exception as e:
+        print(f"[Cron] Error en workflow scheduler: {e}")
+
+
 def start_cron():
     scheduler = BackgroundScheduler()
     scheduler.add_job(_enviar_ratings_pendientes, "interval", hours=1, id="ratings_cron")
     scheduler.add_job(_check_recurrencias, "interval", hours=1, id="recurrencias_cron")
     scheduler.add_job(_sincronizar_gmail, "interval", minutes=1, id="gmail_sync_cron")
     scheduler.add_job(_sincronizar_outlook, "interval", minutes=1, id="outlook_sync_cron")
+    scheduler.add_job(_procesar_workflow_actions, "interval", minutes=1, id="workflow_actions_cron")
     scheduler.start()
-    print("[Cron] Scheduler iniciado — ratings/recurrencias cada 1h, Gmail y Outlook cada 1min")
+    print("[Cron] Scheduler iniciado — ratings/recurrencias cada 1h; correo y workflow cada 1min")
     return scheduler

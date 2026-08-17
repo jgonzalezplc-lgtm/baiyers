@@ -764,7 +764,17 @@ async def _crear_y_enviar_solicitudes(sb, user_id: str, lista_id: str, lista_nom
     from app.routers.aprobaciones import _crear_solicitud_aprobacion
     from app.routers.aprobaciones import SolicitudRequest
     from app.services.gmail_service import get_gmail_service, send_email
-    from app.services.mail_template_service import render, registrar_envio
+    from app.services.mail_template_service import (
+        actualizar_entrega_reservada, registrar_envio, render, reservar_envio,
+    )
+
+    es_unificado = resolucion.get("execution_owner") == "unified"
+    if es_unificado and not organizacion_id:
+        from app.services.organizacion import resolver_organizacion
+        organizacion = resolver_organizacion(user_id)
+        organizacion_id = organizacion.organizacion_id if organizacion else None
+    if es_unificado and not organizacion_id:
+        raise HTTPException(status_code=400, detail="No se pudo resolver la organización del workflow")
 
     # user_integrations es personal — cada usuario conecta su propio Gmail.
     integ = sb.table("user_integrations").select("*").eq("user_id", user_id).eq("provider", "gmail").limit(1).execute()
@@ -789,6 +799,23 @@ async def _crear_y_enviar_solicitudes(sb, user_id: str, lista_id: str, lista_nom
             workflow_nodo_id=resolucion["nodo_id"],
             responsable_id=responsable["id"],
         ))
+        reserva = None
+        if es_unificado:
+            reserva = reservar_envio(
+                organizacion_id, "approval_requested", responsable["email"],
+                f"approval_requested:{sol['id']}",
+                workflow_id=resolucion.get("workflow_id"),
+                workflow_nodo_id=resolucion["nodo_id"],
+                responsable_id=responsable["id"],
+            )
+            if not reserva["adquirida"]:
+                if (reserva.get("entrega") or {}).get("estado") != "enviado":
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"El envío a {responsable['email']} ya fue reservado y su resultado es incierto",
+                    )
+                enviadas.append({"responsable_id": responsable["id"], "nombre": responsable["nombre"], "email": responsable["email"], "token": sol["token"]})
+                continue
         try:
             service, creds = get_gmail_service(integration["access_token"], integration["refresh_token"])
             if creds.token != integration["access_token"]:
@@ -806,10 +833,18 @@ async def _crear_y_enviar_solicitudes(sb, user_id: str, lista_id: str, lista_nom
                 "item_lines": item_lines,
                 "link_autorizacion": sol["magic_link"],
                 "expira_at": sol["expira_at"][:10],
-            }, organizacion_id=organizacion_id)
+            }, organizacion_id=organizacion_id,
+               workflow_id=resolucion.get("workflow_id") if es_unificado else None,
+               nodo_id=resolucion["nodo_id"] if es_unificado else None)
             asunto, cuerpo = renderizado["subject"], renderizado["body"]
-            send_email(service, responsable["email"], asunto, cuerpo, integration["email"])
-            if organizacion_id:
+            resultado_envio = send_email(service, responsable["email"], asunto, cuerpo, integration["email"])
+            if es_unificado and reserva:
+                actualizar_entrega_reservada(
+                    reserva["entrega"]["id"], reserva["reservation_token"], "enviado",
+                    gmail_message_id=(resultado_envio or {}).get("id"),
+                    gmail_thread_id=(resultado_envio or {}).get("threadId"),
+                )
+            elif organizacion_id:
                 try:
                     registrar_envio(
                         organizacion_id, "approval_requested", responsable["email"],
@@ -821,8 +856,22 @@ async def _crear_y_enviar_solicitudes(sb, user_id: str, lista_id: str, lista_nom
         except HTTPException:
             raise
         except Exception as e:
+            if es_unificado and reserva and reserva.get("adquirida"):
+                try:
+                    actualizar_entrega_reservada(
+                        reserva["entrega"]["id"], reserva["reservation_token"],
+                        "delivery_uncertain", error=str(e),
+                    )
+                except Exception as auditoria_error:
+                    print(f"[listas] no se pudo marcar delivery_uncertain: {auditoria_error}")
             raise HTTPException(status_code=500, detail=f"No se pudo enviar el correo de autorización a {responsable['email']}: {e}")
         enviadas.append({"responsable_id": responsable["id"], "nombre": responsable["nombre"], "email": responsable["email"], "token": sol["token"]})
+        if es_unificado:
+            from app.services.workflow_scheduler import programar_recordatorios_autorizacion
+            programar_recordatorios_autorizacion(
+                resolucion, responsable_id=responsable["id"],
+                lista_id=lista_id, lista_nombre=lista_nombre,
+            )
     return enviadas
 
 

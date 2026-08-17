@@ -23,7 +23,7 @@ TIPOS_NODO = {
 # menos un rol o responsable asignado, si no el grafo no es ejecutable.
 TIPOS_REQUIEREN_RESPONSABLE = {"tarea_humana", "revision", "autorizacion", "homologacion"}
 
-ROLES_BASE = {"cotizador", "revisor", "autorizador", "comprador"}
+ROLES_BASE = {"cotizador", "revisor", "autorizador", "homologador", "comprador"}
 
 OPERADORES_VALIDOS = {">", ">=", "<", "<=", "==", "!=", "in", "not in"}
 CAMPOS_CONDICION_VALIDOS = {

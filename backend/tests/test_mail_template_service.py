@@ -102,6 +102,38 @@ class FakeSupabaseDB:
         return FakeQuery(self._tablas.setdefault(nombre, []))
 
 
+class FakeRpcQuery:
+    def __init__(self, data):
+        self.data = data
+
+    def execute(self):
+        return FakeExec(self.data)
+
+
+class FakeSupabaseConReserva(FakeSupabaseDB):
+    def __init__(self):
+        super().__init__()
+        self.claves_reservadas = set()
+
+    def rpc(self, nombre, params):
+        assert nombre == "reserve_mail_delivery_event"
+        clave = params["p_idempotency_key"]
+        if clave in self.claves_reservadas:
+            return FakeRpcQuery([])
+        self.claves_reservadas.add(clave)
+        row = {
+            "id": f"reserva-{len(self.claves_reservadas)}",
+            "organizacion_id": params["p_organizacion_id"],
+            "evento": params["p_evento"],
+            "destinatario_email": params["p_destinatario_email"],
+            "idempotency_key": clave,
+            "estado": "reservada",
+            "reservation_token": params["p_reservation_token"],
+        }
+        self._tablas["mail_delivery_events"].append(row)
+        return FakeRpcQuery([row])
+
+
 class ExtraerPlaceholdersTest(unittest.TestCase):
     def test_extrae_variables_usadas(self):
         self.assertEqual(svc.extraer_placeholders("Hola {{nombre}}, tu OC {{numero_oc}} llegó"), {"nombre", "numero_oc"})
@@ -216,6 +248,14 @@ class GuardarVersionYResolverTest(unittest.TestCase):
         self.assertEqual(por_evento["rfq_received_thanks"]["origen"], "organizacion")
         self.assertEqual(por_evento["rfq_requested"]["origen"], "default")
 
+    def test_restaurar_herencia_archiva_override_sin_borrar_versiones(self):
+        svc.guardar_version("org-1", "rfq_received_thanks", "Nodo", "{{proveedor_nombre}} nodo", ["proveedor_nombre"], "user-1", workflow_id="wf-1", nodo_id="n1")
+        resultado = svc.restaurar_herencia("org-1", "rfq_received_thanks", "wf-1", "n1")
+        self.assertTrue(resultado["heredando"])
+        definicion = self.fake._tablas["mail_template_definitions"][0]
+        self.assertEqual(definicion["estado"], "archivada")
+        self.assertEqual(len(self.fake._tablas["mail_template_versions"]), 1)
+
 
 class RegistrarEnvioTest(unittest.TestCase):
     def setUp(self):
@@ -231,6 +271,32 @@ class RegistrarEnvioTest(unittest.TestCase):
         segundo = svc.registrar_envio("org-1", "rfq_requested", "prov@x.cl", "clave-1", estado="enviado")
         self.assertEqual(primero["id"], segundo["id"])
         self.assertEqual(len(self.fake._tablas["mail_delivery_events"]), 1)
+
+
+class ReservarEnvioTest(unittest.TestCase):
+    def setUp(self):
+        self.fake = FakeSupabaseConReserva()
+        self.patcher = patch("app.services.mail_template_service._sb", return_value=self.fake)
+        self.patcher.start()
+
+    def tearDown(self):
+        self.patcher.stop()
+
+    def test_solo_el_primer_worker_adquiere_derecho_a_enviar(self):
+        primero = svc.reservar_envio("org-1", "rfq_requested", "PROV@X.CL", "clave-reserva")
+        segundo = svc.reservar_envio("org-1", "rfq_requested", "prov@x.cl", "clave-reserva")
+        self.assertTrue(primero["adquirida"])
+        self.assertFalse(segundo["adquirida"])
+        self.assertEqual(primero["entrega"]["id"], segundo["entrega"]["id"])
+        self.assertEqual(len(self.fake._tablas["mail_delivery_events"]), 1)
+
+    def test_valida_evento_email_y_clave_antes_de_reservar(self):
+        with self.assertRaises(ValueError):
+            svc.reservar_envio("org-1", "inventado", "prov@x.cl", "k")
+        with self.assertRaises(ValueError):
+            svc.reservar_envio("org-1", "rfq_requested", "sin-arroba", "k")
+        with self.assertRaises(ValueError):
+            svc.reservar_envio("org-1", "rfq_requested", "prov@x.cl", "")
 
 
 if __name__ == "__main__":

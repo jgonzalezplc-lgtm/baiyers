@@ -248,7 +248,7 @@ export default function SettingsPage() {
               </Link>
             </Card>
 
-            {/* Comunicaciones — plantillas de correo por evento (Fase 5). */}
+            {/* Biblioteca de defaults; las automatizaciones viven en el canvas. */}
             <Card padding={20} style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 16 }}>
               <div style={{
                 width: 44, height: 44, flexShrink: 0, borderRadius: "var(--r-md)",
@@ -259,14 +259,14 @@ export default function SettingsPage() {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)" }}>
-                  Comunicaciones
+                  Biblioteca de correos
                 </div>
                 <div style={{ fontSize: 13, color: "var(--n-600)", marginTop: 2 }}>
-                  Personaliza los correos que se envían a tu equipo y a tus proveedores.
+                  Define textos por defecto. Destinatarios, cadencias y loops se configuran en cada tarjeta del ciclo.
                 </div>
               </div>
               <Link href="/settings/comunicaciones" className="btn-swiss-secondary" style={{ textDecoration: "none", whiteSpace: "nowrap" }}>
-                Configurar →
+                Abrir biblioteca →
               </Link>
             </Card>
           </>

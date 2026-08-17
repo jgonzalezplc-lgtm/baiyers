@@ -17,6 +17,7 @@ sigue siendo responsabilidad de quien arma el envío (ej. `aprobaciones.py`).
 """
 import re
 from typing import Optional
+from uuid import uuid4
 
 from app.services.mail_events import EVENTOS
 
@@ -213,6 +214,25 @@ def listar_plantillas(organizacion_id: str, workflow_id: Optional[str] = None, n
     """Catálogo completo fusionado con los overrides de la organización —
     para la futura UI de Fase 5 y para inspección/soporte."""
     resultado = []
+    usos: dict[str, int] = {}
+    try:
+        sb = _sb()
+        miembros = sb.table("membresias_organizacion").select("user_id").eq(
+            "organizacion_id", organizacion_id
+        ).execute().data or []
+        user_ids = [m["user_id"] for m in miembros]
+        workflows = sb.table("workflow_definitions").select("id").in_("user_id", user_ids).execute().data or [] if user_ids else []
+        workflow_ids = [w["id"] for w in workflows]
+        reglas = sb.table("workflow_node_communication_rules").select("evento_plantilla").in_(
+            "workflow_id", workflow_ids
+        ).eq("activa", True).execute().data or [] if workflow_ids else []
+        for regla in reglas:
+            evento_usado = regla.get("evento_plantilla")
+            if evento_usado:
+                usos[evento_usado] = usos.get(evento_usado, 0) + 1
+    except Exception:
+        # La biblioteca sigue operativa aun si el contador no está disponible.
+        usos = {}
     for evento, catalogo in EVENTOS.items():
         resuelto = resolver_definicion(organizacion_id, evento, workflow_id, nodo_id)
         if resuelto:
@@ -222,6 +242,7 @@ def listar_plantillas(organizacion_id: str, workflow_id: Optional[str] = None, n
                 "subject": resuelto["version"]["subject"], "body": resuelto["version"]["body_text"],
                 "origen": resuelto["origen"], "version": resuelto["version"]["version"],
                 "definition_id": resuelto["definicion"]["id"],
+                "usos_en_nodos": usos.get(evento, 0),
             })
         else:
             resultado.append({
@@ -229,8 +250,32 @@ def listar_plantillas(organizacion_id: str, workflow_id: Optional[str] = None, n
                 "variables_permitidas": catalogo.variables_permitidas,
                 "subject": catalogo.asunto_default, "body": catalogo.cuerpo_default,
                 "origen": "default", "version": 0, "definition_id": None,
+                "usos_en_nodos": usos.get(evento, 0),
             })
     return resultado
+
+
+def restaurar_herencia(
+    organizacion_id: str, evento: str, workflow_id: str, nodo_id: Optional[str] = None,
+    canal: str = "email", locale: str = "es-CL",
+) -> dict:
+    """Archiva el override de nodo/workflow sin borrar sus versiones.
+
+    A diferencia de `restaurar_default`, esto vuelve a resolver por el nivel
+    superior y por tanto hereda cambios futuros de organización/default.
+    """
+    sb = _sb()
+    q = sb.table("mail_template_definitions").select("*").eq(
+        "organizacion_id", organizacion_id
+    ).eq("evento", evento).eq("workflow_id", workflow_id).eq("canal", canal).eq("locale", locale)
+    q = q.eq("nodo_id", nodo_id) if nodo_id else q.is_("nodo_id", "null")
+    definicion = _maybe_single(q)
+    if not definicion:
+        return {"heredando": True, "definition_id": None}
+    sb.table("mail_template_definitions").update({"estado": "archivada"}).eq(
+        "id", definicion["id"]
+    ).execute()
+    return {"heredando": True, "definition_id": definicion["id"]}
 
 
 def registrar_envio(
@@ -263,3 +308,78 @@ def registrar_envio(
         if "23505" in str(e) or "duplicate key" in str(e).lower():
             return _maybe_single(sb.table("mail_delivery_events").select("*").eq("idempotency_key", idempotency_key)) or {}
         raise
+
+
+def reservar_envio(
+    organizacion_id: str, evento: str, destinatario_email: str, idempotency_key: str,
+    definition_id: Optional[str] = None, version_id: Optional[str] = None,
+    workflow_id: Optional[str] = None, workflow_nodo_id: Optional[str] = None,
+    proveedor_id: Optional[str] = None, responsable_id: Optional[str] = None,
+    scheduled_action_id: Optional[str] = None,
+) -> dict:
+    """Reserva atómicamente el derecho a enviar ANTES de llamar a Gmail.
+
+    Devuelve `{adquirida: True, entrega: ...}` sólo al proceso que insertó la
+    clave. Un segundo proceso recibe la entrega existente con `adquirida`
+    falsa y no debe enviar. Requiere la RPC de la migración 041; los emisores
+    productivos actuales seguirán usando `registrar_envio` hasta su migración
+    explícita en fases posteriores.
+    """
+    if evento not in EVENTOS:
+        raise ValueError(f"Evento desconocido: {evento}")
+    email = (destinatario_email or "").strip().lower()
+    if not email or "@" not in email:
+        raise ValueError("destinatario_email inválido")
+    if not idempotency_key or not idempotency_key.strip():
+        raise ValueError("idempotency_key es requerida")
+
+    sb = _sb()
+    token = str(uuid4())
+    resp = sb.rpc("reserve_mail_delivery_event", {
+        "p_organizacion_id": organizacion_id,
+        "p_evento": evento,
+        "p_destinatario_email": email,
+        "p_idempotency_key": idempotency_key.strip(),
+        "p_reservation_token": token,
+        "p_definition_id": definition_id,
+        "p_version_id": version_id,
+        "p_workflow_id": workflow_id,
+        "p_workflow_nodo_id": workflow_nodo_id,
+        "p_proveedor_id": proveedor_id,
+        "p_responsable_id": responsable_id,
+    }).execute()
+    filas = resp.data or []
+    if filas:
+        entrega = filas[0]
+        if scheduled_action_id:
+            actualizada = sb.table("mail_delivery_events").update({
+                "scheduled_action_id": scheduled_action_id,
+            }).eq("id", entrega["id"]).eq("reservation_token", token).execute()
+            entrega = (actualizada.data or [entrega])[0]
+        return {"adquirida": True, "entrega": entrega, "reservation_token": token}
+
+    existente = _maybe_single(
+        sb.table("mail_delivery_events").select("*").eq("idempotency_key", idempotency_key.strip())
+    )
+    return {"adquirida": False, "entrega": existente, "reservation_token": None}
+
+
+def actualizar_entrega_reservada(
+    entrega_id: str, reservation_token: str, estado: str, *,
+    gmail_message_id: Optional[str] = None, gmail_thread_id: Optional[str] = None,
+    error: Optional[str] = None,
+) -> Optional[dict]:
+    """Cierra una entrega sólo si el worker conserva su token de reserva."""
+    if estado not in {"enviado", "fallido", "delivery_uncertain"}:
+        raise ValueError("estado final de entrega inválido")
+    from datetime import datetime, timezone
+    payload = {
+        "estado": estado, "gmail_message_id": gmail_message_id,
+        "gmail_thread_id": gmail_thread_id, "error": (error or "")[:1000] or None,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    resp = _sb().table("mail_delivery_events").update(payload).eq("id", entrega_id).eq(
+        "reservation_token", reservation_token
+    ).execute()
+    filas = resp.data or []
+    return filas[0] if filas else None

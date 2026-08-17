@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Trash2, Plus, Link2, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowLeft, Trash2, Plus, Link2, CheckCircle2, XCircle, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
 import { BtnPrimary, BtnSecondary, BtnGhost, Card, Input, SkeletonBox, CascadeWrapper, TypingBubble } from "@/components/ui";
 import { ChatBubbles } from "@/components/chat/ChatBubbles";
+import { NodeCommunicationsPanel, type ReglaComunicacion } from "@/components/workflow/NodeCommunicationsPanel";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -27,6 +28,9 @@ interface Nodo {
   posicion?: Posicion;
   entrada?: string;
   proceso?: string;
+  criterio_cierre?: "todos_resueltos" | "minimo_respuestas" | "cierre_manual";
+  minimo_respuestas?: number;
+  requisitos_homologacion?: string[];
 }
 
 interface Conexion {
@@ -48,6 +52,16 @@ interface AsignacionRol {
   id: string;
   rol_clave: string;
   orden_autorizacion: number | null;
+  responsables: ResponsableInfo;
+}
+
+interface AsignacionNodo {
+  id: string;
+  nodo_id: string;
+  rol_clave: string;
+  modo: "individual" | "paralelo" | "secuencial";
+  orden: number | null;
+  es_propietario_excepcion: boolean;
   responsables: ResponsableInfo;
 }
 
@@ -73,7 +87,7 @@ const TIPOS: { valor: string; label: string }[] = [
   { valor: "espera_documento", label: "Espera de documento" },
 ];
 
-const ROLES_BASE = ["cotizador", "revisor", "autorizador", "comprador"];
+const ROLES_BASE = ["cotizador", "revisor", "autorizador", "homologador", "comprador"];
 const CAMPOS_CONDICION = ["monto_total", "moneda", "categoria", "centro_costo", "proyecto", "proveedor_nuevo", "proveedor_homologado", "requiere_oc"];
 const OPERADORES = [">", ">=", "<", "<=", "==", "!=", "in", "not in"];
 
@@ -197,6 +211,10 @@ export default function CanvasWorkflowPage() {
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [nuevoEmail, setNuevoEmail] = useState("");
   const [guardandoResponsable, setGuardandoResponsable] = useState(false);
+  const [asignacionesNodo, setAsignacionesNodo] = useState<AsignacionNodo[]>([]);
+  const [reglasComunicacion, setReglasComunicacion] = useState<ReglaComunicacion[]>([]);
+  const [esAdmin, setEsAdmin] = useState(false);
+  const [modoAsignacionPorRol, setModoAsignacionPorRol] = useState<Record<string, "individual" | "paralelo" | "secuencial">>({});
 
   // Chat de correcciones: le pide al modelo una lista de operaciones sobre
   // el grafo actual (nunca uno nuevo) y las aplica con las mismas funciones
@@ -245,25 +263,38 @@ export default function CanvasWorkflowPage() {
     }
   };
 
+  const cargarConfiguracion = async () => {
+    const data = await authFetch(`${API_URL}/api/workflows/${workflowId}/configuracion`).then(r => r.json()).catch(() => ({ asignaciones: [], reglas: [] }));
+    setAsignacionesNodo(Array.isArray(data.asignaciones) ? data.asignaciones : []);
+    setReglasComunicacion(Array.isArray(data.reglas) ? data.reglas : []);
+  };
+
   useEffect(() => {
     if (!userId) return;
     (async () => {
       await cargarWorkflow(userId);
-      const org: ResponsableInfo[] = await fetch(`${API_URL}/api/workflows/responsables/listar?user_id=${userId}`).then(r => r.json()).catch(() => []);
-      setResponsablesOrg(org || []);
+      const [org, perfil] = await Promise.all([
+        fetch(`${API_URL}/api/workflows/responsables/listar?user_id=${userId}`).then(r => r.json()).catch(() => []),
+        authFetch(`${API_URL}/api/organizacion/mia`).then(r => r.json()).catch(() => ({})),
+        cargarConfiguracion(),
+      ]);
+      setResponsablesOrg(Array.isArray(org) ? org : []);
+      setEsAdmin(!!perfil.es_admin);
       setCargando(false);
     })();
   }, [userId, workflowId]);
 
-  const asignaciones = workflow?.responsables || [];
+  const asignaciones = asignacionesNodo;
 
   const asignarExistente = async (rol: string, responsableId: string) => {
-    if (!userId) return;
+    if (!userId || !nodoSel) return;
     setGuardandoResponsable(true);
     try {
-      const res = await fetch(`${API_URL}/api/workflows/responsables/${responsableId}/roles`, {
+      const modo = modoAsignacionPorRol[rol] || "individual";
+      const existentesRol = asignacionesNodo.filter(a => a.nodo_id === nodoSel.id && a.rol_clave === rol);
+      const res = await authFetch(`${API_URL}/api/workflows/${workflowId}/asignaciones-nodo`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, workflow_id: workflowId, rol_clave: rol }),
+        body: JSON.stringify({ nodo_id: nodoSel.id, responsable_id: responsableId, rol_clave: rol, modo, orden: modo === "secuencial" ? existentesRol.length + 1 : null }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -271,7 +302,7 @@ export default function CanvasWorkflowPage() {
         setTimeout(() => setToast(""), 3500);
         return;
       }
-      await cargarWorkflow(userId);
+      await cargarConfiguracion();
       setAsignandoRol(null);
       const nombre = responsablesOrg.find(r => r.id === responsableId)?.nombre || "Responsable";
       setToast(`${nombre} asignado a "${rol}"`);
@@ -282,7 +313,7 @@ export default function CanvasWorkflowPage() {
   };
 
   const crearYAsignar = async (rol: string) => {
-    if (!userId || !nuevoNombre.trim() || !nuevoEmail.trim()) return;
+    if (!userId || !nodoSel || !nuevoNombre.trim() || !nuevoEmail.trim()) return;
     setGuardandoResponsable(true);
     try {
       const creado = await fetch(`${API_URL}/api/workflows/responsables`, {
@@ -292,6 +323,12 @@ export default function CanvasWorkflowPage() {
       await fetch(`${API_URL}/api/workflows/responsables/${creado.id}/roles`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userId, workflow_id: workflowId, rol_clave: rol }),
+      });
+      const modo = modoAsignacionPorRol[rol] || "individual";
+      const existentesRol = asignacionesNodo.filter(a => a.nodo_id === nodoSel.id && a.rol_clave === rol);
+      await authFetch(`${API_URL}/api/workflows/${workflowId}/asignaciones-nodo`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodo_id: nodoSel.id, responsable_id: creado.id, rol_clave: rol, modo, orden: modo === "secuencial" ? existentesRol.length + 1 : null }),
       });
       // Fase C: invitación real. Si falla (email ya en otra org, admin gate,
       // etc.) el responsable igual queda creado — mostramos el error al usuario
@@ -317,25 +354,26 @@ export default function CanvasWorkflowPage() {
       setTimeout(() => setToast(""), 4500);
       const org: ResponsableInfo[] = await fetch(`${API_URL}/api/workflows/responsables/listar?user_id=${userId}`).then(r => r.json()).catch(() => []);
       setResponsablesOrg(org || []);
-      await cargarWorkflow(userId);
+      await cargarWorkflow(userId); await cargarConfiguracion();
       setAsignandoRol(null); setNuevoNombre(""); setNuevoEmail("");
     } finally {
       setGuardandoResponsable(false);
     }
   };
 
-  const quitarAsignacion = async (rol: string, responsableId: string) => {
+  const quitarAsignacion = async (_rol: string, assignmentId: string) => {
     if (!userId) return;
     setGuardandoResponsable(true);
     try {
-      await fetch(`${API_URL}/api/workflows/responsables/${responsableId}/roles/${workflowId}/${rol}?user_id=${userId}`, { method: "DELETE" });
-      await cargarWorkflow(userId);
+      await authFetch(`${API_URL}/api/workflows/${workflowId}/asignaciones-nodo/${assignmentId}`, { method: "DELETE" });
+      await cargarConfiguracion();
     } finally {
       setGuardandoResponsable(false);
     }
   };
 
   const nodoSel = nodos.find(n => n.id === seleccionado) || null;
+  const puedeEditarConfiguracion = esAdmin && workflow?.estado === "borrador";
 
   const actualizarNodo = (id: string, cambios: Partial<Nodo>) => {
     setNodos(prev => prev.map(n => (n.id === id ? { ...n, ...cambios } : n)));
@@ -425,16 +463,22 @@ export default function CanvasWorkflowPage() {
     setGuardando(true);
     setErrores(null);
     try {
-      await fetch(`${API_URL}/api/workflows/${workflowId}`, {
+      const res = await fetch(`${API_URL}/api/workflows/${workflowId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userId, nodos, conexiones }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || "No se pudo guardar");
+      }
       setToast("Guardado");
       setTimeout(() => setToast(""), 2500);
-    } catch {
-      setToast("No se pudo guardar");
+      return true;
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "No se pudo guardar");
       setTimeout(() => setToast(""), 3000);
+      return false;
     } finally {
       setGuardando(false);
     }
@@ -442,7 +486,7 @@ export default function CanvasWorkflowPage() {
 
   const validar = async () => {
     if (!userId) return;
-    await guardar();
+    if (!(await guardar())) return;
     const data = await authFetch(`${API_URL}/api/workflows/${workflowId}/validar`).then(r => r.json());
     setErrores(data.errores || []);
   };
@@ -450,7 +494,7 @@ export default function CanvasWorkflowPage() {
   const activar = async () => {
     if (!userId) return;
     setActivando(true);
-    await guardar();
+    if (!(await guardar())) { setActivando(false); return; }
     try {
       const val = await authFetch(`${API_URL}/api/workflows/${workflowId}/validar`).then(r => r.json());
       setErrores(val.errores || []);
@@ -519,7 +563,8 @@ export default function CanvasWorkflowPage() {
     const nombre = ((op.nombre as string) || "").trim();
     const email = ((op.email as string) || "").trim().toLowerCase() || null;
     const rolClave = op.rol_clave as string;
-    if (!nombre || !rolClave) return;
+    const nodoId = (op.nodo_id as string) || nodos.find(n => (n.roles || []).includes(rolClave))?.id;
+    if (!nombre || !rolClave || !nodoId) return;
 
     let responsableId = email
       ? responsablesOrg.find(r => r.activo && r.email?.toLowerCase() === email)?.id
@@ -543,6 +588,11 @@ export default function CanvasWorkflowPage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userId, workflow_id: workflowId, rol_clave: rolClave }),
       });
+      const asignacion = await authFetch(`${API_URL}/api/workflows/${workflowId}/asignaciones-nodo`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodo_id: nodoId, responsable_id: responsableId, rol_clave: rolClave, modo: "individual" }),
+      });
+      if (!asignacion.ok) throw new Error("asignación por tarjeta fallida");
     } catch {
       setMensajesCorreccion(prev => [...prev, { rol: "bot", texto: `No pude asignar a ${nombre} al rol "${rolClave}".` }]);
       return;
@@ -563,6 +613,29 @@ export default function CanvasWorkflowPage() {
     const org: ResponsableInfo[] = await fetch(`${API_URL}/api/workflows/responsables/listar?user_id=${userId}`).then(r => r.json()).catch(() => responsablesOrg);
     setResponsablesOrg(Array.isArray(org) ? org : responsablesOrg);
     await refrescarResponsablesAsignados(userId);
+    await cargarConfiguracion();
+  };
+
+  const aplicarOperacionComunicacion = async (op: Record<string, unknown>) => {
+    const res = await authFetch(`${API_URL}/api/workflows/${workflowId}/reglas-comunicacion`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nodo_id: op.nodo_id, rol_clave: op.rol_clave || null,
+        evento_plantilla: op.evento_plantilla, destinatario_tipo: op.destinatario_tipo,
+        disparador_tipo: op.disparador_tipo || "al_entrar",
+        disparador_evento: op.disparador_evento || null,
+        demora_inicial_dias: op.demora_inicial_dias || 0,
+        repetir_cada_dias: op.repetir_cada_dias || null,
+        max_intentos: op.max_intentos || (op.repetir_cada_dias ? null : 1),
+        evento_termino: op.evento_termino || null,
+        alcance_termino: op.alcance_termino || "tarjeta",
+        resultado_al_terminar: op.resultado_al_terminar || null,
+        politica_agotamiento: op.politica_agotamiento || null,
+        resultado_agotamiento: op.resultado_agotamiento || null,
+      }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "No se pudo configurar la comunicación");
+    await cargarConfiguracion();
   };
 
   const enviarCorreccion = async () => {
@@ -586,10 +659,13 @@ export default function CanvasWorkflowPage() {
       } else {
         const operaciones: Record<string, unknown>[] = data.operaciones || [];
         const huboAsignaciones = operaciones.some(op => op.tipo === "asignar_responsable");
-        const huboCambiosGrafo = operaciones.some(op => op.tipo !== "asignar_responsable");
+        const huboComunicaciones = operaciones.some(op => op.tipo === "configurar_comunicacion");
+        const huboCambiosGrafo = operaciones.some(op => !["asignar_responsable", "configurar_comunicacion"].includes(op.tipo as string));
         for (const op of operaciones) {
           if (op.tipo === "asignar_responsable") {
             await aplicarOperacionAsignarResponsable(op);
+          } else if (op.tipo === "configurar_comunicacion") {
+            await aplicarOperacionComunicacion(op);
           } else {
             aplicarOperacion(op);
           }
@@ -597,6 +673,7 @@ export default function CanvasWorkflowPage() {
         setErrores(null);
         const partes = [data.resumen || "Listo, apliqué el cambio."];
         if (huboAsignaciones) partes.push("Las personas ya quedaron asignadas (e invitadas si tenían correo) — eso no necesita \"Guardar\".");
+        if (huboComunicaciones) partes.push("Las comunicaciones y sus loops ya quedaron asociados a la tarjeta.");
         if (huboCambiosGrafo) partes.push("Recuerda apretar \"Guardar\" para que los cambios del grafo queden persistidos.");
         setMensajesCorreccion(prev => [...prev, { rol: "bot", texto: partes.join(" ") }]);
       }
@@ -818,6 +895,13 @@ export default function CanvasWorkflowPage() {
                 <div style={{ fontSize: 10.5, color: "var(--n-500)", marginTop: 3 }}>
                   {n.roles && n.roles.length > 0 ? n.roles.join(", ") : TIPOS.find(t => t.valor === n.tipo)?.label ?? n.tipo}
                 </div>
+                {(asignacionesNodo.some(a => a.nodo_id === n.id) || reglasComunicacion.some(r => r.nodo_id === n.id)) && (
+                  <div style={{ display: "flex", gap: 6, marginTop: 4, fontSize: 9.5, color: "var(--n-500)" }}>
+                    {asignacionesNodo.some(a => a.nodo_id === n.id) && <span>{asignacionesNodo.filter(a => a.nodo_id === n.id).length} resp.</span>}
+                    {reglasComunicacion.some(r => r.nodo_id === n.id) && <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }}><Mail size={9} /> {reglasComunicacion.filter(r => r.nodo_id === n.id).length}</span>}
+                    {reglasComunicacion.some(r => r.nodo_id === n.id && r.repetir_cada_dias) && <span>↻ loop</span>}
+                  </div>
+                )}
                 {n.tipo !== "inicio" && (
                   <button
                     onMouseDown={e => e.stopPropagation()}
@@ -853,7 +937,7 @@ export default function CanvasWorkflowPage() {
         </div>
 
         {/* Panel de propiedades */}
-        <Card padding={16} style={{ width: 240, flexShrink: 0, alignSelf: "flex-start" }}>
+        <Card padding={16} style={{ width: 360, flexShrink: 0, alignSelf: "flex-start", maxHeight: "calc(100vh - 150px)", overflowY: "auto" }}>
           {!nodoSel ? (
             <div style={{ fontSize: 13, color: "var(--n-500)" }}>Selecciona un nodo para editarlo.</div>
           ) : (
@@ -900,23 +984,28 @@ export default function CanvasWorkflowPage() {
               )}
 
               {["tarea_humana", "revision", "autorizacion", "homologacion"].includes(nodoSel.tipo) && (nodoSel.roles || []).map(rol => {
-                const asignados = asignaciones.filter(a => a.rol_clave === rol);
+                const asignados = asignaciones.filter(a => a.nodo_id === nodoSel.id && a.rol_clave === rol);
                 const disponibles = responsablesOrg.filter(r => r.activo && !asignados.some(a => a.responsables?.id === r.id));
                 return (
                   <div key={rol}>
-                    <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--n-600)", marginBottom: 6 }}>Responsables de &quot;{rol}&quot;</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--n-600)" }}>Responsables de &quot;{rol}&quot;</div>
+                      <select disabled={!puedeEditarConfiguracion} value={modoAsignacionPorRol[rol] || asignados[0]?.modo || "individual"} onChange={e => setModoAsignacionPorRol(prev => ({ ...prev, [rol]: e.target.value as "individual" | "paralelo" | "secuencial" }))} style={{ padding: "3px 5px", fontSize: 10.5, border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-700)" }}>
+                        <option value="individual">Uno</option><option value="paralelo">Paralelo</option><option value="secuencial">Secuencial</option>
+                      </select>
+                    </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 6 }}>
                       {asignados.length === 0 && <div style={{ fontSize: 11.5, color: "var(--n-500)" }}>Nadie asignado todavía.</div>}
                       {asignados.map(a => (
                         <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, fontSize: 11.5, padding: "4px 7px", background: "var(--surface-2)", borderRadius: "var(--r-sm)" }}>
-                          <span>{a.responsables?.nombre} <span style={{ color: "var(--n-500)" }}>· {a.responsables?.email}</span></span>
-                          <button onClick={() => quitarAsignacion(rol, a.responsables.id)} disabled={guardandoResponsable} style={{ border: 0, background: "none", color: "var(--n-400)", cursor: "pointer", padding: 0, flexShrink: 0 }}>
+                          <span>{a.modo === "secuencial" && a.orden ? `${a.orden}. ` : ""}{a.responsables?.nombre} <span style={{ color: "var(--n-500)" }}>· {a.responsables?.email}</span></span>
+                          {puedeEditarConfiguracion && <button onClick={() => quitarAsignacion(rol, a.id)} disabled={guardandoResponsable} style={{ border: 0, background: "none", color: "var(--n-400)", cursor: "pointer", padding: 0, flexShrink: 0 }}>
                             <Trash2 size={11} />
-                          </button>
+                          </button>}
                         </div>
                       ))}
                     </div>
-                    {asignandoRol === rol ? (
+                    {!puedeEditarConfiguracion ? null : asignandoRol === rol ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                         {disponibles.length > 0 && (
                           <>
@@ -1007,6 +1096,80 @@ export default function CanvasWorkflowPage() {
                       />
                     </div>
                   )}
+                </div>
+              )}
+
+              {reglasComunicacion.some(r => r.nodo_id === nodoSel.id && ["rfq_requested", "rfq_followup"].includes(r.evento_plantilla)) && (
+                <div style={{ borderTop: "1px solid var(--n-200)", paddingTop: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-700)", marginBottom: 6 }}>Cierre agregado de cotizaciones</div>
+                  <select
+                    value={nodoSel.criterio_cierre || "todos_resueltos"}
+                    onChange={e => actualizarNodo(nodoSel.id, { criterio_cierre: e.target.value as Nodo["criterio_cierre"] })}
+                    style={{ width: "100%", padding: "7px 8px", fontSize: 12.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }}
+                  >
+                    <option value="todos_resueltos">Todos respondieron o fueron descartados</option>
+                    <option value="minimo_respuestas">Alcanzar un mínimo de respuestas</option>
+                    <option value="cierre_manual">Cierre manual</option>
+                  </select>
+                  {(nodoSel.criterio_cierre || "todos_resueltos") === "minimo_respuestas" && (
+                    <div style={{ marginTop: 7 }}>
+                      <Input
+                        label="Respuestas completas requeridas"
+                        type="number"
+                        value={String(nodoSel.minimo_respuestas || 1)}
+                        onChange={e => actualizarNodo(nodoSel.id, { minimo_respuestas: Math.max(1, Number(e.target.value) || 1) })}
+                      />
+                    </div>
+                  )}
+                  <div style={{ fontSize: 10.5, color: "var(--n-500)", marginTop: 5, lineHeight: 1.4 }}>
+                    El criterio se evalúa por proveedor. Una respuesta incompleta mantiene abierto solamente su loop.
+                  </div>
+                </div>
+              )}
+
+              {nodoSel.tipo === "homologacion" && (
+                <div style={{ borderTop: "1px solid var(--n-200)", paddingTop: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-700)", marginBottom: 5 }}>Antecedentes requeridos</div>
+                  <div style={{ fontSize: 10.5, color: "var(--n-500)", marginBottom: 6, lineHeight: 1.4 }}>
+                    Uno por línea. Evita pedir credenciales, claves o documentos personales innecesarios.
+                  </div>
+                  <textarea
+                    value={(nodoSel.requisitos_homologacion || []).join("\n")}
+                    onChange={e => actualizarNodo(nodoSel.id, { requisitos_homologacion: e.target.value.split("\n").map(v => v.trim()).filter(Boolean) })}
+                    placeholder={"Razón social, RUT, giro y domicilio\nCertificado bancario de titularidad\nCondiciones de pago"}
+                    rows={5}
+                    style={{ width: "100%", resize: "vertical", padding: 8, fontFamily: "inherit", fontSize: 11.5, lineHeight: 1.45, border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)", borderRadius: "var(--r-sm)" }}
+                  />
+                </div>
+              )}
+
+              {nodoSel.tipo !== "inicio" && nodoSel.tipo !== "fin" && (
+                <div style={{ borderTop: "1px solid var(--n-200)", paddingTop: 12 }}>
+                  <NodeCommunicationsPanel
+                    workflowId={workflowId}
+                    nodoId={nodoSel.id}
+                    roles={nodoSel.roles || []}
+                    resultados={nodoSel.resultados || []}
+                    reglas={reglasComunicacion.filter(r => r.nodo_id === nodoSel.id)}
+                    readOnly={!puedeEditarConfiguracion}
+                    onChanged={cargarConfiguracion}
+                  />
+                </div>
+              )}
+
+              {nodoSel.tipo !== "inicio" && nodoSel.tipo !== "fin" && (
+                <div style={{ borderTop: "1px solid var(--n-200)", paddingTop: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-700)", marginBottom: 6 }}>Resumen de la tarjeta</div>
+                  <div style={{ fontSize: 11.5, lineHeight: 1.55, color: "var(--n-600)", padding: 9, background: "var(--canvas)", border: "1px solid var(--n-200)" }}>
+                    {(nodoSel.roles || []).length > 0
+                      ? `${(nodoSel.roles || []).join(", ")} ejecuta “${nodoSel.nombre}”. `
+                      : `“${nodoSel.nombre}” no tiene roles humanos. `}
+                    {asignaciones.filter(a => a.nodo_id === nodoSel.id).length} responsable(s) asignado(s) y {reglasComunicacion.filter(r => r.nodo_id === nodoSel.id).length} comunicación(es) configurada(s).
+                    {reglasComunicacion.filter(r => r.nodo_id === nodoSel.id && r.repetir_cada_dias).map(r => ` Repite ${r.evento_plantilla} cada ${r.repetir_cada_dias} días hasta ${r.evento_termino || "un evento pendiente"}.`).join("")}
+                  </div>
+                  {(errores || []).filter(e => (e as { nodo_id?: string }).nodo_id === nodoSel.id).map((e, i) => (
+                    <div key={`${e.codigo}-${i}`} style={{ fontSize: 11, color: "var(--danger)", marginTop: 5 }}>· {e.mensaje}</div>
+                  ))}
                 </div>
               )}
 

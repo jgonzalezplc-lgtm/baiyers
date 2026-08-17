@@ -12,6 +12,7 @@ no tiene responsables asignados todavía, este módulo devuelve None y el
 llamador cae al flujo legado (un solo `aprobador_email` escrito a mano) —
 nunca rompe la compatibilidad existente.
 """
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.services.workflow_engine import evaluar_condicion, resolver_autorizadores, siguiente_nodo
@@ -58,6 +59,31 @@ def _responsables_para_roles(user_id: str, workflow_id: str, roles: list[str]) -
             "orden_autorizacion": a.get("orden_autorizacion"),
         })
     return responsables
+
+
+def _responsables_para_nodo(user_id: str, workflow_id: str, nodo_id: str, roles: list[str]) -> tuple[list[dict], bool]:
+    """Responsables explícitos por tarjeta; fallback global para ciclos
+    activados antes de la migración 041. Devuelve `(responsables, unified)`."""
+    if not roles:
+        return [], False
+    sb = _sb()
+    asignaciones = sb.table("workflow_node_assignments").select(
+        "rol_clave,modo,orden,responsables(id,nombre,email,activo)"
+    ).eq("workflow_id", workflow_id).eq("nodo_id", nodo_id).in_("rol_clave", roles).execute().data or []
+    if not asignaciones:
+        return _responsables_para_roles(user_id, workflow_id, roles), False
+    responsables = []
+    vistos = set()
+    for a in asignaciones:
+        r = a.get("responsables") or {}
+        if not r.get("activo") or not r.get("email") or r.get("id") in vistos:
+            continue
+        vistos.add(r["id"])
+        responsables.append({
+            "id": r["id"], "nombre": r.get("nombre") or r["email"], "email": r["email"],
+            "orden_autorizacion": a.get("orden"), "modo": a.get("modo"),
+        })
+    return responsables, True
 
 
 def _monto_de_lista(lista_id: Optional[str]) -> float:
@@ -111,12 +137,15 @@ def previsualizar_autorizadores(user_id: str, monto_total: float) -> Optional[di
     nodo = _nodo_autorizacion_para_monto(nodos, conexiones, monto_total)
     if not nodo:
         return None
-    responsables = _responsables_para_roles(user_id, workflow["id"], nodo.get("roles") or [])
+    responsables, unified = _responsables_para_nodo(user_id, workflow["id"], nodo["id"], nodo.get("roles") or [])
     if not responsables:
         return None
     return {
         "nodo_nombre": nodo.get("nombre") or nodo["id"],
-        "modo_autorizacion": nodo.get("modo_autorizacion", "paralela"),
+        "modo_autorizacion": (
+            "paralela" if unified and responsables[0].get("modo") == "paralelo"
+            else responsables[0].get("modo") if unified else nodo.get("modo_autorizacion", "paralela")
+        ),
         "responsables": responsables,
     }
 
@@ -129,23 +158,43 @@ def iniciar_autorizacion_workflow(user_id: str, lista_id: str, monto_total: floa
     workflow = obtener_workflow_activo(user_id)
     if not workflow:
         return None
+    from app.services.workflow_rollout import motor_unificado_habilitado
+    if not motor_unificado_habilitado(user_id):
+        return None
 
     nodos, conexiones = workflow.get("nodos") or [], workflow.get("conexiones") or []
     nodo = _nodo_autorizacion_para_monto(nodos, conexiones, monto_total)
     if not nodo:
         return None
 
-    responsables = _responsables_para_roles(user_id, workflow["id"], nodo.get("roles") or [])
+    responsables, unified = _responsables_para_nodo(user_id, workflow["id"], nodo["id"], nodo.get("roles") or [])
     if not responsables:
         return None  # nadie asignado todavía a ese rol — cae al flujo legado
 
     sb = _sb()
-    instancia = sb.table("workflow_instances").insert({
-        "user_id": user_id, "workflow_id": workflow["id"], "lista_proyecto_id": lista_id,
-        "nodo_actual_id": nodo["id"], "estado_workflow": "activo",
-    }).execute().data[0]
+    existentes = []
+    if unified:
+        existentes = sb.table("workflow_instances").select("*").eq(
+            "workflow_id", workflow["id"]
+        ).eq("lista_proyecto_id", lista_id).eq("execution_owner", "unified").eq(
+            "estado_workflow", "activo"
+        ).order("created_at", desc=True).limit(1).execute().data or []
+    if existentes:
+        instancia = existentes[0]
+        sb.table("workflow_instances").update({
+            "nodo_actual_id": nodo["id"], "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", instancia["id"]).execute()
+    else:
+        instancia = sb.table("workflow_instances").insert({
+            "user_id": user_id, "workflow_id": workflow["id"], "lista_proyecto_id": lista_id,
+            "nodo_actual_id": nodo["id"], "estado_workflow": "activo",
+            "workflow_version": workflow.get("version"),
+            "execution_owner": "unified" if unified else "legacy",
+        }).execute().data[0]
 
-    nodo_con_responsables = {**nodo, "responsables": responsables}
+    modo_nodo = responsables[0].get("modo") if unified and responsables else nodo.get("modo_autorizacion", "paralela")
+    modo_nodo = "paralela" if modo_nodo == "paralelo" else modo_nodo
+    nodo_con_responsables = {**nodo, "responsables": responsables, "modo_autorizacion": modo_nodo}
     resolucion = resolver_autorizadores(nodo_con_responsables, {})
     pendientes_ids = set(resolucion["pendientes"])
     a_notificar = [r for r in responsables if r["id"] in pendientes_ids]
@@ -153,8 +202,9 @@ def iniciar_autorizacion_workflow(user_id: str, lista_id: str, monto_total: floa
     return {
         "workflow_id": workflow["id"], "workflow_instance_id": instancia["id"],
         "nodo_id": nodo["id"], "nodo_nombre": nodo.get("nombre") or nodo["id"],
-        "modo_autorizacion": nodo.get("modo_autorizacion", "paralela"),
+        "modo_autorizacion": modo_nodo,
         "responsables_todos": responsables, "responsables_a_notificar": a_notificar,
+        "execution_owner": "unified" if unified else "legacy",
     }
 
 
@@ -199,8 +249,10 @@ def avanzar_tras_decision(approval_request: dict) -> dict:
         for h in hermanas if h["estado"] in ("aprobado", "rechazado") and h.get("responsable_id")
     }
 
-    responsables_asignados = _responsables_para_roles(approval_request["user_id"], workflow["id"], nodo.get("roles") or [])
-    nodo_con_responsables = {**nodo, "responsables": responsables_asignados}
+    responsables_asignados, _ = _responsables_para_nodo(approval_request["user_id"], workflow["id"], nodo_id, nodo.get("roles") or [])
+    modo_actual = responsables_asignados[0].get("modo") if responsables_asignados and instancia.get("execution_owner") == "unified" else nodo.get("modo_autorizacion", "paralela")
+    modo_actual = "paralela" if modo_actual == "paralelo" else modo_actual
+    nodo_con_responsables = {**nodo, "responsables": responsables_asignados, "modo_autorizacion": modo_actual}
     resolucion = resolver_autorizadores(nodo_con_responsables, decisiones)
 
     if not resolucion["resuelto"]:
@@ -223,6 +275,18 @@ def avanzar_tras_decision(approval_request: dict) -> dict:
         monto_total = _monto_de_lista(instancia.get("lista_proyecto_id"))
         siguiente_nodo_obj = _nodo_autorizacion_para_monto(nodos, conexiones, monto_total or 0) or siguiente_nodo_obj
 
+    if siguiente_nodo_obj and siguiente_nodo_obj.get("tipo") in {"homologacion", "emision_oc"} and instancia.get("execution_owner") == "unified":
+        sb.table("workflow_instances").update({"nodo_actual_id": siguiente_id}).eq("id", instance_id).execute()
+        return {
+            "resuelto": True, "resultado": "aprobado", "terminado": False,
+            "siguiente": {
+                "tipo": siguiente_nodo_obj["tipo"], "workflow_id": workflow["id"],
+                "workflow_instance_id": instance_id, "nodo_id": siguiente_id,
+                "nodo_nombre": siguiente_nodo_obj.get("nombre") or siguiente_id,
+                "nodo": siguiente_nodo_obj, "execution_owner": "unified",
+            },
+        }
+
     if not siguiente_nodo_obj or siguiente_nodo_obj["tipo"] != "autorizacion":
         # El siguiente paso no es una autorización más (ej: emisión de OC) —
         # para esta fase, eso ya no bloquea: la lista queda aprobada y el
@@ -230,7 +294,9 @@ def avanzar_tras_decision(approval_request: dict) -> dict:
         sb.table("workflow_instances").update({"estado_workflow": "completado", "nodo_actual_id": siguiente_id}).eq("id", instance_id).execute()
         return {"resuelto": True, "resultado": "aprobado", "terminado": True, "siguiente": None}
 
-    responsables_siguiente = _responsables_para_roles(approval_request["user_id"], workflow["id"], siguiente_nodo_obj.get("roles") or [])
+    responsables_siguiente, unified_siguiente = _responsables_para_nodo(
+        approval_request["user_id"], workflow["id"], siguiente_nodo_obj["id"], siguiente_nodo_obj.get("roles") or []
+    )
     if not responsables_siguiente:
         # Nadie asignado al siguiente tramo — no dejar la lista atascada:
         # se da por aprobada tal como está y se registra la brecha.
@@ -238,16 +304,19 @@ def avanzar_tras_decision(approval_request: dict) -> dict:
         return {"resuelto": True, "resultado": "aprobado", "terminado": True, "siguiente": None}
 
     sb.table("workflow_instances").update({"nodo_actual_id": siguiente_id}).eq("id", instance_id).execute()
-    resolucion_siguiente = resolver_autorizadores({**siguiente_nodo_obj, "responsables": responsables_siguiente}, {})
+    modo_siguiente = responsables_siguiente[0].get("modo") if unified_siguiente and responsables_siguiente else siguiente_nodo_obj.get("modo_autorizacion", "paralela")
+    modo_siguiente = "paralela" if modo_siguiente == "paralelo" else modo_siguiente
+    resolucion_siguiente = resolver_autorizadores({**siguiente_nodo_obj, "responsables": responsables_siguiente, "modo_autorizacion": modo_siguiente}, {})
     pendientes_ids = set(resolucion_siguiente["pendientes"])
 
     return {
         "resuelto": True, "resultado": "aprobado", "terminado": False,
         "siguiente": {
-            "workflow_id": workflow["id"], "workflow_instance_id": instance_id,
+            "tipo": "autorizacion", "workflow_id": workflow["id"], "workflow_instance_id": instance_id,
             "nodo_id": siguiente_id, "nodo_nombre": siguiente_nodo_obj.get("nombre") or siguiente_id,
-            "modo_autorizacion": siguiente_nodo_obj.get("modo_autorizacion", "paralela"),
+            "modo_autorizacion": modo_siguiente,
             "responsables_todos": responsables_siguiente,
             "responsables_a_notificar": [r for r in responsables_siguiente if r["id"] in pendientes_ids],
+            "execution_owner": "unified" if unified_siguiente else instancia.get("execution_owner", "legacy"),
         },
     }

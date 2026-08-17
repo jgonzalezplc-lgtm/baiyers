@@ -24,6 +24,26 @@ class EventoDef:
 
 
 EVENTOS: dict[str, EventoDef] = {
+    "internal_task_assigned": EventoDef(
+        audiencia="internal",
+        descripcion="Se asignó una tarea interna del ciclo de compras",
+        variables_permitidas=["nombre_responsable", "tarea", "lista_nombre", "link_baiyer"],
+        asunto_default="Nueva tarea — {{tarea}}",
+        cuerpo_default=(
+            "Hola {{nombre_responsable}},\n\nTienes asignada la tarea \"{{tarea}}\" "
+            "para {{lista_nombre}}.\n\nRevisa el proceso en Baiyer: {{link_baiyer}}"
+        ),
+    ),
+    "internal_task_reminder": EventoDef(
+        audiencia="internal",
+        descripcion="Recordatorio de una tarea interna pendiente",
+        variables_permitidas=["nombre_responsable", "tarea", "lista_nombre", "dias_pendiente", "link_baiyer"],
+        asunto_default="Recordatorio: tarea pendiente — {{tarea}}",
+        cuerpo_default=(
+            "Hola {{nombre_responsable}},\n\nLa tarea \"{{tarea}}\" de {{lista_nombre}} "
+            "sigue pendiente hace {{dias_pendiente}} días.\n\n{{link_baiyer}}"
+        ),
+    ),
     # ─── Internos: autorización dentro de la organización ──────────────────
     "approval_requested": EventoDef(
         audiencia="internal",
@@ -162,6 +182,40 @@ EVENTOS: dict[str, EventoDef] = {
             "Quedamos en contacto para los siguientes pasos.\n\nSaludos cordiales."
         ),
     ),
+    "supplier_intake_started": EventoDef(
+        audiencia="external",
+        descripcion="Solicitud inicial de antecedentes para homologación",
+        variables_permitidas=["proveedor_nombre", "empresa_nombre", "requisitos"],
+        asunto_default="Antecedentes para homologación como proveedor — {{empresa_nombre}}",
+        cuerpo_default=(
+            "Estimados {{proveedor_nombre}},\n\nPara continuar con el proceso de compra necesitamos "
+            "homologarlos como proveedor. Por favor respondan este correo adjuntando o indicando:\n\n"
+            "{{requisitos}}\n\nNo envíen claves, credenciales bancarias ni documentos personales no "
+            "solicitados.\n\nSaludos,\n{{empresa_nombre}}"
+        ),
+    ),
+    "supplier_intake_followup": EventoDef(
+        audiencia="external",
+        descripcion="Seguimiento de antecedentes de homologación pendientes",
+        variables_permitidas=["proveedor_nombre", "requisitos_pendientes", "dias_transcurridos"],
+        asunto_default="Seguimiento de homologación — antecedentes pendientes",
+        cuerpo_default=(
+            "Estimados {{proveedor_nombre}},\n\nHace {{dias_transcurridos}} días solicitamos antecedentes "
+            "para su homologación. Aún necesitamos:\n\n{{requisitos_pendientes}}\n\n"
+            "Pueden responder en este mismo hilo.\n\nSaludos cordiales."
+        ),
+    ),
+    "supplier_intake_missing_information": EventoDef(
+        audiencia="external",
+        descripcion="Solicitud de antecedentes faltantes o corregidos",
+        variables_permitidas=["proveedor_nombre", "requisitos_pendientes", "comentario"],
+        asunto_default="Información pendiente para completar la homologación",
+        cuerpo_default=(
+            "Estimados {{proveedor_nombre}},\n\nGracias por los antecedentes enviados. Para completar "
+            "la homologación necesitamos:\n\n{{requisitos_pendientes}}\n\n{{comentario}}\n\n"
+            "Quedamos atentos.\n\nSaludos cordiales."
+        ),
+    ),
     "supplier_awarded": EventoDef(
         audiencia="external",
         descripcion="El proveedor fue seleccionado",
@@ -192,6 +246,26 @@ EVENTOS: dict[str, EventoDef] = {
             "Saludos,\n{{empresa_nombre}}"
         ),
     ),
+    "purchase_order_internal_copy": EventoDef(
+        audiencia="internal",
+        descripcion="Aviso interno de que una OC fue emitida",
+        variables_permitidas=["nombre_responsable", "numero_oc", "proveedor_nombre", "monto", "moneda"],
+        asunto_default="OC emitida — {{numero_oc}}",
+        cuerpo_default=(
+            "Hola {{nombre_responsable}},\n\nLa Orden de Compra {{numero_oc}} fue enviada a "
+            "{{proveedor_nombre}} por {{monto}} {{moneda}}."
+        ),
+    ),
+    "purchase_order_acknowledged_internal": EventoDef(
+        audiencia="internal",
+        descripcion="Aviso interno de recepción confirmada de una OC",
+        variables_permitidas=["nombre_responsable", "numero_oc", "proveedor_nombre"],
+        asunto_default="Recepción confirmada — {{numero_oc}}",
+        cuerpo_default=(
+            "Hola {{nombre_responsable}},\n\n{{proveedor_nombre}} confirmó la recepción de la "
+            "Orden de Compra {{numero_oc}}."
+        ),
+    ),
     "purchase_order_ack_reminder": EventoDef(
         audiencia="external",
         descripcion="Recordatorio de confirmar recepción de la OC",
@@ -205,5 +279,15 @@ EVENTOS: dict[str, EventoDef] = {
         variables_permitidas=["proveedor_nombre", "numero_oc"],
         asunto_default="¿Cómo va el despacho de {{numero_oc}}?",
         cuerpo_default="Estimado/a {{proveedor_nombre}},\n\n¿Nos puedes contar el estado del despacho de la Orden de Compra {{numero_oc}}?",
+    ),
+    "dispatch_notified_internal": EventoDef(
+        audiencia="internal",
+        descripcion="Aviso interno de despacho informado por el proveedor",
+        variables_permitidas=["nombre_responsable", "numero_oc", "proveedor_nombre", "detalle_despacho"],
+        asunto_default="Despacho informado — {{numero_oc}}",
+        cuerpo_default=(
+            "Hola {{nombre_responsable}},\n\n{{proveedor_nombre}} informó el despacho de la OC "
+            "{{numero_oc}}.\n\nDetalle: {{detalle_despacho}}"
+        ),
     ),
 }

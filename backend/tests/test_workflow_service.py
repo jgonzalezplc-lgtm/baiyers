@@ -82,5 +82,18 @@ class ObtenerWorkflowEstadoOnboardingTest(unittest.TestCase):
         self.assertEqual(resultado["responsables"][0]["responsables"]["estado_onboarding"], "activo")
 
 
+class ActivarWorkflowAutomatizacionTest(unittest.TestCase):
+    def test_error_de_automatizacion_bloquea_activacion(self):
+        from app.services import workflow_service as ws
+        workflow = {"id": "wf-1", "estado": "borrador", "nombre": "Ciclo", "nodos": [], "conexiones": []}
+        fake_sb = MagicMock()
+        with patch.object(ws, "obtener_workflow", return_value=workflow), \
+             patch.object(ws, "validar_workflow", return_value=[{"codigo": "loop_sin_evento_termino"}]), \
+             patch.object(ws, "_sb", return_value=fake_sb):
+            with self.assertRaises(ValueError):
+                ws.activar_workflow("u-1", "wf-1")
+        fake_sb.table.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

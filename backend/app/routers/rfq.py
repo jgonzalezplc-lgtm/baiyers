@@ -238,17 +238,78 @@ async def enviar_rfq(lista_id: str, batch_id: str, req: EnviarRFQRequest, ctx: A
     if batch["estado"] in ("sending", "delivery_uncertain"):
         raise HTTPException(status_code=409, detail="El estado del envío requiere revisión para evitar duplicados")
 
+    # El motor sólo toma propiedad si el ciclo activo tiene reglas RFQ
+    # explícitas. En caso contrario, este endpoint conserva exactamente su
+    # comportamiento legacy.
+    from app.services.workflow_rfq import asegurar_contexto_rfq, enlazar_batch
+    contexto_workflow = asegurar_contexto_rfq(ctx.actor_user_id, lista_id)
+    if contexto_workflow:
+        enlazar_batch(batch_id, contexto_workflow)
+        batch = {**batch, "workflow_instance_id": contexto_workflow["instancia"]["id"],
+                 "node_execution_id": contexto_workflow["ejecucion"]["id"],
+                 "execution_owner": "unified", "resolution_state": "pendiente"}
+
     # user_integrations es personal — cada usuario conecta su propio Gmail; no se comparte a la organización.
     integration = ejecutar_maybe_single(sb.table("user_integrations").select("*").eq("user_id", ctx.actor_user_id).eq("provider", "gmail").maybe_single()).data
     if not integration or not integration.get("refresh_token"):
         raise HTTPException(status_code=400, detail="Gmail no está conectado")
-    sb.table("rfq_batches").update({"estado": "sending", "error_detalle": None, "updated_at": _now()}).eq("id", batch_id).execute()
+    reserva = None
+    if contexto_workflow:
+        from app.services.mail_template_service import render, reservar_envio
+        from app.services.organizacion import resolver_organizacion
+        org = resolver_organizacion(ctx.actor_user_id)
+        if not org:
+            raise HTTPException(status_code=400, detail="No se pudo resolver la organización del workflow")
+        items_batch = sb.table("rfq_batch_items").select("cotizacion_id,cantidad,unidad").eq(
+            "rfq_batch_id", batch_id
+        ).execute().data or []
+        cot_ids = [i["cotizacion_id"] for i in items_batch]
+        cotizaciones = {c["id"]: c for c in (sb.table("cotizaciones").select(
+            "id,nombre_identificado"
+        ).in_("id", cot_ids).execute().data or [])} if cot_ids else {}
+        items_texto = "\n".join(
+            f"- {float(i.get('cantidad') or 1):g} {i.get('unidad') or 'un'} · "
+            f"{cotizaciones.get(i['cotizacion_id'], {}).get('nombre_identificado') or 'Ítem'}"
+            for i in items_batch
+        )
+        proveedor = ejecutar_maybe_single(sb.table("proveedores").select("nombre").eq(
+            "id", batch["proveedor_id"]
+        ).maybe_single()).data or {}
+        renderizado = render("rfq_requested", {
+            "proveedor_nombre": proveedor.get("nombre") or "estimados",
+            "items": items_texto, "empresa_nombre": org.nombre,
+            "plazo_respuesta": "", "recurrencia_nombre": proyecto_nombre if (proyecto_nombre := (ejecutar_maybe_single(sb.table("proyectos").select("nombre").eq("id", lista_id).maybe_single()).data or {}).get("nombre")) else "Cotización",
+        }, organizacion_id=org.organizacion_id,
+           workflow_id=contexto_workflow["workflow"]["id"],
+           nodo_id=contexto_workflow["nodo"]["id"])
+        batch["subject"], batch["body"] = renderizado["subject"], renderizado["body"]
+        reserva = reservar_envio(
+            org.organizacion_id, "rfq_requested", batch["destinatario_email"],
+            f"rfq_requested:{batch_id}", workflow_id=contexto_workflow["workflow"]["id"],
+            workflow_nodo_id=contexto_workflow["nodo"]["id"], proveedor_id=batch["proveedor_id"],
+        )
+        if not reserva["adquirida"]:
+            entrega = reserva.get("entrega") or {}
+            if entrega.get("estado") == "enviado" and batch.get("estado") == "sent":
+                return {"success": True, "already_sent": True, "thread_id": batch.get("gmail_thread_id")}
+            raise HTTPException(status_code=409, detail="El envío RFQ ya fue reservado y requiere revisión antes de reintentar")
+
+    sb.table("rfq_batches").update({
+        "estado": "sending", "subject": batch["subject"], "body": batch["body"],
+        "error_detalle": None, "updated_at": _now(),
+    }).eq("id", batch_id).execute()
     try:
         service, creds = get_gmail_service(integration["access_token"], integration["refresh_token"])
         if creds.token != integration["access_token"]:
             sb.table("user_integrations").update({"access_token": creds.token, "token_expiry": creds.expiry.isoformat() if creds.expiry else None}).eq("user_id", ctx.actor_user_id).eq("provider", "gmail").execute()
         msg = send_email(service, batch["destinatario_email"], batch["subject"], batch["body"], integration["email"])
     except Exception as e:
+        if reserva and reserva.get("adquirida"):
+            from app.services.mail_template_service import actualizar_entrega_reservada
+            actualizar_entrega_reservada(
+                reserva["entrega"]["id"], reserva["reservation_token"],
+                "delivery_uncertain", error=str(e),
+            )
         sb.table("rfq_batches").update({"estado": "delivery_uncertain", "error_detalle": str(e)[:1000], "updated_at": _now()}).eq("id", batch_id).execute()
         raise HTTPException(status_code=502, detail="No se pudo confirmar el envío. Revisa Gmail antes de reintentar para evitar duplicados.")
 
@@ -284,7 +345,26 @@ async def enviar_rfq(lista_id: str, batch_id: str, req: EnviarRFQRequest, ctx: A
             "conversation_id": conv["id"], "gmail_message_id": msg.get("id"),
             "gmail_thread_id": msg.get("threadId"), "estado": "sent", "sent_at": now, "updated_at": now,
         }).eq("id", batch_id).execute()
+        if reserva and reserva.get("adquirida"):
+            from app.services.mail_template_service import actualizar_entrega_reservada
+            actualizar_entrega_reservada(
+                reserva["entrega"]["id"], reserva["reservation_token"], "enviado",
+                gmail_message_id=msg.get("id"), gmail_thread_id=msg.get("threadId"),
+            )
+        if contexto_workflow:
+            from app.services.workflow_rfq import programar_followups, registrar_envio_inicial
+            registrar_envio_inicial(batch_id, contexto_workflow, msg.get("id"))
+            programar_followups({**batch, "id": batch_id, "conversation_id": conv["id"]}, contexto_workflow)
     except Exception as e:
+        if reserva and reserva.get("adquirida"):
+            try:
+                from app.services.mail_template_service import actualizar_entrega_reservada
+                actualizar_entrega_reservada(
+                    reserva["entrega"]["id"], reserva["reservation_token"],
+                    "delivery_uncertain", error=str(e),
+                )
+            except Exception:
+                pass
         sb.table("rfq_batches").update({"estado": "delivery_uncertain", "gmail_message_id": msg.get("id"), "gmail_thread_id": msg.get("threadId"), "error_detalle": str(e)[:1000], "updated_at": now}).eq("id", batch_id).execute()
         raise HTTPException(status_code=500, detail="El correo salió, pero falló su registro. No lo reenvíes; requiere revisión.")
     return {"success": True, "thread_id": msg.get("threadId"), "conversation_id": conv["id"]}

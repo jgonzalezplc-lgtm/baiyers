@@ -113,7 +113,19 @@ def validar_workflow(user_id: str, workflow_id: str) -> list[dict]:
     workflow = obtener_workflow(user_id, workflow_id)
     if not workflow:
         raise ValueError("Workflow no encontrado")
-    return validar_grafo(workflow.get("nodos") or [], workflow.get("conexiones") or [])
+    errores = validar_grafo(workflow.get("nodos") or [], workflow.get("conexiones") or [])
+    from app.services.workflow_automation import validar_automatizacion
+    from app.services.workflow_automation_service import listar_configuracion_workflow
+    config = listar_configuracion_workflow(user_id, workflow_id)
+    responsables_rows = _sb().table("responsables").select("id,activo,email").in_(
+        "user_id", _ids_organizacion(user_id)
+    ).execute().data or []
+    responsables = {r["id"]: r for r in responsables_rows}
+    errores.extend(validar_automatizacion(
+        workflow.get("nodos") or [], workflow.get("conexiones") or [],
+        config["asignaciones"], config["reglas"], responsables,
+    ))
+    return errores
 
 
 def activar_workflow(user_id: str, workflow_id: str) -> dict:
@@ -126,7 +138,7 @@ def activar_workflow(user_id: str, workflow_id: str) -> dict:
     if workflow["estado"] == "activo":
         return workflow
 
-    errores = validar_grafo(workflow.get("nodos") or [], workflow.get("conexiones") or [])
+    errores = validar_workflow(user_id, workflow_id)
     if errores:
         raise ValueError(f"El workflow tiene {len(errores)} error(es) de validación, no se puede activar")
 

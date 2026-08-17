@@ -246,6 +246,39 @@ class InterpretarCorreccionTest(unittest.TestCase):
             r = interpretar_correccion("agrega que finanzas también autorice y renombra la etapa n1", self.GRAFO)
         self.assertEqual(len(r["operaciones"]), 2)
 
+    def test_configurar_comunicacion_valida_se_mantiene(self):
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            MockModel.return_value.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "Configuro seguimiento",
+                "operaciones": [{
+                    "tipo": "configurar_comunicacion", "nodo_id": "n0",
+                    "rol_clave": "cotizador", "evento_plantilla": "rfq_followup",
+                    "destinatario_tipo": "proveedor", "disparador_tipo": "al_entrar",
+                    "repetir_cada_dias": 2, "max_intentos": 3,
+                    "evento_termino": "rfq_completa", "alcance_termino": "proveedor",
+                    "politica_agotamiento": "descartar_entidad",
+                }], "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("insiste cada dos días", self.GRAFO)
+        self.assertEqual(r["operaciones"][0]["tipo"], "configurar_comunicacion")
+
+    def test_configurar_comunicacion_sin_salida_de_loop_se_descarta(self):
+        with patch("app.config.settings.gemini_api_key", "x"), \
+             patch("google.generativeai.configure"), \
+             patch("google.generativeai.GenerativeModel") as MockModel:
+            MockModel.return_value.generate_content.return_value = MagicMock(text=json.dumps({
+                "resumen": "", "operaciones": [{
+                    "tipo": "configurar_comunicacion", "nodo_id": "n0",
+                    "evento_plantilla": "rfq_followup", "destinatario_tipo": "proveedor",
+                    "repetir_cada_dias": 2,
+                }], "requiere_aclaracion": False, "preguntas": [],
+            }))
+            r = interpretar_correccion("insiste", self.GRAFO)
+        self.assertEqual(r["operaciones"], [])
+        self.assertTrue(r["requiere_aclaracion"])
+
     def test_conectar_nodo_recien_agregado_en_la_misma_correccion(self):
         """Bug real: conectar una etapa que se agrega en la misma corrección
         se descartaba porque se validaba contra el grafo previo, sin el id

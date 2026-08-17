@@ -79,6 +79,22 @@ class MailTemplatesRouterTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         mock_listar.assert_called_once_with("org-1", None, None)
 
+    def test_workflow_contextual_ajeno_devuelve_404(self):
+        app.dependency_overrides[get_auth_context] = lambda: _ctx()
+        with patch("app.routers.mail_templates._verificar_workflow_contexto", side_effect=mail_templates.HTTPException(status_code=404, detail="Workflow no encontrado")):
+            resp = self.client.get("/api/mail-templates?workflow_id=wf-ajeno&nodo_id=n1")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_restaurar_en_nodo_vuelve_a_herencia(self):
+        app.dependency_overrides[get_auth_context] = lambda: _ctx()
+        with patch("app.routers.mail_templates._verificar_workflow_contexto"), \
+             patch("app.services.mail_template_service.restaurar_herencia", return_value={"heredando": True}) as fn:
+            resp = self.client.post("/api/mail-templates/restaurar-default", json={
+                "evento": "rfq_followup", "workflow_id": "wf-1", "nodo_id": "n1",
+            })
+        self.assertEqual(resp.status_code, 200)
+        fn.assert_called_once_with("org-1", "rfq_followup", "wf-1", "n1")
+
 
 if __name__ == "__main__":
     unittest.main()

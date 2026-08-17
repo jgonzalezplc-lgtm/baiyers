@@ -530,6 +530,35 @@ async def registrar_respuesta(resultado_id: str, req: RespuestaProveedorRequest,
         except Exception:
             pass  # columnas aún no migradas
 
+    # La carga manual participa del mismo vocabulario de eventos que Gmail.
+    # Sólo una respuesta con los cuatro datos operativos cierra el loop del
+    # proveedor; una carga parcial queda visible pero mantiene seguimiento.
+    try:
+        item = ejecutar_maybe_single(sb.table("rfq_batch_items").select("rfq_batch_id").eq(
+            "resultado_id", resultado_id
+        ).maybe_single()).data
+        if item:
+            batch = ejecutar_maybe_single(sb.table("rfq_batches").select("conversation_id").eq(
+                "id", item["rfq_batch_id"]
+            ).maybe_single()).data
+            resultado = ejecutar_maybe_single(sb.table("resultados").select(
+                "precio_cotizado,plazo_entrega,condiciones_pago,notas_respuesta"
+            ).eq("id", resultado_id).maybe_single()).data or {}
+            disponibilidad = bool(resultado.get("notas_respuesta"))
+            completa = bool(
+                resultado.get("precio_cotizado") is not None
+                and resultado.get("plazo_entrega")
+                and resultado.get("condiciones_pago")
+                and disponibilidad
+            )
+            if batch and batch.get("conversation_id"):
+                from app.services.workflow_rfq import registrar_respuesta_rfq
+                registrar_respuesta_rfq(
+                    batch["conversation_id"], f"manual:{resultado_id}:{now_iso}", completa=completa,
+                )
+    except Exception as e:
+        print(f"[Cotizaciones] evento workflow RFQ manual falló: {e}")
+
     return {"ok": True, "respuesta_recibida_at": now_iso}
 
 

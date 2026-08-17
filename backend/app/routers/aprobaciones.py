@@ -199,6 +199,18 @@ async def decidir(token: str, req: DecisionRequest):
         update_data["resumen"] = resumen
     sb.table("approval_requests").update(update_data).eq("id", row["id"]).execute()
 
+    # Una decisión terminal detiene inmediatamente los recordatorios de esa
+    # persona. Si el nodo completo se resuelve más abajo, se cancelan también
+    # las demás acciones pendientes y se cierra su ejecución durable.
+    if row.get("workflow_instance_id") and row.get("workflow_nodo_id"):
+        try:
+            from app.services.workflow_scheduler import cancelar_recordatorios_autorizacion
+            cancelar_recordatorios_autorizacion(
+                row["workflow_instance_id"], row["workflow_nodo_id"], row.get("responsable_id"),
+            )
+        except Exception as e:
+            print(f"[Aprobaciones] cancelar recordatorio individual falló: {e}")
+
     # Fase 4 del Workflow Builder: si esta solicitud pertenece a un ciclo de
     # compras activo (varios responsables posibles, en paralelo o en orden),
     # el motor decide si el tramo ya quedó resuelto y, si falta gente por
@@ -216,6 +228,16 @@ async def decidir(token: str, req: DecisionRequest):
         avance = avanzar_tras_decision({**row, **update_data})
         if not avance["resuelto"]:
             return {"ok": True, "estado": "pendiente", "mensaje": "Registrado. Falta que otros responsables de este tramo decidan."}
+        try:
+            from app.services.workflow_scheduler import (
+                cancelar_recordatorios_autorizacion, completar_ejecucion_autorizacion,
+            )
+            cancelar_recordatorios_autorizacion(row["workflow_instance_id"], row["workflow_nodo_id"])
+            completar_ejecucion_autorizacion(
+                row["workflow_instance_id"], row["workflow_nodo_id"], avance["resultado"],
+            )
+        except Exception as e:
+            print(f"[Aprobaciones] cierre de ejecución durable falló: {e}")
         if avance["resultado"] == "aprobado" and not avance["terminado"]:
             avance_pendiente = avance["siguiente"]
             nuevo = "aprobado"  # este tramo se resolvió aprobado; la lista sigue pendiente del próximo tramo
@@ -252,6 +274,45 @@ async def decidir(token: str, req: DecisionRequest):
             if proy.data:
                 data = json.loads(proy.data.get("descripcion") or "{}")
                 if data.get("tipo") == "lista_cotizacion" and avance_pendiente:
+                    if avance_pendiente.get("tipo") == "emision_oc":
+                        aprobacion = data.get("aprobacion", {})
+                        aprobacion.update({
+                            "estado": "aprobado", "nodo_actual_id": avance_pendiente["nodo_id"],
+                            "nodo_actual_nombre": avance_pendiente["nodo_nombre"], "decidido_at": _now(),
+                        })
+                        data["aprobacion"] = aprobacion
+                        sb.table("proyectos").update({
+                            "descripcion": json.dumps(data, ensure_ascii=False),
+                        }).eq("id", lista_id).execute()
+                        return {"ok": True, "estado": "aprobado", "nodo_actual_nombre": avance_pendiente["nodo_nombre"]}
+                    if avance_pendiente.get("tipo") == "homologacion":
+                        from app.services.workflow_homologation import iniciar_homologacion
+                        resultado_ids = [
+                            d["resultado_id"] for d in (data.get("definitivos") or {}).values()
+                            if d.get("resultado_id")
+                        ]
+                        try:
+                            inicio = iniciar_homologacion(
+                                proy.data["user_id"], lista_id, resultado_ids, avance_pendiente,
+                            )
+                        except Exception as e:
+                            sb.table("workflow_instances").update({
+                                "estado_workflow": "pausado",
+                            }).eq("id", avance_pendiente["workflow_instance_id"]).execute()
+                            return {
+                                "ok": True, "estado": "homologacion_pausada",
+                                "mensaje": f"La compra fue aprobada, pero la homologación requiere intervención: {e}",
+                            }
+                        aprobacion = data.get("aprobacion", {})
+                        aprobacion.update({
+                            "estado": "homologacion", "nodo_actual_id": avance_pendiente["nodo_id"],
+                            "nodo_actual_nombre": avance_pendiente["nodo_nombre"],
+                        })
+                        data["aprobacion"] = aprobacion
+                        sb.table("proyectos").update({
+                            "descripcion": json.dumps(data, ensure_ascii=False),
+                        }).eq("id", lista_id).execute()
+                        return {"ok": True, "estado": "homologacion", "casos": inicio["casos"]}
                     # Este tramo aprobó, pero el workflow exige otro más
                     # (ej: jefe directo → finanzas). No finalizar: notificar
                     # al siguiente tramo y dejar la lista pendiente.

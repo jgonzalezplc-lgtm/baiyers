@@ -192,6 +192,60 @@ con f-strings repartidos en 5 archivos — sin versionado, sin override por orga
   (el modelo ya lo soporta); eventos de recordatorio (`approval_reminder`,
   `purchase_order_ack_reminder`, etc.) sin ningún cron/scheduler que los dispare todavía.
 
+## Workflow + comunicaciones unificado — Fase A (2026-08-17)
+- PRD fuente: `PRD_WORKFLOW_COMUNICACIONES_UNIFICADO.md`. La Fase A está implementada en código,
+  y la migración **`041_workflow_communications_foundation.sql` está aplicada y confirmada en
+  Supabase producción (2026-08-17)**. Se verificaron por consultas reales las cuatro tablas nuevas
+  (vacías, estado esperado), las columnas `workflow_version`/`execution_owner` en instancias y las
+  columnas de reserva/auditoría en `mail_delivery_events`; no se crearon datos productivos de prueba.
+- La 041 crea `workflow_node_assignments` (responsables por tarjeta),
+  `workflow_node_communication_rules` (plantilla + disparador + loop + término),
+  `workflow_node_executions` (una fila por visita) y `workflow_scheduled_actions` (cola durable con
+  lease). Amplía instancias con `execution_owner = legacy|unified`: todas las existentes y las nuevas
+  creadas por el código actual quedan en `legacy`, candado explícito contra doble envío durante la
+  transición.
+- RPCs atómicas preparadas: `claim_workflow_scheduled_action()` adquiere una acción vencida y permite
+  recuperar leases expirados; `reserve_mail_delivery_event()` inserta la entrega antes de Gmail y
+  sólo devuelve fila al worker que ganó la clave. `mail_template_service.reservar_envio()` expone
+  este contrato, pero ningún emisor real lo usa todavía (se migran uno por uno en fases posteriores).
+- `services/workflow_automation.py` es puro: valida asignaciones/reglas por nodo, audiencia y
+  destinatario, loops con salida, resultados conectados y responsables internos resolubles; también
+  genera claves idempotentes opacas por instancia+nodo+visita+regla+destinatario+intento.
+  `workflow_automation_service.py` contiene persistencia base, sin ejecutar comunicaciones.
+- Tests nuevos y regresión: pruebas focalizadas de workflow/mail: 72 passing; el resto de tests
+  posteriores al punto de corte: 58 passing. La suite global llega a 83% y sale durante el test
+  preexistente `test_descripcion_normal_no_lanza_por_scope_de_re`, que llama Gemini real sin mock;
+  al excluir sólo ese caso, todo lo restante pasa. No se modificó frontend en esta fase.
+
+## Workflow + comunicaciones unificado — Fase B (2026-08-17)
+- Configurador unificado conectado a las tablas de la 041. No requiere una migración adicional y
+  **todavía no ejecuta ni programa correos**: el cron/scheduler corresponde a Fase C.
+- Endpoints autenticados/admin en `routers/workflows.py`: listar toda la configuración por tarjetas;
+  crear/quitar `workflow_node_assignments`; crear/editar/quitar
+  `workflow_node_communication_rules`. Identidad siempre desde `get_auth_context`, nunca desde
+  `user_id` del body. Los servicios verifican pertenencia organizacional y sólo permiten editar
+  workflows en `borrador`.
+- `validar_workflow()` ahora combina `validar_grafo()` con `validar_automatizacion()`: una tarjeta
+  humana necesita responsables explícitos por rol; loops necesitan evento de término y política de
+  agotamiento; resultados usados por reglas deben existir y tener conexión. Activar un borrador con
+  errores queda bloqueado. Las asignaciones globales `responsable_roles` se conservan como roster/
+  fallback legado, pero no se reinterpretan silenciosamente como asignaciones por tarjeta.
+- Canvas `/settings/autorizaciones/canvas/[id]`: panel ampliado con responsable por acción y modos
+  individual/paralelo/secuencial; comunicaciones internas/externas; destinatario, disparador,
+  demora, repetición, máximo, evento de término, alcance y política de agotamiento; resumen narrado y
+  errores por tarjeta. Las tarjetas muestran conteos de responsables/correos y chip de loop.
+- Editor de plantillas compartido en `components/workflow/MailTemplateEditor.tsx`: desde una regla
+  crea override específico de nodo (precedencia existente nodo > workflow > organización > default),
+  preview y restauración de herencia. Restaurar herencia archiva el override sin borrar versiones.
+- `/settings/comunicaciones` se presenta como **Biblioteca de correos**, sólo para defaults de la
+  organización, y muestra cantidad de usos en tarjetas. La tarjeta de `/settings` explica que
+  destinatarios/cadencias/loops viven en el canvas.
+- Chat de correcciones acepta `configurar_comunicacion` y asignación con `nodo_id`; sólo permite
+  eventos reales del catálogo y rechaza loops incompletos. Se agregó `homologador` como rol base.
+- Verificación: 110 pruebas focalizadas passing (1 test preexistente de Gemini real excluido);
+  `next build` completo y exitoso. `tsc --noEmit` sigue reportando deuda preexistente en calendario,
+  resultados, estadísticas, proyectos y reportes, pero cero errores en archivos de Fase B.
+
 ## Branding organizacional en documentos (OC e informes)
 `OCPDFTemplate.tsx` y `ReporteTemplate.tsx` (ambos con `@react-pdf/renderer`, 100% frontend, no hay
 generación de PDF en el backend) mostraban "Claria" hardcodeado. Ahora leen el perfil real de la
@@ -318,6 +372,100 @@ Railway ~$5-10/mes · Supabase free · Serper 2.500 gratis→$50/50k · Gemini f
 6. Probar Supplier Capability Intelligence (024) con datos reales: completar un onboarding y confirmar que aparece la fila en `procurement_profiles`; hacer una búsqueda y confirmar que se crea `search_sessions`; usar "Rebuscar con contexto" y confirmar que cae en `search_feedback`.
 7. Verificar visualmente Fases 4–6 de Supplier Capability Intelligence con proveedores categorizados, enviar una RFQ agrupada de prueba desde Gmail y recorrer una búsqueda complementaria hasta el comparador.
 8. Considerar si vale la pena arreglar o eliminar `procurement.py` (endpoint roto usado por el botón "+ Lista") y el sistema de Gantt sin uso (`proyectos.py`) — no tocado, solo detectado.
+
+## Workflow de compras + comunicaciones unificado (PRD, Fases A-G — 17-08-2026)
+Proyecto nuevo, grande, **no confundir con el "Workflow Builder" ya descrito arriba** (ese sigue
+siendo la fuente real de autorización/magic link). El contrato completo está en
+`PRD_WORKFLOW_COMUNICACIONES_UNIFICADO.md` (raíz, sin trackear en git todavía) — 7 fases (A-G) para
+convertir cada tarjeta del canvas en una unidad ejecutable con responsables por acción, loops de
+correo declarativos y un motor que recorre el ciclo completo (RFQ → autorización → homologación →
+OC → despacho), reemplazando gradualmente el flujo legado. Es deliberadamente incremental: el propio
+PRD exige "una fase por vez" y checkpoints, no un big-bang.
+- **Fase A completa. Migración 041 aplicada y verificada en Supabase producción el 17-08-2026.**
+  El código sigue sin commitear. `backend/migrations/041_workflow_communications_foundation.sql`
+  (crea `workflow_node_assignments`, `workflow_node_communication_rules`, `workflow_node_executions`,
+  `workflow_scheduled_actions`, más las RPCs atómicas `claim_workflow_scheduled_action` y
+  `reserve_mail_delivery_event`, con RLS por organización — no toca comportamiento productivo, sólo
+  agrega), `backend/app/services/workflow_automation.py` (validación pura `validar_automatizacion()`
+  del modelo tarjeta/asignación/regla, sin tocar Supabase, con `clave_idempotencia()` determinística),
+  `backend/app/services/workflow_automation_service.py` (persistencia mínima: `crear_ejecucion_nodo`,
+  `programar_accion` idempotente, `reservar_accion` vía RPC atómica). `backend/app/services/mail_template_service.py`
+  agrega `reservar_envio()` (reserva atómica antes de enviar, vía la RPC de la 041). Desde Fase C,
+  `listas.py` usa la reserva previa para autorizaciones unificadas; el camino legacy y los demás
+  emisores (`oc.py`, `recurrencia_service.py`, `gmail_conversation_agent.py`) conservan
+  `registrar_envio()` hasta sus fases de migración.
+- **Fase B completa:** CRUD autenticado/admin de asignaciones y reglas por tarjeta; canvas con
+  responsables individual/paralelo/secuencial, biblioteca/edición de correos internos y externos,
+  configuración de loops y validación conjunta grafo+automatización. El chat puede proponer
+  `configurar_comunicacion`. `/settings/comunicaciones` queda como biblioteca global; la asignación
+  operacional se hace dentro de cada tarjeta.
+- **Fase C completa:** `workflow_scheduler.py` consume cada minuto acciones vencidas con lease
+  atómico; el flujo real de autorización opta por el motor nuevo sólo cuando la instancia declara
+  `execution_owner=unified`. El correo inicial y los recordatorios reservan su idempotency key antes
+  de Gmail, los fallos ambiguos quedan `delivery_uncertain` y nunca se reenvían automáticamente.
+  Una decisión cancela sus recordatorios, el cierre del tramo completa la ejecución, y el agotamiento
+  pausa la instancia (nunca autoaprueba). Hay endpoints admin para pausar/reanudar y una vista de
+  automatización/trazabilidad por instancia. No requirió migración adicional a la 041.
+- **Fase D completa y habilitada:** RFQ batch queda enlazada a instancia/ejecución/proveedor mediante
+  `backend/migrations/042_workflow_rfq_execution.sql` (**aplicada manualmente en Supabase y confirmada
+  por el usuario el 17-08-2026**). El envío inicial usa `rfq_requested` contextual y reserva previa; `rfq_followup` corre
+  por proveedor en el mismo hilo Gmail. El agente Gmail y la carga manual normalizan
+  `rfq_respuesta_recibida`/`rfq_completa`, cierran sólo el loop del proveedor y evalúan
+  `todos_resueltos`, `minimo_respuestas` o `cierre_manual`. El agotamiento puede descartar proveedor;
+  si todos se descartan sin cotización, la instancia se pausa. La instancia RFQ se reutiliza luego
+  en autorización para no partir un segundo motor. Canvas permite configurar el criterio agregado.
+- Verificación al cierre de Fase D: compilación Python correcta, 44 pruebas enfocadas, suite backend
+  completa de 310 pruebas pasando y build Next.js correcto. El trabajo A-D continúa sin commit.
+  La migración 042 fue aplicada manualmente y confirmada por el usuario.
+- **Fase E completa y habilitada:** crea expedientes mínimos por proveedor
+  (`supplier_homologation_cases`), asigna la tarea al homologador de la tarjeta, solicita antecedentes
+  en el mismo hilo Gmail, ejecuta `supplier_intake_followup` y registra adjuntos recibidos sin
+  autoaprobar. La pantalla `/listas/[id]/homologacion` permite al responsable/admin solicitar
+  faltantes, homologar o rechazar. Sólo una decisión humana cierra cada caso; cuando todos terminan,
+  la tarjeta avanza por `proveedor_homologado` o `proveedor_rechazado` hacia el nodo visible siguiente
+  (incluida emisión de OC). No implementa scoring de riesgo ni validación bancaria/tributaria; eso
+  pertenece al proyecto específico documentado en `DISENO_HOMOLOGACION_RIESGO_PROVEEDORES.md`.
+- `backend/migrations/043_workflow_supplier_homologation.sql` también amplía el tipo de conversación
+  Gmail con `homologacion`; **fue aplicada manualmente en Supabase y confirmada por el usuario el
+  17-08-2026**.
+- Verificación al cierre de Fase E: 63 pruebas enfocadas, suite backend completa de 314 pruebas pasando,
+  compilación Python, `git diff --check` y build Next.js correctos. El trabajo A-E sigue sin commit.
+- **Fase F completa y habilitada:** las OCs creadas desde una lista
+  en el nodo `emision_oc` quedan enlazadas a la instancia y ejecución unificadas. El correo inicial
+  reserva su clave antes de Gmail, usa la plantilla de la tarjeta y deja `delivery_uncertain` ante
+  cualquier resultado ambiguo. El acuse por magic link o respuesta Gmail cancela su loop y programa
+  consultas de despacho; el aviso de despacho cancela los loops, ejecuta los avisos internos
+  configurados y sólo cierra la tarjeta cuando **todas** las OCs de esa ejecución están despachadas.
+  Copia de emisión, confirmación y despacho internas son opt-in por reglas de la tarjeta; el flujo
+  legacy conserva sus correos anteriores. La vista operativa incluye eventos y métricas de ejecución,
+  acciones, loops agotados y envíos inciertos.
+- `backend/migrations/044_workflow_purchase_order_execution.sql` agrega a `ordenes_compra` los enlaces
+  de lista/instancia/ejecución y el candado `execution_owner`; **fue aplicada manualmente en Supabase
+  y confirmada por el usuario el 17-08-2026**.
+- Verificación al cierre de Fase F: 20 pruebas enfocadas, 317 pruebas backend pasando y 1
+  deseleccionada (el caso preexistente que llama Gemini real), compilación Python, `git diff --check`
+  y build Next.js correctos. `tsc --noEmit` conserva errores preexistentes en calendario, resultados,
+  estadísticas, proyectos y reportes; ninguno está en archivos tocados por F. El trabajo A-F sigue
+  sin commit. Ese fue el checkpoint previo a implementar la Fase G descrita a continuación.
+- **Fase G completa y habilitada, pendiente checkpoint productivo:**
+  `workflow_rollout_settings` fija `legacy|unified` por organización. RFQ y autorización nuevas
+  consultan esa bandera; cada instancia ya iniciada conserva para siempre su `execution_owner`, por
+  lo que un rollback no reenvía correos ni abandona acciones en curso. La migración habilita sólo la
+  cohorte que ya posee workflow activo con asignaciones y reglas explícitas por tarjeta; ausencia de fila
+  equivale a `legacy`. Antes de aplicar 045 el código conserva temporalmente el opt-in A-F para evitar
+  una ventana de corte durante el despliegue.
+- `GET /api/workflows/rollout/estado` compara instancias, activas/completadas, eventos, loops agotados
+  y entregas inciertas de ambos dueños. `PUT /api/workflows/rollout/estado` es sólo admin, valida el
+  workflow antes de habilitar `unified` y permite volver a `legacy`; el cambio sólo gobierna compras
+  nuevas. Operación y criterio de retiro físico documentados en `WORKFLOW_ROLLOUT_RUNBOOK.md`.
+- `backend/migrations/045_workflow_rollout_control.sql` **fue aplicada manualmente en Supabase y
+  confirmada por el usuario el 17-08-2026**.
+  El código legacy se conserva deliberadamente hasta ejecutar y observar al menos un ciclo productivo
+  controlado, tal como exige el PRD; retirar las bifurcaciones antes de ese checkpoint rompería el
+  rollback y el criterio de compatibilidad.
+- Verificación al cierre de código de Fase G: 28 pruebas focalizadas; suite backend de 325 pruebas
+  pasando y 1 deseleccionada (Gemini real); compilación Python, `git diff --check` y build Next.js
+  correctos. El trabajo A-G continúa sin commit.
 
 ## Cubicación conversacional (primer corte)
 - Motor puro en `backend/app/services/cubicacion.py`: unidades/dimensiones, conversiones, merma,

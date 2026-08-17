@@ -78,7 +78,7 @@ export interface ItemLista {
 }
 
 interface Aprobacion {
-  estado: "pendiente" | "aprobado" | "rechazado" | "aprobado_con_observaciones";
+  estado: "pendiente" | "aprobado" | "rechazado" | "aprobado_con_observaciones" | "homologacion";
   resultado?: "aprobado_con_observaciones";
   aprobador_email?: string;
   token?: string;
@@ -651,7 +651,7 @@ export default function ListaDetallePage() {
       {lista.aprobacion && (() => {
         const est = lista.aprobacion.estado;
         const badge = est === "aprobado" ? "aprobada" : est === "rechazado" ? "rechazada" : "cotizando";
-        const texto = est === "aprobado_con_observaciones" ? "Aprobada con observaciones" : est === "aprobado" ? "Autorizada" : est === "rechazado" ? "Rechazada" : "Esperando autorización";
+        const texto = est === "aprobado_con_observaciones" ? "Aprobada con observaciones" : est === "aprobado" ? "Autorizada" : est === "rechazado" ? "Rechazada" : est === "homologacion" ? "En homologación" : "Esperando autorización";
         return (
           <Card padding={16} style={{ marginBottom: 20 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -688,6 +688,18 @@ export default function ListaDetallePage() {
           </Card>
         );
       })()}
+
+      {lista.aprobacion?.estado === "homologacion" && (
+        <Card padding={16} style={{ marginBottom: 16, borderColor: "var(--brand)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+            <div>
+              <div style={{ fontWeight: 650, color: "var(--n-900)" }}>Proveedores en homologación</div>
+              <div style={{ fontSize: 12.5, color: "var(--n-600)", marginTop: 3 }}>Revisa los antecedentes recibidos antes de continuar con la compra.</div>
+            </div>
+            <BtnPrimary onClick={() => router.push(`/listas/${id}/homologacion`)}>Revisar homologación</BtnPrimary>
+          </div>
+        </Card>
+      )}
 
       {/* Ítems con sus comparados */}
       {lista.items.map((it, idx) => {
@@ -1183,6 +1195,7 @@ export default function ListaDetallePage() {
             userId={userId ?? ""}
             plan={plan}
             cantidadInicial={ocItem.cantidad || 1}
+            listaId={id}
             onClose={() => setOcItem(null)}
             onEnviada={(numeroOc: string) => {
               registrarCompra(ocItem.cotizacion_id, "enviada_oc", { numero_oc: numeroOc });

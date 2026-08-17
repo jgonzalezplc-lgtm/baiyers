@@ -473,7 +473,8 @@ def _nombre_lista(sb, lista_proyecto_id: str | None) -> str | None:
         return None
 
 
-async def _procesar_respuesta_oc(sb, service, conv: dict, mi_email: str, cuerpo: str, recibido_iso: str) -> str:
+async def _procesar_respuesta_oc(sb, service, conv: dict, mi_email: str, cuerpo: str,
+                                 recibido_iso: str, gmail_message_id: str = "") -> str:
     """Respuesta a una OC (conv['oc_id'] presente): a diferencia de una
     cotización, acá no se extraen campos — sólo interesa si el proveedor
     acusó recibo o avisó el despacho. Devuelve el nuevo estado de la
@@ -498,6 +499,11 @@ async def _procesar_respuesta_oc(sb, service, conv: dict, mi_email: str, cuerpo:
             programar_rating(oc["id"])
         except Exception as e:
             print(f"[OC] SI error (acuse por correo): {e}")
+        try:
+            from app.services.workflow_purchase_order import registrar_acuse_oc
+            registrar_acuse_oc(oc["id"], gmail_message_id or recibido_iso)
+        except Exception as e:
+            print(f"[OC] evento workflow de acuse falló: {e}")
         cuerpo_resp = (
             f"Estimados,\n\nGracias por confirmar la recepción de la orden. "
             f"Quedamos atentos al despacho.\n\nSaludos cordiales."
@@ -510,6 +516,13 @@ async def _procesar_respuesta_oc(sb, service, conv: dict, mi_email: str, cuerpo:
             "estado": "despachada", "despacho_at": recibido_iso,
             "despacho_detalle": clasificacion.get("detalle"),
         }).eq("id", oc["id"]).execute()
+        try:
+            from app.services.workflow_purchase_order import registrar_despacho_oc
+            registrar_despacho_oc(
+                oc["id"], gmail_message_id or recibido_iso, clasificacion.get("detalle") or "",
+            )
+        except Exception as e:
+            print(f"[OC] evento workflow de despacho falló: {e}")
         cuerpo_resp = (
             f"Estimados,\n\nGracias por avisarnos. Quedamos atentos a la llegada del pedido.\n\nSaludos cordiales."
         )
@@ -685,6 +698,8 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                 continue
 
             nuevo_estado = "supplier_replied"
+            es_respuesta_rfq = False
+            rfq_completa = False
             try:
                 # El proveedor respondió desde un correo distinto al contacto
                 # registrado: NO se crea otro proveedor ni se agrega el contacto
@@ -712,9 +727,20 @@ async def _sincronizar_usuario(user_id: str) -> dict:
 
                 if _parece_automatico(h.get("Subject", ""), from_email, cuerpo):
                     nuevo_estado = "human_review_required"
+                elif conv.get("tipo") == "homologacion":
+                    from app.services.workflow_homologation import registrar_recepcion_antecedentes
+                    registrar_recepcion_antecedentes(
+                        conv["id"], msg["id"],
+                        [a.get("filename") for a in adjuntos_meta if a.get("filename")],
+                        cuerpo,
+                    )
+                    nuevo_estado = "human_review_required"
                 elif conv.get("oc_id"):
-                    nuevo_estado = await _procesar_respuesta_oc(sb, service, conv, mi_email, cuerpo, recibido_iso)
+                    nuevo_estado = await _procesar_respuesta_oc(
+                        sb, service, conv, mi_email, cuerpo, recibido_iso, msg["id"],
+                    )
                 else:
+                    es_respuesta_rfq = True
                     items_ctx = _items_contexto(sb, conv)
                     extraccion = await extraer_actualizaciones(cuerpo, items_ctx)
                     entity_unico = items_ctx[0]["entity_id"] if len(items_ctx) == 1 else None
@@ -819,6 +845,9 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                             nuevo_estado = "complete" if not pendientes else "partially_answered"
                     elif extraccion["propuestas"]:
                         nuevo_estado = "partially_answered"
+                    rfq_completa = nuevo_estado in ("closed", "complete") or (
+                        bool(campos_recibidos) and not pendientes
+                    )
             except Exception as e:
                 # Un mensaje problemático no debe dejar la conversación
                 # colgada: se marca para revisión humana y sigue con el resto.
@@ -833,6 +862,15 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                 sb.table("gmail_conversations").update({
                     "estado": nuevo_estado, "last_message_at": recibido_iso,
                 }).eq("id", conv["id"]).execute()
+            if es_respuesta_rfq:
+                try:
+                    from app.services.workflow_rfq import registrar_respuesta_rfq
+                    registrar_respuesta_rfq(conv["id"], msg["id"], completa=rfq_completa)
+                except Exception as e:
+                    # El mensaje ya quedó guardado y procesado por el agente;
+                    # un fallo del adaptador se hace visible sin reejecutar
+                    # extracción ni duplicar respuestas automáticas.
+                    print(f"[Gmail sync] evento workflow RFQ falló: {e}")
 
     return resumen
 

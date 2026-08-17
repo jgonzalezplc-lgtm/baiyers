@@ -13,6 +13,19 @@ from app.services.mail_events import EVENTOS
 router = APIRouter(prefix="/api/mail-templates", tags=["mail-templates"])
 
 
+def _verificar_workflow_contexto(ctx: AuthContext, workflow_id: Optional[str]) -> None:
+    if not workflow_id:
+        return
+    from app.services.supabase import ejecutar_maybe_single, get_supabase
+    row = ejecutar_maybe_single(
+        get_supabase().table("workflow_definitions").select("id").eq("id", workflow_id).in_(
+            "user_id", ctx.user_ids_organizacion
+        ).maybe_single()
+    ).data
+    if not row:
+        raise HTTPException(status_code=404, detail="Workflow no encontrado")
+
+
 @router.get("/eventos")
 async def listar_eventos():
     return [
@@ -29,6 +42,7 @@ async def listar_plantillas(
     workflow_id: Optional[str] = None, nodo_id: Optional[str] = None,
     ctx: AuthContext = Depends(get_auth_context),
 ):
+    _verificar_workflow_contexto(ctx, workflow_id)
     from app.services.mail_template_service import listar_plantillas as _listar
     return _listar(ctx.organization_id, workflow_id, nodo_id)
 
@@ -63,6 +77,7 @@ class GuardarPlantillaRequest(BaseModel):
 async def guardar_plantilla(req: GuardarPlantillaRequest, ctx: AuthContext = Depends(get_auth_context)):
     if not ctx.es_admin:
         raise HTTPException(status_code=403, detail="Solo un admin de la organización puede editar plantillas")
+    _verificar_workflow_contexto(ctx, req.workflow_id)
     from app.services.mail_template_service import guardar_version
     try:
         return guardar_version(
@@ -83,8 +98,11 @@ class RestaurarDefaultRequest(BaseModel):
 async def restaurar_default_endpoint(req: RestaurarDefaultRequest, ctx: AuthContext = Depends(get_auth_context)):
     if not ctx.es_admin:
         raise HTTPException(status_code=403, detail="Solo un admin de la organización puede restaurar plantillas")
-    from app.services.mail_template_service import restaurar_default
+    _verificar_workflow_contexto(ctx, req.workflow_id)
+    from app.services.mail_template_service import restaurar_default, restaurar_herencia
     try:
+        if req.workflow_id:
+            return restaurar_herencia(ctx.organization_id, req.evento, req.workflow_id, req.nodo_id)
         return restaurar_default(ctx.organization_id, req.evento, ctx.actor_user_id, workflow_id=req.workflow_id, nodo_id=req.nodo_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -3,20 +3,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Mail } from "lucide-react";
 import { authFetch } from "@/lib/authFetch";
-import { BtnPrimary, BtnSecondary, Card, Input, Textarea, SkeletonBox, CascadeWrapper } from "@/components/ui";
+import { Card, SkeletonBox, CascadeWrapper } from "@/components/ui";
+import { MailTemplateEditor, type PlantillaCorreo } from "@/components/workflow/MailTemplateEditor";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-interface Plantilla {
-  evento: string;
-  audiencia: "internal" | "external";
-  descripcion: string;
-  variables_permitidas: string[];
-  subject: string;
-  body: string;
-  origen: "default" | "organizacion" | "workflow" | "nodo";
-  version: number;
-}
+type Plantilla = PlantillaCorreo;
 
 function Insignia({ personalizada }: { personalizada: boolean }) {
   return (
@@ -74,6 +66,7 @@ export default function ComunicacionesPage() {
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--n-900)" }}>{p.descripcion}</div>
               <div style={{ fontSize: 12, color: "var(--n-500)", marginTop: 2 }}>{p.evento}</div>
+              <div style={{ fontSize: 11, color: "var(--n-500)", marginTop: 2 }}>{p.usos_en_nodos || 0} uso(s) en tarjetas</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
               <Insignia personalizada={p.origen !== "default"} />
@@ -107,12 +100,12 @@ export default function ComunicacionesPage() {
 
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 600, color: "var(--n-900)", margin: "0 0 4px", display: "flex", alignItems: "center", gap: 8 }}>
-          <Mail size={20} strokeWidth={1.75} /> Comunicaciones
+          <Mail size={20} strokeWidth={1.75} /> Biblioteca de correos
         </h1>
         <p style={{ fontSize: 13.5, color: "var(--n-600)", margin: 0 }}>
           {esAdmin
-            ? "Los correos que salen a tu equipo y a tus proveedores. Personaliza cualquiera sin tocar código."
-            : "Los correos que salen a tu equipo y a tus proveedores. Solo un admin puede editarlos."}
+            ? "Defaults reutilizables de tu organización. Las cadencias, destinatarios y loops se configuran dentro de cada tarjeta del ciclo de compras."
+            : "Defaults reutilizables de tu organización. La automatización se consulta dentro del ciclo de compras."}
         </p>
       </div>
 
@@ -120,163 +113,13 @@ export default function ComunicacionesPage() {
       {renderGrupo("Comunicaciones externas", externas)}
 
       {editando && (
-        <EditorPlantilla
+        <MailTemplateEditor
           plantilla={editando}
           esAdmin={esAdmin}
           onClose={() => setEditando(null)}
           onGuardado={() => { setEditando(null); cargar(); }}
         />
       )}
-    </div>
-  );
-}
-
-function EditorPlantilla({ plantilla, esAdmin, onClose, onGuardado }: {
-  plantilla: Plantilla; esAdmin: boolean; onClose: () => void; onGuardado: () => void;
-}) {
-  const [subject, setSubject] = useState(plantilla.subject);
-  const [body, setBody] = useState(plantilla.body);
-  const [campoConFoco, setCampoConFoco] = useState<"subject" | "body">("body");
-  const [previsualizacion, setPrevisualizacion] = useState<{ subject: string; body: string } | null>(null);
-  const [cargandoPreview, setCargandoPreview] = useState(false);
-  const [guardando, setGuardando] = useState(false);
-  const [restaurando, setRestaurando] = useState(false);
-  const [error, setError] = useState("");
-
-  const insertarVariable = (v: string) => {
-    const placeholder = `{{${v}}}`;
-    if (campoConFoco === "subject") setSubject(s => `${s}${placeholder}`);
-    else setBody(b => `${b}${placeholder}`);
-  };
-
-  const previsualizar = async () => {
-    setCargandoPreview(true);
-    setError("");
-    try {
-      const res = await authFetch(`${API_URL}/api/mail-templates/preview`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          evento: plantilla.evento, subject, body,
-          variables_declaradas: plantilla.variables_permitidas,
-        }),
-      });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || "No se pudo previsualizar"); }
-      setPrevisualizacion(await res.json());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo previsualizar");
-    } finally {
-      setCargandoPreview(false);
-    }
-  };
-
-  const guardar = async () => {
-    setGuardando(true);
-    setError("");
-    try {
-      const res = await authFetch(`${API_URL}/api/mail-templates`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          evento: plantilla.evento, subject, body,
-          variables_declaradas: plantilla.variables_permitidas, origen: "user_edit",
-        }),
-      });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || "No se pudo guardar"); }
-      onGuardado();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo guardar");
-      setGuardando(false);
-    }
-  };
-
-  const restaurar = async () => {
-    setRestaurando(true);
-    setError("");
-    try {
-      const res = await authFetch(`${API_URL}/api/mail-templates/restaurar-default`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ evento: plantilla.evento }),
-      });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || "No se pudo restaurar"); }
-      onGuardado();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo restaurar");
-      setRestaurando(false);
-    }
-  };
-
-  return (
-    <div onClick={onClose} style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 200,
-      display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 16px", overflowY: "auto",
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        background: "var(--surface)", borderRadius: "var(--r-lg)", width: "100%", maxWidth: 560,
-        padding: 24, boxShadow: "var(--shadow-pop)",
-      }}>
-        <div style={{ fontSize: 16, fontWeight: 600, color: "var(--n-900)", marginBottom: 4 }}>{plantilla.descripcion}</div>
-        <div style={{ fontSize: 12, color: "var(--n-500)", marginBottom: 16 }}>{plantilla.evento} · versión {plantilla.version || "default"}</div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div onFocus={() => setCampoConFoco("subject")}>
-            <Input label="Asunto" value={subject} onChange={e => setSubject(e.target.value)} disabled={!esAdmin} />
-          </div>
-          <div onFocus={() => setCampoConFoco("body")}>
-            <Textarea label="Cuerpo" value={body} onChange={e => setBody(e.target.value)} rows={8} />
-          </div>
-
-          {esAdmin && (
-            <div>
-              <div style={{ fontSize: 11.5, color: "var(--n-500)", marginBottom: 6 }}>
-                Variables disponibles — clic para insertar en &quot;{campoConFoco === "subject" ? "Asunto" : "Cuerpo"}&quot;:
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {plantilla.variables_permitidas.map(v => (
-                  <button
-                    key={v} type="button" onClick={() => insertarVariable(v)}
-                    style={{
-                      fontSize: 11.5, padding: "4px 10px", borderRadius: 999,
-                      background: "var(--n-100)", color: "var(--n-700)", border: "1px solid var(--n-200)",
-                      cursor: "pointer", fontFamily: "var(--font-mono)",
-                    }}
-                  >
-                    {`{{${v}}}`}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <BtnSecondary onClick={previsualizar} disabled={cargandoPreview}>
-            {cargandoPreview ? "Generando…" : "Vista previa"}
-          </BtnSecondary>
-
-          {previsualizacion && (
-            <Card padding={14} style={{ background: "var(--canvas)" }}>
-              <div style={{ fontSize: 10.5, color: "var(--n-500)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>
-                Vista previa · datos de ejemplo
-              </div>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--n-900)", marginBottom: 6 }}>{previsualizacion.subject}</div>
-              <div style={{ fontSize: 13, color: "var(--n-700)", whiteSpace: "pre-wrap" }}>{previsualizacion.body}</div>
-            </Card>
-          )}
-
-          {error && <div style={{ fontSize: 12.5, color: "var(--danger)" }}>{error}</div>}
-
-          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-            <BtnSecondary onClick={onClose} style={{ flex: 1 }}>Cerrar</BtnSecondary>
-            {esAdmin && (
-              <>
-                <BtnSecondary onClick={restaurar} disabled={restaurando || plantilla.origen === "default"} style={{ flex: 1 }}>
-                  {restaurando ? "Restaurando…" : "Restaurar default"}
-                </BtnSecondary>
-                <BtnPrimary onClick={guardar} disabled={guardando} style={{ flex: 1 }}>
-                  {guardando ? "Guardando…" : "Guardar"}
-                </BtnPrimary>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

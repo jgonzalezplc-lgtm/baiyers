@@ -29,7 +29,7 @@ TIPOS_ETAPA_VALIDOS = {
 # acá y "decisión" siempre se rechazaba en silencio.
 TIPOS_NODO_AGREGABLES = TIPOS_ETAPA_VALIDOS | {"decision"}
 
-ROLES_VALIDOS = {"cotizador", "revisor", "autorizador", "comprador"}
+ROLES_VALIDOS = {"cotizador", "revisor", "autorizador", "homologador", "comprador"}
 
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
 
@@ -45,7 +45,7 @@ Responde SOLO JSON válido, sin markdown, con esta forma exacta:
     {
       "nombre": "nombre corto de la etapa (ej: 'Preparar comparación')",
       "tipo": "una de: tarea_humana, revision, autorizacion, homologacion, emision_oc, compra_sin_oc, espera_documento, accion_automatica",
-      "roles": ["uno o más de: cotizador, revisor, autorizador, comprador"],
+      "roles": ["uno o más de: cotizador, revisor, autorizador, homologador, comprador"],
       "responsables": [
         {"nombre": "solo si el usuario dio el nombre real de la persona (ej: 'María Pérez')",
          "email": "solo si el usuario escribió literalmente un email en el texto (ej: 'maria@empresa.cl')"}
@@ -310,7 +310,7 @@ def compilar_a_grafo(etapas: list[dict], reglas_autorizacion: Optional[list[dict
 OPERACIONES_VALIDAS = {
     "renombrar_nodo", "cambiar_roles", "cambiar_entrada", "cambiar_proceso",
     "cambiar_condicion_entrada", "agregar_nodo", "eliminar_nodo", "conectar", "desconectar",
-    "asignar_responsable",
+    "asignar_responsable", "configurar_comunicacion",
 }
 
 PROMPT_CORRECCION = """Eres un asistente que ajusta un diagrama de proceso de compras ya
@@ -331,7 +331,8 @@ Responde SOLO JSON válido, sin markdown, con esta forma exacta:
     {"tipo": "eliminar_nodo", "nodo_id": "n1"},
     {"tipo": "conectar", "origen_nodo_id": "n1", "destino_nodo_id": "n2", "resultado": "aprobado"},
     {"tipo": "desconectar", "origen_nodo_id": "n1", "destino_nodo_id": "n2", "resultado": "aprobado"},
-    {"tipo": "asignar_responsable", "rol_clave": "autorizador", "nombre": "Luis", "email": "luis@acme.cl"}
+    {"tipo": "asignar_responsable", "nodo_id": "n1", "rol_clave": "autorizador", "nombre": "Luis", "email": "luis@acme.cl"},
+    {"tipo": "configurar_comunicacion", "nodo_id": "n1", "rol_clave": "cotizador", "evento_plantilla": "rfq_followup", "destinatario_tipo": "proveedor", "disparador_tipo": "al_entrar", "repetir_cada_dias": 2, "max_intentos": 3, "evento_termino": "rfq_completa", "alcance_termino": "proveedor", "politica_agotamiento": "descartar_entidad"}
   ],
   "requiere_aclaracion": false,
   "preguntas": ["máximo 3 preguntas cortas si la corrección es ambigua"]
@@ -345,7 +346,7 @@ Reglas:
   nueva (con "conectar"/"desconectar" u otra operación), usa ESE MISMO id como si ya
   existiera — y pon la operación "agregar_nodo" ANTES que las que la usan, en ese orden
   dentro de la lista "operaciones".
-- "roles" solo puede tener valores de: cotizador, revisor, autorizador, comprador.
+- "roles" solo puede tener valores de: cotizador, revisor, autorizador, homologador, comprador.
 - "tipo_nodo" (para agregar_nodo) solo puede ser uno de: tarea_humana, revision,
   autorizacion, decision, homologacion, emision_oc, compra_sin_oc, espera_documento,
   accion_automatica. Usa "decision" para un punto donde el flujo se ramifica según una
@@ -364,11 +365,21 @@ Reglas:
 - "asignar_responsable" asigna una PERSONA real (nombre + email opcional) a un rol que YA
   existe en alguna etapa del grafo actual — "rol_clave" debe ser uno de los roles que
   aparecen en el campo "roles" de algún nodo (mira el grafo actual para saber cuáles hay:
-  cotizador, revisor, autorizador o comprador). Si el usuario usa un nombre coloquial para
+  cotizador, revisor, autorizador, homologador o comprador). Si el usuario usa un nombre coloquial para
   el rol ("el jefe", "el homologador", "quien homologa"), mapéalo al "rol_clave" real que
   tiene esa etapa en el grafo — nunca inventes una clave nueva. Si no puedes determinar con
   seguridad a qué rol_clave se refiere, pon requiere_aclaracion=true y pregunta cuál es.
   Esta operación asigna a la persona de inmediato (no espera a "Guardar").
+- "configurar_comunicacion" asocia un correo a una tarjeta YA existente. Usa exclusivamente
+  un evento real del catálogo: approval_requested, approval_reminder, approval_approved,
+  approval_rejected, approval_returned, approval_escalated, workflow_assignment_invitation,
+  rfq_requested, rfq_followup, rfq_missing_information, rfq_received_thanks,
+  supplier_awarded, supplier_not_awarded, purchase_order_sent,
+  purchase_order_ack_reminder o dispatch_status_request. Para audiencia interna el
+  destinatario_tipo debe ser responsable_rol, solicitante, autorizador o equipo; para externa,
+  proveedor o contacto_proveedor. Si hay repetición, siempre incluye repetir_cada_dias >= 1,
+  max_intentos >= 1, evento_termino y politica_agotamiento (pausar, escalar,
+  descartar_entidad o avanzar_timeout). Esta operación se guarda de inmediato.
 - Si el usuario pide activar el ciclo u otra acción que no sea ni el grafo ni asignar una
   persona, no generes una operación para eso — es una acción separada del canvas.
 - Si la corrección es ambigua o falta información para aplicarla con seguridad, pon
@@ -437,6 +448,28 @@ def _operacion_valida(op: dict, ids_nodos: set[str], nodos_por_id: dict | None =
         # quedaría asignada a un rol que ninguna tarjeta usa.
         if nodos_por_id is not None:
             if not any(rol_clave in (n.get("roles") or []) for n in nodos_por_id.values()):
+                return False
+        return True
+    if tipo == "configurar_comunicacion":
+        from app.services.mail_events import EVENTOS
+        from app.services.workflow_automation import POLITICAS_AGOTAMIENTO
+        nodo_id = op.get("nodo_id")
+        evento = op.get("evento_plantilla")
+        destinatario = op.get("destinatario_tipo")
+        if nodo_id not in ids_nodos or evento not in EVENTOS:
+            return False
+        audiencia = EVENTOS[evento].audiencia
+        internos = {"responsable_rol", "solicitante", "autorizador", "equipo"}
+        externos = {"proveedor", "contacto_proveedor"}
+        if destinatario not in (internos if audiencia == "internal" else externos):
+            return False
+        intervalo = op.get("repetir_cada_dias")
+        if intervalo is not None:
+            if not isinstance(intervalo, int) or intervalo < 1:
+                return False
+            if not isinstance(op.get("max_intentos"), int) or op["max_intentos"] < 1:
+                return False
+            if not op.get("evento_termino") or op.get("politica_agotamiento") not in POLITICAS_AGOTAMIENTO:
                 return False
         return True
     return False

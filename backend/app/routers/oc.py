@@ -11,7 +11,7 @@ from app.services.auth_context import AuthContext, get_auth_context
 router = APIRouter(prefix="/api/oc", tags=["oc"])
 
 
-def _registrar_conversacion_oc(sb, req, user_id: str, mi_email: str, msg: dict, subject: str, body: str) -> None:
+def _registrar_conversacion_oc(sb, req, user_id: str, mi_email: str, msg: dict, subject: str, body: str) -> bool:
     """Engancha el envío de la OC al agente de Gmail (mismo mecanismo que las
     cotizaciones): así el cron que ya lee respuestas cada 1 min también
     detecta el acuse de recibo o el aviso de despacho de esta OC. No bloquea
@@ -50,8 +50,10 @@ def _registrar_conversacion_oc(sb, req, user_id: str, mi_email: str, msg: dict, 
             "received_at": now_iso,
             "procesado": True,
         }, on_conflict="gmail_message_id").execute()
+        return True
     except Exception as e:
         print(f"[OC] No se pudo registrar la conversación para seguimiento: {e}")
+        return False
 
 
 class CrearOCRequest(BaseModel):
@@ -66,6 +68,7 @@ class CrearOCRequest(BaseModel):
     condiciones_pago: str = "30 días"
     plazo_entrega: str = ""
     notas: Optional[str] = None
+    lista_id: Optional[str] = None
 
 
 class EnviarOCRequest(BaseModel):
@@ -96,6 +99,9 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
 
     token = str(uuid.uuid4())
 
+    from app.services.workflow_purchase_order import asegurar_contexto_oc
+    contexto_workflow = asegurar_contexto_oc(ctx.actor_user_id, req.lista_id)
+
     row = {
         "cotizacion_id": req.cotizacion_id if req.cotizacion_id != "demo" else None,
         "resultado_id": req.resultado_id,
@@ -114,6 +120,7 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
         "cantidad": req.cantidad,
         "precio_unitario": req.precio_unitario,
         "notas": req.notas,
+        "lista_proyecto_id": req.lista_id,
     }
 
     try:
@@ -121,9 +128,13 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
         oc_id = insert_res.data[0]["id"]
     except Exception as e:
         # Si fallan las columnas extra, reintenta sin ellas
-        row_base = {k: v for k, v in row.items() if k not in ("nombre_item", "proveedor_nombre", "proveedor_email", "cantidad", "precio_unitario", "notas")}
+        row_base = {k: v for k, v in row.items() if k not in ("nombre_item", "proveedor_nombre", "proveedor_email", "cantidad", "precio_unitario", "notas", "lista_proyecto_id")}
         insert_res = sb.table("ordenes_compra").insert(row_base).execute()
         oc_id = insert_res.data[0]["id"]
+
+    if contexto_workflow:
+        from app.services.workflow_purchase_order import enlazar_oc
+        enlazar_oc(oc_id, req.lista_id, contexto_workflow)
 
     from app.services.organizacion import obtener_perfil_organizacion
     perfil = obtener_perfil_organizacion(ctx.organization_id)
@@ -165,7 +176,7 @@ async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_co
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="PDF base64 inválido") from exc
 
-    oc_actual = sb.table("ordenes_compra").select("id,estado").eq("id", req.oc_id).in_(
+    oc_actual = sb.table("ordenes_compra").select("*").eq("id", req.oc_id).in_(
         "user_id", ctx.user_ids_organizacion
     ).limit(1).execute().data or []
     if not oc_actual:
@@ -205,6 +216,35 @@ async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_co
     from app.services.mail_template_service import render, registrar_envio
     from app.services.organizacion import obtener_perfil_organizacion
     empresa_nombre = obtener_perfil_organizacion(ctx.organization_id).get("nombre") or "Baiyer"
+    contexto_workflow = None
+    reserva = None
+    if oc_actual[0].get("execution_owner") == "unified":
+        from app.services.workflow_purchase_order import contexto_de_oc
+        from app.services.mail_template_service import reservar_envio
+        contexto_workflow = contexto_de_oc(req.oc_id)
+        if not contexto_workflow:
+            raise HTTPException(
+                status_code=409,
+                detail="La OC unificada perdió su contexto de workflow; requiere revisión",
+            )
+        if not req.proveedor_email:
+            raise HTTPException(
+                status_code=400,
+                detail="La OC unificada requiere el email del proveedor",
+            )
+        if contexto_workflow:
+            reserva = reservar_envio(
+                ctx.organization_id, "purchase_order_sent", req.proveedor_email,
+                f"purchase_order_sent:{req.oc_id}",
+                workflow_id=contexto_workflow["instancia"]["workflow_id"],
+                workflow_nodo_id=contexto_workflow["ejecucion"]["nodo_id"],
+            )
+            if not reserva["adquirida"]:
+                entrega = reserva.get("entrega") or {}
+                if entrega.get("estado") == "enviado" and oc_actual[0].get("estado") == "enviada":
+                    return {"success": True, "already_sent": True, "numero_oc": req.numero_oc,
+                            "pdf_url": oc_actual[0].get("pdf_url")}
+                raise HTTPException(status_code=409, detail="El envío de la OC ya fue reservado y requiere revisión")
 
     # Email al proveedor — pide el acuse de recibo por el mismo correo (lo
     # normal para un proveedor real); el link de confirmación queda solo como
@@ -217,7 +257,9 @@ async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_co
             "monto": total_fmt,
             "moneda": req.moneda,
             "link_confirmacion": confirm_url,
-        }, organizacion_id=ctx.organization_id)
+        }, organizacion_id=ctx.organization_id,
+           workflow_id=contexto_workflow["instancia"]["workflow_id"] if contexto_workflow else None,
+           nodo_id=contexto_workflow["ejecucion"]["nodo_id"] if contexto_workflow else None)
         subject_proveedor, body_proveedor = renderizado["subject"], renderizado["body"]
         try:
             msg = send_email_with_attachment(
@@ -229,15 +271,35 @@ async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_co
                 pdf_bytes=pdf_bytes,
                 pdf_filename=f"{req.numero_oc}.pdf",
             )
-            _registrar_conversacion_oc(sb, req, ctx.actor_user_id, integration["email"], msg, subject_proveedor, body_proveedor)
-            try:
-                registrar_envio(
-                    ctx.organization_id, "purchase_order_sent", req.proveedor_email,
-                    f"purchase_order_sent:{req.oc_id}", estado="enviado",
+            conversacion_registrada = _registrar_conversacion_oc(
+                sb, req, ctx.actor_user_id, integration["email"], msg, subject_proveedor, body_proveedor,
+            )
+            if contexto_workflow and not conversacion_registrada:
+                raise RuntimeError("La OC salió, pero no pudo enlazarse a su conversación de seguimiento")
+            if reserva:
+                from app.services.mail_template_service import actualizar_entrega_reservada
+                actualizar_entrega_reservada(
+                    reserva["entrega"]["id"], reserva["reservation_token"], "enviado",
+                    gmail_message_id=msg.get("id"), gmail_thread_id=msg.get("threadId"),
                 )
-            except Exception as e:
-                print(f"[OC] registrar_envio falló (correo ya enviado, solo auditoría): {e}")
+            else:
+                try:
+                    registrar_envio(
+                        ctx.organization_id, "purchase_order_sent", req.proveedor_email,
+                        f"purchase_order_sent:{req.oc_id}", estado="enviado",
+                    )
+                except Exception as e:
+                    print(f"[OC] registrar_envio falló (correo ya enviado, solo auditoría): {e}")
         except Exception as e:
+            if reserva and reserva.get("adquirida"):
+                try:
+                    from app.services.mail_template_service import actualizar_entrega_reservada
+                    actualizar_entrega_reservada(
+                        reserva["entrega"]["id"], reserva["reservation_token"],
+                        "delivery_uncertain", error=str(e),
+                    )
+                except Exception:
+                    pass
             sb.table("ordenes_compra").update({"estado": "delivery_uncertain", "pdf_url": pdf_url}).eq("id", req.oc_id).execute()
             raise HTTPException(status_code=502, detail="No se pudo confirmar el envío de la OC; revisa Gmail antes de reintentar") from e
 
@@ -245,6 +307,11 @@ async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_co
         "pdf_url": pdf_url,
         "estado": "enviada",
     }).eq("id", req.oc_id).in_("user_id", ctx.user_ids_organizacion).execute()
+
+    if contexto_workflow:
+        from app.services.workflow_purchase_order import registrar_oc_emitida, avisar_oc_emitida_interno
+        registrar_oc_emitida(req.oc_id, msg.get("id") if req.proveedor_email else None)
+        avisar_oc_emitida_interno(req.oc_id)
 
     # Supplier Intelligence — registrar OC enviada
     try:
@@ -255,15 +322,16 @@ async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_co
 
     # Copia al comprador
     try:
-        send_email_with_attachment(
-            service=service,
-            to=from_email,
-            subject=f"[Copia] OC {req.numero_oc} enviada a {req.proveedor_nombre}",
-            body=f"Tu OC {req.numero_oc} fue enviada a {req.proveedor_nombre} ({req.proveedor_email or 'sin email'}).",
-            from_email=from_email,
-            pdf_bytes=pdf_bytes,
-            pdf_filename=f"{req.numero_oc}.pdf",
-        )
+        if not contexto_workflow:
+            send_email_with_attachment(
+                service=service,
+                to=from_email,
+                subject=f"[Copia] OC {req.numero_oc} enviada a {req.proveedor_nombre}",
+                body=f"Tu OC {req.numero_oc} fue enviada a {req.proveedor_nombre} ({req.proveedor_email or 'sin email'}).",
+                from_email=from_email,
+                pdf_bytes=pdf_bytes,
+                pdf_filename=f"{req.numero_oc}.pdf",
+            )
     except Exception as e:
         print(f"[OC] Error enviando copia: {e}")
 
@@ -317,6 +385,12 @@ async def confirmar_oc(token: str):
         "confirmada_at": now_iso,
     }).eq("id", oc["id"]).execute()
 
+    try:
+        from app.services.workflow_purchase_order import registrar_acuse_oc
+        registrar_acuse_oc(oc["id"], f"magic_link:{token}")
+    except Exception as e:
+        print(f"[OC] evento workflow de confirmación falló: {e}")
+
     # Supplier Intelligence
     try:
         from app.services.supplier_intelligence import registrar_oc_confirmada, programar_rating
@@ -327,6 +401,8 @@ async def confirmar_oc(token: str):
 
     # Notificar al comprador
     try:
+        if oc.get("execution_owner") == "unified":
+            raise RuntimeError("aviso interno gobernado por reglas del workflow")
         gmail_res = sb.table("user_integrations").select("*").eq("user_id", oc["user_id"]).eq("provider", "gmail").single().execute()
         if gmail_res.data:
             integration = gmail_res.data
@@ -341,7 +417,8 @@ async def confirmar_oc(token: str):
                 from_email=integration["email"],
             )
     except Exception as e:
-        print(f"[OC] Error notificando comprador: {e}")
+        if oc.get("execution_owner") != "unified":
+            print(f"[OC] Error notificando comprador: {e}")
 
     return {
         "success": True,

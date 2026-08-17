@@ -14,6 +14,7 @@ interface Props {
   plan: string;
   /** Cantidad pre-cargada — la OC se envía por ese número de unidades. */
   cantidadInicial?: number;
+  listaId?: string;
   onClose: () => void;
   onEnviada: (numeroOc: string) => void;
 }
@@ -43,7 +44,7 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-export default function OCModal({ resultado, nombreItem, cotizacionId, userId, plan, cantidadInicial, onClose, onEnviada }: Props) {
+export default function OCModal({ resultado, nombreItem, cotizacionId, userId, plan, cantidadInicial, listaId, onClose, onEnviada }: Props) {
   const proveedorNombre = resultado.proveedor || resultado.titulo;
   const [cantidad, setCantidad] = useState(cantidadInicial ?? 1);
   const [precioUnitario, setPrecioUnitario] = useState(resultado.precio ?? 0);
@@ -91,6 +92,7 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
           condiciones_pago: condicionesPago,
           plazo_entrega: plazoEntrega,
           notas: notas || null,
+          lista_id: listaId || null,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
