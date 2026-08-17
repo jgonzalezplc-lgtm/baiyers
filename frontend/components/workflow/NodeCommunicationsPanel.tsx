@@ -119,7 +119,26 @@ export function NodeCommunicationsPanel({ workflowId, nodoId, roles, resultados,
       <label style={{ fontSize: 10.5, color: "var(--n-600)" }}>Destinatario<select value={form.destinatario_tipo} onChange={e => setForm(f => ({ ...f, destinatario_tipo: e.target.value }))} style={fieldStyle}>{plantillaElegida?.audiencia === "internal" ? <><option value="responsable_rol">Responsable del rol</option><option value="solicitante">Solicitante</option><option value="autorizador">Autorizador</option><option value="equipo">Equipo</option></> : <><option value="proveedor">Proveedor</option><option value="contacto_proveedor">Contacto del proveedor</option></>}</select></label>
       <label style={{ fontSize: 10.5, color: "var(--n-600)" }}>Disparador<select value={form.disparador_tipo} onChange={e => setForm(f => ({ ...f, disparador_tipo: e.target.value }))} style={fieldStyle}><option value="al_entrar">Al entrar a la tarjeta</option><option value="despues_demora">Después de una demora</option><option value="al_ocurrir_evento">Al ocurrir un evento</option><option value="manual">Manual</option></select></label>
       {form.disparador_tipo === "al_ocurrir_evento" && <input value={form.disparador_evento} onChange={e => setForm(f => ({ ...f, disparador_evento: e.target.value }))} placeholder="Evento disparador" style={fieldStyle} />}
-      {form.disparador_tipo === "despues_demora" && <input type="number" min={0} value={form.demora_inicial_dias} onChange={e => setForm(f => ({ ...f, demora_inicial_dias: Number(e.target.value) }))} style={fieldStyle} />}
+      {form.disparador_tipo === "despues_demora" && (
+        <label style={{ fontSize: 10.5, color: "var(--n-600)" }}>
+          Espera antes del primer correo
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={form.demora_inicial_dias}
+              onChange={e => setForm(f => ({ ...f, demora_inicial_dias: Math.max(0, Number(e.target.value) || 0) }))}
+              aria-label="Días de espera antes del primer correo"
+              style={{ ...fieldStyle, flex: 1 }}
+            />
+            <span style={{ fontSize: 11.5, color: "var(--n-600)" }}>días</span>
+          </div>
+          <span style={{ display: "block", marginTop: 4, fontSize: 10, lineHeight: 1.4, color: "var(--n-500)" }}>
+            El primer correo se enviará al cumplirse este plazo. Si activas la repetición, la cadencia comienza después de ese envío.
+          </span>
+        </label>
+      )}
       <label style={{ fontSize: 11.5, display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={form.repetir} onChange={e => setForm(f => ({ ...f, repetir: e.target.checked }))} /> Repetir hasta que ocurra un evento</label>
       {form.repetir && <><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}><label style={{ fontSize: 10.5 }}>Cada X días<input type="number" min={1} value={form.repetir_cada_dias} onChange={e => setForm(f => ({ ...f, repetir_cada_dias: Number(e.target.value) }))} style={fieldStyle} /></label><label style={{ fontSize: 10.5 }}>Máx. intentos<input type="number" min={1} value={form.max_intentos} onChange={e => setForm(f => ({ ...f, max_intentos: Number(e.target.value) }))} style={fieldStyle} /></label></div><input value={form.evento_termino} onChange={e => setForm(f => ({ ...f, evento_termino: e.target.value }))} placeholder="Evento de término, ej: rfq_completa" style={fieldStyle} /><select value={form.politica_agotamiento} onChange={e => setForm(f => ({ ...f, politica_agotamiento: e.target.value }))} style={fieldStyle}><option value="pausar">Al agotar: pausar</option><option value="escalar">Al agotar: escalar</option><option value="descartar_entidad">Al agotar: descartar proveedor</option><option value="avanzar_timeout">Al agotar: avanzar por resultado</option></select>{form.politica_agotamiento === "avanzar_timeout" && <select value={form.resultado_agotamiento} onChange={e => setForm(f => ({ ...f, resultado_agotamiento: e.target.value }))} style={fieldStyle}><option value="">Resultado…</option>{resultados.map(r => <option key={r}>{r}</option>)}</select>}</>}
       {error && <div style={{ fontSize: 11.5, color: "var(--danger)" }}>{error}</div>}
