@@ -44,6 +44,84 @@ def crear_borrador(
     return obtener_workflow(user_id, workflow["id"])
 
 
+def crear_version_borrador(user_id: str, workflow_id: str, nodos: list[dict],
+                           conexiones: list[dict]) -> dict:
+    """Clona una definición activa/archivada a una nueva versión editable.
+
+    `nodos` y `conexiones` vienen del canvas para conservar también los cambios
+    locales propuestos por el chat antes de que el usuario recargue la página.
+    Las instancias existentes continúan fijadas a la versión anterior.
+    """
+    sb = _sb()
+    origen = obtener_workflow(user_id, workflow_id)
+    if not origen:
+        raise ValueError("Workflow no encontrado")
+    if origen.get("estado") == "borrador":
+        return origen
+
+    versiones = sb.table("workflow_definitions").select("version").in_(
+        "user_id", _ids_organizacion(user_id)
+    ).eq("nombre", origen["nombre"]).execute().data or []
+    siguiente_version = max([int(v.get("version") or 1) for v in versiones] or [0]) + 1
+    nueva = sb.table("workflow_definitions").insert({
+        "user_id": user_id,
+        "nombre": origen["nombre"],
+        "version": siguiente_version,
+        "estado": "borrador",
+        "origen": "mixto",
+        "nodos": nodos,
+        "conexiones": conexiones,
+        "creado_por": user_id,
+    }).execute().data[0]
+    nuevo_id = nueva["id"]
+
+    for rol in origen.get("roles") or []:
+        sb.table("workflow_roles").insert({
+            "workflow_id": nuevo_id, "clave": rol["clave"],
+            "nombre": rol["nombre"], "descripcion": rol.get("descripcion"),
+        }).execute()
+    for asignacion in origen.get("responsables") or []:
+        sb.table("responsable_roles").insert({
+            "workflow_id": nuevo_id,
+            "responsable_id": asignacion["responsable_id"],
+            "rol_clave": asignacion["rol_clave"],
+            "orden_autorizacion": asignacion.get("orden_autorizacion"),
+        }).execute()
+
+    nodos_validos = {n.get("id") for n in nodos if n.get("id")}
+    asignaciones = sb.table("workflow_node_assignments").select("*").eq(
+        "workflow_id", workflow_id
+    ).execute().data or []
+    for fila in asignaciones:
+        if fila.get("nodo_id") not in nodos_validos:
+            continue
+        sb.table("workflow_node_assignments").insert({
+            "workflow_id": nuevo_id, "nodo_id": fila["nodo_id"],
+            "rol_clave": fila["rol_clave"], "responsable_id": fila["responsable_id"],
+            "modo": fila["modo"], "orden": fila.get("orden"),
+            "es_propietario_excepcion": fila.get("es_propietario_excepcion", False),
+        }).execute()
+
+    reglas = sb.table("workflow_node_communication_rules").select("*").eq(
+        "workflow_id", workflow_id
+    ).execute().data or []
+    campos_regla = {
+        "nodo_id", "rol_clave", "evento_plantilla", "audiencia", "canal",
+        "destinatario_tipo", "disparador_tipo", "disparador_evento",
+        "demora_inicial_dias", "repetir_cada_dias", "max_intentos",
+        "evento_termino", "alcance_termino", "resultado_al_terminar",
+        "politica_agotamiento", "resultado_agotamiento", "activa",
+    }
+    for fila in reglas:
+        if fila.get("nodo_id") not in nodos_validos:
+            continue
+        sb.table("workflow_node_communication_rules").insert({
+            "workflow_id": nuevo_id,
+            **{campo: fila.get(campo) for campo in campos_regla},
+        }).execute()
+    return obtener_workflow(user_id, nuevo_id)
+
+
 def actualizar_borrador(user_id: str, workflow_id: str, nodos: list[dict], conexiones: list[dict], nombre: Optional[str] = None) -> dict:
     sb = _sb()
     existente = ejecutar_maybe_single(sb.table("workflow_definitions").select("id,estado").eq("id", workflow_id).eq("user_id", user_id).maybe_single()).data

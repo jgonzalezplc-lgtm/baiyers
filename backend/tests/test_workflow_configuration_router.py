@@ -61,6 +61,27 @@ class WorkflowConfigurationRouterTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(fn.call_args.args[0:3], ("u-actor", "wf-1", "n1"))
 
+    def test_admin_crea_version_con_el_grafo_visible_del_canvas(self):
+        app.dependency_overrides[get_auth_context] = lambda: _ctx()
+        esperado = {"id": "wf-2", "estado": "borrador", "version": 2}
+        with patch("app.services.workflow_service.crear_version_borrador", return_value=esperado) as fn:
+            resp = self.client.post("/api/workflows/wf-1/crear-version", json={
+                "nodos": [{"id": "inicio", "tipo": "inicio"}],
+                "conexiones": [],
+            })
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), esperado)
+        fn.assert_called_once_with(
+            "u-actor", "wf-1", [{"id": "inicio", "tipo": "inicio"}], [],
+        )
+
+    def test_miembro_no_admin_no_puede_crear_version(self):
+        app.dependency_overrides[get_auth_context] = lambda: _ctx(admin=False)
+        resp = self.client.post("/api/workflows/wf-1/crear-version", json={
+            "nodos": [], "conexiones": [],
+        })
+        self.assertEqual(resp.status_code, 403)
+
 
 if __name__ == "__main__":
     unittest.main()

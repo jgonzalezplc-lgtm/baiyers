@@ -201,6 +201,7 @@ export default function CanvasWorkflowPage() {
   const [conexiones, setConexiones] = useState<Conexion[]>([]);
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
+  const [creandoVersion, setCreandoVersion] = useState(false);
   const [seleccionado, setSeleccionado] = useState<string | null>(null);
   const [conectando, setConectando] = useState<string | null>(null);
   const [errores, setErrores] = useState<{ codigo: string; mensaje: string }[] | null>(null);
@@ -481,6 +482,27 @@ export default function CanvasWorkflowPage() {
       return false;
     } finally {
       setGuardando(false);
+    }
+  };
+
+  const crearVersionConCambios = async () => {
+    if (!workflow || workflow.estado !== "activo") return;
+    setCreandoVersion(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/workflows/${workflowId}/crear-version`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodos, conexiones }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || "No se pudo crear la nueva versión");
+      setToast("Borrador creado con los cambios del chat");
+      router.push(`/settings/autorizaciones/canvas/${data.id}`);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "No se pudo crear la nueva versión");
+      setTimeout(() => setToast(""), 4000);
+    } finally {
+      setCreandoVersion(false);
     }
   };
 
@@ -767,12 +789,26 @@ export default function CanvasWorkflowPage() {
         <div style={{ display: "flex", gap: 8 }}>
           <BtnSecondary onClick={() => setNodos(prev => ordenarPorNiveles(prev, conexiones))} disabled={guardando}>Ordenar automáticamente</BtnSecondary>
           <BtnSecondary onClick={validar} disabled={guardando}>Validar</BtnSecondary>
-          <BtnSecondary onClick={guardar} disabled={guardando}>{guardando ? "Guardando…" : "Guardar"}</BtnSecondary>
+          {workflow.estado === "activo" ? (
+            <BtnPrimary onClick={crearVersionConCambios} disabled={creandoVersion}>
+              {creandoVersion ? "Creando borrador…" : "Crear borrador con estos cambios"}
+            </BtnPrimary>
+          ) : (
+            <BtnSecondary onClick={guardar} disabled={guardando}>{guardando ? "Guardando…" : "Guardar"}</BtnSecondary>
+          )}
           {workflow.estado !== "activo" && (
             <BtnPrimary onClick={activar} disabled={activando}>{activando ? "Activando…" : "Activar"}</BtnPrimary>
           )}
         </div>
       </div>
+
+      {workflow.estado === "activo" && (
+        <Card padding={12} style={{ marginBottom: 14, borderColor: "var(--brand-100)", background: "var(--brand-50)" }}>
+          <div style={{ fontSize: 12.5, color: "var(--n-700)", lineHeight: 1.5 }}>
+            Este ciclo activo es de solo lectura. Si el chat cambió el grafo, usa <strong>Crear borrador con estos cambios</strong> para conservarlo y configurar responsables y correos en una nueva versión.
+          </div>
+        </Card>
+      )}
 
       {errores && (
         <Card padding={14} style={{ marginBottom: 14, borderColor: errores.length ? "var(--danger)" : "var(--success)" }}>

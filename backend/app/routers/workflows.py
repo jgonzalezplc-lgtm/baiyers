@@ -273,6 +273,25 @@ class ActualizarWorkflowRequest(BaseModel):
     nombre: Optional[str] = None
 
 
+class CrearVersionRequest(BaseModel):
+    nodos: list[dict]
+    conexiones: list[dict]
+
+
+@router.post("/{workflow_id}/crear-version")
+async def crear_version_workflow(workflow_id: str, req: CrearVersionRequest,
+                                 ctx: AuthContext = Depends(get_auth_context)):
+    if not ctx.es_admin:
+        raise HTTPException(status_code=403, detail="Solo un admin puede crear versiones del ciclo")
+    from app.services.workflow_service import crear_version_borrador
+    try:
+        return crear_version_borrador(
+            ctx.actor_user_id, workflow_id, req.nodos, req.conexiones,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.put("/{workflow_id}")
 async def actualizar_workflow(workflow_id: str, req: ActualizarWorkflowRequest):
     from app.services.workflow_service import actualizar_borrador
