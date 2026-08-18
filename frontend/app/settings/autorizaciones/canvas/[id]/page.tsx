@@ -485,8 +485,8 @@ export default function CanvasWorkflowPage() {
     }
   };
 
-  const crearVersionConCambios = async () => {
-    if (!workflow || workflow.estado !== "activo") return;
+  const crearVersionConCambios = async (navegar = true): Promise<string | null> => {
+    if (!workflow || workflow.estado !== "activo") return null;
     setCreandoVersion(true);
     try {
       const res = await authFetch(`${API_URL}/api/workflows/${workflowId}/crear-version`, {
@@ -496,11 +496,13 @@ export default function CanvasWorkflowPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || "No se pudo crear la nueva versión");
-      setToast("Borrador creado con los cambios del chat");
-      router.push(`/settings/autorizaciones/canvas/${data.id}`);
+      setToast(navegar ? "Borrador creado con los cambios del chat" : "Correo guardado en un nuevo borrador");
+      if (navegar) router.push(`/settings/autorizaciones/canvas/${data.id}`);
+      return data.id as string;
     } catch (e) {
       setToast(e instanceof Error ? e.message : "No se pudo crear la nueva versión");
       setTimeout(() => setToast(""), 4000);
+      return null;
     } finally {
       setCreandoVersion(false);
     }
@@ -790,7 +792,7 @@ export default function CanvasWorkflowPage() {
           <BtnSecondary onClick={() => setNodos(prev => ordenarPorNiveles(prev, conexiones))} disabled={guardando}>Ordenar automáticamente</BtnSecondary>
           <BtnSecondary onClick={validar} disabled={guardando}>Validar</BtnSecondary>
           {workflow.estado === "activo" ? (
-            <BtnPrimary onClick={crearVersionConCambios} disabled={creandoVersion}>
+            <BtnPrimary onClick={() => { void crearVersionConCambios(); }} disabled={creandoVersion}>
               {creandoVersion ? "Creando borrador…" : "Crear borrador con estos cambios"}
             </BtnPrimary>
           ) : (
@@ -805,7 +807,7 @@ export default function CanvasWorkflowPage() {
       {workflow.estado === "activo" && (
         <Card padding={12} style={{ marginBottom: 14, borderColor: "var(--brand-100)", background: "var(--brand-50)" }}>
           <div style={{ fontSize: 12.5, color: "var(--n-700)", lineHeight: 1.5 }}>
-            Este ciclo activo es de solo lectura. Si el chat cambió el grafo, usa <strong>Crear borrador con estos cambios</strong> para conservarlo y configurar responsables y correos en una nueva versión.
+            El grafo de este ciclo activo es de solo lectura. Si editas un correo, Baiyer creará el borrador automáticamente al guardarlo. Para conservar cambios del chat, responsables u otros cambios del grafo, usa <strong>Crear borrador con estos cambios</strong>.
           </div>
         </Card>
       )}
@@ -1188,6 +1190,8 @@ export default function CanvasWorkflowPage() {
                     resultados={nodoSel.resultados || []}
                     reglas={reglasComunicacion.filter(r => r.nodo_id === nodoSel.id)}
                     readOnly={!puedeEditarConfiguracion}
+                    esAdmin={esAdmin}
+                    onCrearBorrador={workflow.estado === "activo" ? () => crearVersionConCambios(false) : undefined}
                     onChanged={cargarConfiguracion}
                   />
                 </div>

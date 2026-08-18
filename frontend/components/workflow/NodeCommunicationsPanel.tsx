@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Mail, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { authFetch } from "@/lib/authFetch";
 import { BtnGhost, BtnPrimary, BtnSecondary } from "@/components/ui";
@@ -30,15 +31,18 @@ export interface ReglaComunicacion {
 
 const fieldStyle = { width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" } as const;
 
-export function NodeCommunicationsPanel({ workflowId, nodoId, roles, resultados, reglas, readOnly, onChanged }: {
+export function NodeCommunicationsPanel({ workflowId, nodoId, roles, resultados, reglas, readOnly, esAdmin, onChanged, onCrearBorrador }: {
   workflowId: string;
   nodoId: string;
   roles: string[];
   resultados: string[];
   reglas: ReglaComunicacion[];
   readOnly: boolean;
+  esAdmin: boolean;
   onChanged: () => Promise<void>;
+  onCrearBorrador?: () => Promise<string | null>;
 }) {
+  const router = useRouter();
   const [plantillas, setPlantillas] = useState<PlantillaCorreo[]>([]);
   const [agregando, setAgregando] = useState(false);
   const [editandoPlantilla, setEditandoPlantilla] = useState<PlantillaCorreo | null>(null);
@@ -110,7 +114,7 @@ export function NodeCommunicationsPanel({ workflowId, nodoId, roles, resultados,
     {reglas.map(r => <div key={r.id} style={{ padding: 9, border: "1px solid var(--n-200)", background: "var(--surface-2)" }}>
       <div style={{ display: "flex", gap: 6, justifyContent: "space-between" }}><div style={{ fontSize: 11.5, color: "var(--n-800)", lineHeight: 1.4 }}>{descripcionRegla(r)}</div>{!readOnly && <button onClick={() => eliminar(r.id)} style={{ border: 0, background: "none", color: "var(--n-400)", cursor: "pointer" }}><Trash2 size={12} /></button>}</div>
       <div style={{ fontSize: 10.5, color: "var(--n-500)", marginTop: 4 }}>{r.audiencia === "internal" ? "Interno" : "Externo"} → {r.destinatario_tipo}{r.evento_termino ? ` · termina con ${r.evento_termino}` : ""}</div>
-      <button onClick={() => { const p = plantillas.find(x => x.evento === r.evento_plantilla); if (p) setEditandoPlantilla(p); }} style={{ border: 0, background: "none", color: "var(--brand)", fontSize: 10.5, padding: "5px 0 0", cursor: "pointer" }}><Mail size={10} /> Editar correo para esta tarjeta</button>
+      <button onClick={() => { const p = plantillas.find(x => x.evento === r.evento_plantilla); if (p) setEditandoPlantilla(p); }} style={{ border: 0, background: "none", color: "var(--brand)", fontSize: 10.5, padding: "5px 0 0", cursor: "pointer" }}><Mail size={10} /> {readOnly && !esAdmin ? "Ver correo de esta tarjeta" : "Editar correo para esta tarjeta"}</button>
     </div>)}
 
     {agregando && <div style={{ padding: 10, border: "1px solid var(--brand-100)", background: "var(--brand-50)", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -145,6 +149,13 @@ export function NodeCommunicationsPanel({ workflowId, nodoId, roles, resultados,
       <div style={{ display: "flex", gap: 6 }}><BtnSecondary size="sm" onClick={() => setAgregando(false)}>Cancelar</BtnSecondary><BtnPrimary size="sm" onClick={guardar} disabled={guardando || !form.evento_plantilla}>{guardando ? "Guardando…" : "Guardar regla"}</BtnPrimary></div>
     </div>}
     <BtnSecondary size="sm" onClick={cargarPlantillas}><RefreshCw size={11} /> Actualizar plantillas</BtnSecondary>
-    {editandoPlantilla && <MailTemplateEditor plantilla={editandoPlantilla} esAdmin={!readOnly} workflowId={workflowId} nodoId={nodoId} onClose={() => setEditandoPlantilla(null)} onGuardado={async () => { setEditandoPlantilla(null); await cargarPlantillas(); }} />}
+    {editandoPlantilla && <MailTemplateEditor plantilla={editandoPlantilla} esAdmin={esAdmin} workflowId={workflowId} nodoId={nodoId} crearBorrador={readOnly && esAdmin ? onCrearBorrador : undefined} onClose={() => setEditandoPlantilla(null)} onGuardado={async workflowDestinoId => {
+      setEditandoPlantilla(null);
+      if (workflowDestinoId && workflowDestinoId !== workflowId) {
+        router.push(`/settings/autorizaciones/canvas/${workflowDestinoId}`);
+        return;
+      }
+      await cargarPlantillas();
+    }} />}
   </div>;
 }

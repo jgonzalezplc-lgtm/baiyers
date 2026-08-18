@@ -254,11 +254,11 @@ export function Input({
 }
 
 export function Textarea({
-  label, placeholder, value, onChange, rows = 3, error, hint, style,
+  label, placeholder, value, onChange, rows = 3, error, hint, disabled, style,
 }: {
   label?: string; placeholder?: string; value?: string;
   onChange?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
-  rows?: number; error?: string; hint?: string; style?: CSSProperties;
+  rows?: number; error?: string; hint?: string; disabled?: boolean; style?: CSSProperties;
 }) {
   const [focus, setFocus] = useState(false);
   return (
@@ -266,7 +266,8 @@ export function Textarea({
       {label && <FieldLabel>{label}</FieldLabel>}
       <textarea
         value={value} onChange={onChange} placeholder={placeholder} rows={rows}
-        style={{ ...fieldStyle(focus, error), height: "auto", padding: "10px 12px", resize: "vertical", lineHeight: 1.6, ...style }}
+        disabled={disabled}
+        style={{ ...fieldStyle(focus, error), height: "auto", padding: "10px 12px", resize: "vertical", lineHeight: 1.6, opacity: disabled ? .6 : 1, cursor: disabled ? "not-allowed" : undefined, ...style }}
         onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
       />
       {error && <span style={{ fontSize: 12.5, color: "var(--danger)" }}>{error}</span>}

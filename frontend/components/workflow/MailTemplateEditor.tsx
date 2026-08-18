@@ -18,13 +18,14 @@ export interface PlantillaCorreo {
   usos_en_nodos?: number;
 }
 
-export function MailTemplateEditor({ plantilla, esAdmin, workflowId, nodoId, onClose, onGuardado }: {
+export function MailTemplateEditor({ plantilla, esAdmin, workflowId, nodoId, onClose, onGuardado, crearBorrador }: {
   plantilla: PlantillaCorreo;
   esAdmin: boolean;
   workflowId?: string;
   nodoId?: string;
   onClose: () => void;
-  onGuardado: () => void;
+  onGuardado: (workflowDestinoId?: string) => void;
+  crearBorrador?: () => Promise<string | null>;
 }) {
   const [subject, setSubject] = useState(plantilla.subject);
   const [body, setBody] = useState(plantilla.body);
@@ -58,28 +59,32 @@ export function MailTemplateEditor({ plantilla, esAdmin, workflowId, nodoId, onC
   const guardar = async () => {
     setGuardando(true); setError("");
     try {
+      const workflowDestinoId = crearBorrador ? await crearBorrador() : workflowId;
+      if (crearBorrador && !workflowDestinoId) throw new Error("No se pudo crear el borrador para guardar el correo");
       const res = await authFetch(`${API_URL}/api/mail-templates`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           evento: plantilla.evento, subject, body,
           variables_declaradas: plantilla.variables_permitidas, origen: "user_edit",
-          workflow_id: workflowId, nodo_id: nodoId,
+          workflow_id: workflowDestinoId, nodo_id: nodoId,
         }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || "No se pudo guardar"); }
-      onGuardado();
+      onGuardado(workflowDestinoId || undefined);
     } catch (e) { setError(e instanceof Error ? e.message : "No se pudo guardar"); setGuardando(false); }
   };
 
   const restaurar = async () => {
     setRestaurando(true); setError("");
     try {
+      const workflowDestinoId = crearBorrador ? await crearBorrador() : workflowId;
+      if (crearBorrador && !workflowDestinoId) throw new Error("No se pudo crear el borrador para restaurar el correo");
       const res = await authFetch(`${API_URL}/api/mail-templates/restaurar-default`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ evento: plantilla.evento, workflow_id: workflowId, nodo_id: nodoId }),
+        body: JSON.stringify({ evento: plantilla.evento, workflow_id: workflowDestinoId, nodo_id: nodoId }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || "No se pudo restaurar"); }
-      onGuardado();
+      onGuardado(workflowDestinoId || undefined);
     } catch (e) { setError(e instanceof Error ? e.message : "No se pudo restaurar"); setRestaurando(false); }
   };
 
@@ -90,9 +95,16 @@ export function MailTemplateEditor({ plantilla, esAdmin, workflowId, nodoId, onC
         <div style={{ fontSize: 12, color: "var(--n-500)", marginBottom: 4 }}>{plantilla.evento} · versión {plantilla.version || "default"}</div>
         <div style={{ fontSize: 11.5, color: "var(--brand)", marginBottom: 16 }}>Este cambio aplica sólo a {scope}.</div>
 
+        {crearBorrador && <div style={{ fontSize: 12.5, color: "var(--n-700)", background: "var(--brand-50)", border: "1px solid var(--brand-100)", borderRadius: "var(--r-md)", padding: "10px 12px", marginBottom: 16, lineHeight: 1.5 }}>
+          Estás viendo el ciclo activo. Al guardar este correo, Baiyer creará automáticamente un borrador y continuará la edición allí.
+        </div>}
+        {!esAdmin && <div style={{ fontSize: 12.5, color: "var(--n-700)", background: "var(--brand-50)", border: "1px solid var(--brand-100)", borderRadius: "var(--r-md)", padding: "10px 12px", marginBottom: 16, lineHeight: 1.5 }}>
+          Este correo es de solo lectura. Un administrador puede editarlo y Baiyer guardará el cambio automáticamente en un borrador.
+        </div>}
+
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div onFocus={() => setCampoConFoco("subject")}><Input label="Asunto" value={subject} onChange={e => setSubject(e.target.value)} disabled={!esAdmin} /></div>
-          <div onFocus={() => setCampoConFoco("body")}><Textarea label="Cuerpo" value={body} onChange={esAdmin ? e => setBody(e.target.value) : undefined} rows={8} /></div>
+          <div onFocus={() => setCampoConFoco("body")}><Textarea label="Cuerpo" value={body} onChange={esAdmin ? e => setBody(e.target.value) : undefined} disabled={!esAdmin} rows={8} /></div>
           {esAdmin && <div>
             <div style={{ fontSize: 11.5, color: "var(--n-500)", marginBottom: 6 }}>Variables disponibles — clic para insertar:</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{plantilla.variables_permitidas.map(v => (
