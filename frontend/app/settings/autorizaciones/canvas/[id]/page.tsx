@@ -192,13 +192,29 @@ export default function CanvasWorkflowPage() {
 
   const asignaciones = asignacionesNodo;
 
+  // El grafo de un ciclo activo es de solo lectura en el servidor — igual que
+  // los correos, cambiar responsables ahí crea el borrador automáticamente
+  // (mismo mecanismo de "Crear borrador con estos cambios" pero disparado
+  // desde el drawer en lugar del botón superior).
+  const workflowIdParaEditar = async (): Promise<string | null> => {
+    if (!workflow) return null;
+    if (workflow.estado === "borrador") return workflowId;
+    return crearVersionConCambios(false);
+  };
+
   const asignarExistente = async (rol: string, responsableId: string) => {
     if (!userId || !nodoSel) return;
     setGuardandoResponsable(true);
     try {
+      const targetId = await workflowIdParaEditar();
+      if (!targetId) {
+        setToast("No se pudo preparar el borrador para asignar el responsable");
+        setTimeout(() => setToast(""), 3500);
+        return;
+      }
       const modo = modoAsignacionPorRol[rol] || "individual";
       const existentesRol = asignacionesNodo.filter(a => a.nodo_id === nodoSel.id && a.rol_clave === rol);
-      const res = await authFetch(`${API_URL}/api/workflows/${workflowId}/asignaciones-nodo`, {
+      const res = await authFetch(`${API_URL}/api/workflows/${targetId}/asignaciones-nodo`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nodo_id: nodoSel.id, responsable_id: responsableId, rol_clave: rol, modo, orden: modo === "secuencial" ? existentesRol.length + 1 : null }),
       });
@@ -208,6 +224,7 @@ export default function CanvasWorkflowPage() {
         setTimeout(() => setToast(""), 3500);
         return;
       }
+      if (targetId !== workflowId) { router.push(`/settings/autorizaciones/canvas/${targetId}`); return; }
       await cargarConfiguracion();
       setAsignandoRol(null);
       const nombre = responsablesOrg.find(r => r.id === responsableId)?.nombre || "Responsable";
@@ -222,17 +239,23 @@ export default function CanvasWorkflowPage() {
     if (!userId || !nodoSel || !nuevoNombre.trim() || !nuevoEmail.trim()) return;
     setGuardandoResponsable(true);
     try {
+      const targetId = await workflowIdParaEditar();
+      if (!targetId) {
+        setToast("No se pudo preparar el borrador para crear el responsable");
+        setTimeout(() => setToast(""), 3500);
+        return;
+      }
       const creado = await fetch(`${API_URL}/api/workflows/responsables`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userId, nombre: nuevoNombre.trim(), email: nuevoEmail.trim() }),
       }).then(r => r.json());
       await fetch(`${API_URL}/api/workflows/responsables/${creado.id}/roles`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, workflow_id: workflowId, rol_clave: rol }),
+        body: JSON.stringify({ user_id: userId, workflow_id: targetId, rol_clave: rol }),
       });
       const modo = modoAsignacionPorRol[rol] || "individual";
       const existentesRol = asignacionesNodo.filter(a => a.nodo_id === nodoSel.id && a.rol_clave === rol);
-      await authFetch(`${API_URL}/api/workflows/${workflowId}/asignaciones-nodo`, {
+      await authFetch(`${API_URL}/api/workflows/${targetId}/asignaciones-nodo`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nodo_id: nodoSel.id, responsable_id: creado.id, rol_clave: rol, modo, orden: modo === "secuencial" ? existentesRol.length + 1 : null }),
       });
@@ -258,6 +281,7 @@ export default function CanvasWorkflowPage() {
       }
       setToast(mensajeInvitacion);
       setTimeout(() => setToast(""), 4500);
+      if (targetId !== workflowId) { router.push(`/settings/autorizaciones/canvas/${targetId}`); return; }
       const org: ResponsableInfo[] = await fetch(`${API_URL}/api/workflows/responsables/listar?user_id=${userId}`).then(r => r.json()).catch(() => []);
       setResponsablesOrg(org || []);
       await cargarWorkflow(userId); await cargarConfiguracion();
@@ -267,11 +291,32 @@ export default function CanvasWorkflowPage() {
     }
   };
 
+  // Igual que las reglas de comunicación: el borrador nuevo clona cada
+  // asignación con un id propio, así que hay que ubicar la fila equivalente
+  // antes de poder borrarla ahí.
   const quitarAsignacion = async (_rol: string, assignmentId: string) => {
     if (!userId) return;
     setGuardandoResponsable(true);
     try {
-      await authFetch(`${API_URL}/api/workflows/${workflowId}/asignaciones-nodo/${assignmentId}`, { method: "DELETE" });
+      const original = asignacionesNodo.find(a => a.id === assignmentId);
+      const targetId = await workflowIdParaEditar();
+      if (!targetId) return;
+      let targetAssignmentId = assignmentId;
+      if (targetId !== workflowId) {
+        const config = await authFetch(`${API_URL}/api/workflows/${targetId}/configuracion`).then(r => r.json()).catch(() => ({ asignaciones: [] }));
+        const match = (config.asignaciones || []).find((a: AsignacionNodo) =>
+          original && a.nodo_id === original.nodo_id && a.rol_clave === original.rol_clave &&
+          a.responsables?.id === original.responsables?.id && a.modo === original.modo && a.orden === original.orden
+        );
+        if (!match) {
+          setToast("No se pudo ubicar el responsable en el nuevo borrador");
+          setTimeout(() => setToast(""), 3500);
+          return;
+        }
+        targetAssignmentId = match.id;
+      }
+      await authFetch(`${API_URL}/api/workflows/${targetId}/asignaciones-nodo/${targetAssignmentId}`, { method: "DELETE" });
+      if (targetId !== workflowId) { router.push(`/settings/autorizaciones/canvas/${targetId}`); return; }
       await cargarConfiguracion();
     } finally {
       setGuardandoResponsable(false);

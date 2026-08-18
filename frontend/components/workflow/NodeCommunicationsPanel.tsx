@@ -72,6 +72,8 @@ export function NodeCommunicationsPanel({ workflowId, nodoId, roles, resultados,
     if (!form.evento_plantilla) return;
     setGuardando(true); setError("");
     try {
+      const workflowDestinoId = onCrearBorrador ? await onCrearBorrador() : workflowId;
+      if (onCrearBorrador && !workflowDestinoId) throw new Error("No se pudo crear el borrador para guardar la comunicación");
       const payload = {
         nodo_id: nodoId, rol_clave: form.rol_clave || null,
         evento_plantilla: form.evento_plantilla, destinatario_tipo: form.destinatario_tipo,
@@ -86,16 +88,43 @@ export function NodeCommunicationsPanel({ workflowId, nodoId, roles, resultados,
         politica_agotamiento: form.repetir ? form.politica_agotamiento : null,
         resultado_agotamiento: form.repetir && form.politica_agotamiento === "avanzar_timeout" ? form.resultado_agotamiento || null : null,
       };
-      const res = await authFetch(`${API_URL}/api/workflows/${workflowId}/reglas-comunicacion`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const res = await authFetch(`${API_URL}/api/workflows/${workflowDestinoId}/reglas-comunicacion`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.detail || "No se pudo guardar la regla"); }
-      setAgregando(false); await onChanged();
+      setAgregando(false);
+      if (workflowDestinoId && workflowDestinoId !== workflowId) { router.push(`/settings/autorizaciones/canvas/${workflowDestinoId}`); return; }
+      await onChanged();
     } catch (e) { setError(e instanceof Error ? e.message : "No se pudo guardar"); }
     finally { setGuardando(false); }
   };
 
-  const eliminar = async (id: string) => {
-    const res = await authFetch(`${API_URL}/api/workflows/${workflowId}/reglas-comunicacion/${id}`, { method: "DELETE" });
-    if (res.ok) await onChanged();
+  // Al eliminar sobre un ciclo activo, el borrador nuevo clona cada regla con
+  // un id propio (nunca conserva el original) — hay que ubicar la fila
+  // equivalente en el borrador antes de poder borrarla.
+  const eliminar = async (regla: ReglaComunicacion) => {
+    try {
+      let workflowDestinoId = workflowId;
+      let targetId = regla.id;
+      if (onCrearBorrador) {
+        const nuevoId = await onCrearBorrador();
+        if (!nuevoId) return;
+        workflowDestinoId = nuevoId;
+        if (nuevoId !== workflowId) {
+          const config = await authFetch(`${API_URL}/api/workflows/${nuevoId}/configuracion`).then(r => r.json()).catch(() => ({ reglas: [] }));
+          const match = (config.reglas || []).find((x: ReglaComunicacion) =>
+            x.nodo_id === regla.nodo_id && x.evento_plantilla === regla.evento_plantilla && x.rol_clave === regla.rol_clave &&
+            x.destinatario_tipo === regla.destinatario_tipo && x.disparador_tipo === regla.disparador_tipo &&
+            x.demora_inicial_dias === regla.demora_inicial_dias && x.repetir_cada_dias === regla.repetir_cada_dias &&
+            x.max_intentos === regla.max_intentos && x.evento_termino === regla.evento_termino
+          );
+          if (!match) { setError("No se pudo ubicar esta comunicación en el nuevo borrador"); return; }
+          targetId = match.id;
+        }
+      }
+      const res = await authFetch(`${API_URL}/api/workflows/${workflowDestinoId}/reglas-comunicacion/${targetId}`, { method: "DELETE" });
+      if (!res.ok) return;
+      if (workflowDestinoId !== workflowId) { router.push(`/settings/autorizaciones/canvas/${workflowDestinoId}`); return; }
+      await onChanged();
+    } catch (e) { setError(e instanceof Error ? e.message : "No se pudo eliminar"); }
   };
 
   const descripcionRegla = (r: ReglaComunicacion) => {
@@ -107,12 +136,12 @@ export function NodeCommunicationsPanel({ workflowId, nodoId, roles, resultados,
 
   return <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-      <div><div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-700)" }}>Comunicaciones</div><div style={{ fontSize: 10.5, color: "var(--n-500)" }}>Plantilla, destinatario, cadencia y término.</div></div>
+      <div><div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-700)" }}>Comunicaciones</div><div style={{ fontSize: 10.5, color: "var(--n-500)" }}>Plantilla, destinatario, cadencia y término.</div>{!readOnly && onCrearBorrador && <div style={{ fontSize: 10, color: "var(--n-500)" }}>Al cambiar esto se creará un borrador automáticamente.</div>}</div>
       {!readOnly && <BtnGhost size="sm" onClick={() => setAgregando(v => !v)}><Plus size={11} /> Agregar</BtnGhost>}
     </div>
     {reglas.length === 0 && !agregando && <div style={{ fontSize: 11.5, color: "var(--n-500)", padding: 9, border: "1px dashed var(--n-300)" }}>Esta tarjeta no envía correos.</div>}
     {reglas.map(r => <div key={r.id} style={{ padding: 9, border: "1px solid var(--n-200)", background: "var(--surface-2)" }}>
-      <div style={{ display: "flex", gap: 6, justifyContent: "space-between" }}><div style={{ fontSize: 11.5, color: "var(--n-800)", lineHeight: 1.4 }}>{descripcionRegla(r)}</div>{!readOnly && <button onClick={() => eliminar(r.id)} style={{ border: 0, background: "none", color: "var(--n-400)", cursor: "pointer" }}><Trash2 size={12} /></button>}</div>
+      <div style={{ display: "flex", gap: 6, justifyContent: "space-between" }}><div style={{ fontSize: 11.5, color: "var(--n-800)", lineHeight: 1.4 }}>{descripcionRegla(r)}</div>{!readOnly && <button onClick={() => eliminar(r)} style={{ border: 0, background: "none", color: "var(--n-400)", cursor: "pointer" }}><Trash2 size={12} /></button>}</div>
       <div style={{ fontSize: 10.5, color: "var(--n-500)", marginTop: 4 }}>{r.audiencia === "internal" ? "Interno" : "Externo"} → {r.destinatario_tipo}{r.evento_termino ? ` · termina con ${r.evento_termino}` : ""}</div>
       <button onClick={() => { const p = plantillas.find(x => x.evento === r.evento_plantilla); if (p) setEditandoPlantilla(p); }} style={{ border: 0, background: "none", color: "var(--brand)", fontSize: 10.5, padding: "5px 0 0", cursor: "pointer" }}><Mail size={10} /> {readOnly && !esAdmin ? "Ver correo de esta tarjeta" : "Editar correo para esta tarjeta"}</button>
     </div>)}

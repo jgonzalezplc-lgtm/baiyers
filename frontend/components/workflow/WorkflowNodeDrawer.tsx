@@ -154,9 +154,14 @@ export function WorkflowNodeDrawer({
           return (
             <div key={rol}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center", marginBottom: 6 }}>
-                <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--n-600)" }}>Responsables de &quot;{rol}&quot;</div>
+                <div>
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--n-600)" }}>Responsables de &quot;{rol}&quot;</div>
+                  {esAdmin && workflowEstado === "activo" && (
+                    <div style={{ fontSize: 10, color: "var(--n-500)" }}>Al cambiar esto se creará un borrador automáticamente.</div>
+                  )}
+                </div>
                 <select
-                  disabled={!puedeEditarConfiguracion}
+                  disabled={!esAdmin}
                   value={modoAsignacionPorRol[rol] || asignados[0]?.modo || "individual"}
                   onChange={e => setModoAsignacionPorRol(prev => ({ ...prev, [rol]: e.target.value as "individual" | "paralelo" | "secuencial" }))}
                   style={{ padding: "3px 5px", fontSize: 10.5, border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-700)" }}
@@ -169,7 +174,7 @@ export function WorkflowNodeDrawer({
                 {asignados.map(a => (
                   <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, fontSize: 11.5, padding: "4px 7px", background: "var(--surface-2)", borderRadius: "var(--r-sm)" }}>
                     <span>{a.modo === "secuencial" && a.orden ? `${a.orden}. ` : ""}{a.responsables?.nombre} <span style={{ color: "var(--n-500)" }}>· {a.responsables?.email}</span></span>
-                    {puedeEditarConfiguracion && (
+                    {esAdmin && (
                       <button
                         aria-label={`Quitar a ${a.responsables?.nombre} de ${rol}`}
                         onClick={() => quitarAsignacion(rol, a.id)}
@@ -182,7 +187,7 @@ export function WorkflowNodeDrawer({
                   </div>
                 ))}
               </div>
-              {!puedeEditarConfiguracion ? null : asignandoRol === rol ? (
+              {!esAdmin ? null : asignandoRol === rol ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                   {disponibles.length > 0 && (
                     <>
@@ -328,7 +333,7 @@ export function WorkflowNodeDrawer({
               roles={nodo.roles || []}
               resultados={nodo.resultados || []}
               reglas={reglasComunicacion.filter(r => r.nodo_id === nodo.id)}
-              readOnly={!puedeEditarConfiguracion}
+              readOnly={!esAdmin}
               esAdmin={esAdmin}
               onCrearBorrador={workflowEstado === "activo" ? () => crearVersionConCambios(false) : undefined}
               onChanged={cargarConfiguracion}
