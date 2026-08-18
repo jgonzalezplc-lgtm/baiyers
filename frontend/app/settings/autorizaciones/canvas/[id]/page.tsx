@@ -1,119 +1,22 @@
 "use client";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Trash2, Plus, Link2, CheckCircle2, XCircle, Mail } from "lucide-react";
+import { ArrowLeft, Trash2, CheckCircle2, XCircle, Link2, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
-import { BtnPrimary, BtnSecondary, BtnGhost, Card, Input, SkeletonBox, CascadeWrapper, TypingBubble } from "@/components/ui";
-import { ChatBubbles } from "@/components/chat/ChatBubbles";
-import { NodeCommunicationsPanel, type ReglaComunicacion } from "@/components/workflow/NodeCommunicationsPanel";
+import { BtnPrimary, BtnSecondary, Card, SkeletonBox, CascadeWrapper } from "@/components/ui";
+import { type ReglaComunicacion } from "@/components/workflow/NodeCommunicationsPanel";
+import { WorkflowNodePalette } from "@/components/workflow/WorkflowNodePalette";
+import { WorkflowCanvasViewport, VIEWPORT_DEFAULT, screenToWorld, type CanvasViewport } from "@/components/workflow/WorkflowCanvasViewport";
+import { WorkflowNodeDrawer } from "@/components/workflow/WorkflowNodeDrawer";
+import { WorkflowCorrectionTerminal } from "@/components/workflow/WorkflowCorrectionTerminal";
+import {
+  TIPOS, NODE_W, NODE_H, COLOR_RESULTADO, colorClaveResultado, colorNodo,
+  type Nodo, type Condicion, type Conexion, type ResponsableInfo,
+  type AsignacionNodo, type Workflow,
+} from "@/components/workflow/canvasTypes";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-interface Posicion { x: number; y: number }
-
-interface Condicion {
-  campo: string;
-  operador: string;
-  valor: string | number;
-}
-
-interface Nodo {
-  id: string;
-  tipo: string;
-  nombre: string;
-  roles?: string[];
-  resultados?: string[];
-  condicion_entrada?: Condicion | null;
-  posicion?: Posicion;
-  entrada?: string;
-  proceso?: string;
-  criterio_cierre?: "todos_resueltos" | "minimo_respuestas" | "cierre_manual";
-  minimo_respuestas?: number;
-  requisitos_homologacion?: string[];
-}
-
-interface Conexion {
-  origen_nodo_id: string;
-  destino_nodo_id: string;
-  resultado?: string;
-}
-
-interface ResponsableInfo {
-  id: string;
-  nombre: string;
-  cargo?: string | null;
-  email: string | null;
-  telefono?: string | null;
-  activo: boolean;
-}
-
-interface AsignacionRol {
-  id: string;
-  rol_clave: string;
-  orden_autorizacion: number | null;
-  responsables: ResponsableInfo;
-}
-
-interface AsignacionNodo {
-  id: string;
-  nodo_id: string;
-  rol_clave: string;
-  modo: "individual" | "paralelo" | "secuencial";
-  orden: number | null;
-  es_propietario_excepcion: boolean;
-  responsables: ResponsableInfo;
-}
-
-interface Workflow {
-  id: string;
-  nombre: string;
-  estado: string;
-  nodos: Nodo[];
-  conexiones: Conexion[];
-  roles?: { clave: string; nombre: string }[];
-  responsables?: AsignacionRol[];
-}
-
-const TIPOS: { valor: string; label: string }[] = [
-  { valor: "tarea_humana", label: "Tarea humana" },
-  { valor: "revision", label: "Revisión" },
-  { valor: "autorizacion", label: "Autorización" },
-  { valor: "decision", label: "Decisión / condición" },
-  { valor: "accion_automatica", label: "Acción automática" },
-  { valor: "homologacion", label: "Homologación" },
-  { valor: "emision_oc", label: "Emisión de OC" },
-  { valor: "compra_sin_oc", label: "Compra sin OC" },
-  { valor: "espera_documento", label: "Espera de documento" },
-];
-
-const ROLES_BASE = ["cotizador", "revisor", "autorizador", "homologador", "comprador"];
-const CAMPOS_CONDICION = ["monto_total", "moneda", "categoria", "centro_costo", "proyecto", "proveedor_nuevo", "proveedor_homologado", "requiere_oc"];
-const OPERADORES = [">", ">=", "<", "<=", "==", "!=", "in", "not in"];
-
-const NODE_W = 168;
-const NODE_H = 60;
-
-const COLOR_RESULTADO: Record<string, string> = {
-  aprobado: "var(--success)",
-  rechazado: "var(--danger)",
-  default: "var(--n-500)",
-};
-
-function colorClaveResultado(resultado?: string): string {
-  const r = (resultado || "").toLowerCase();
-  if (r.includes("aprob")) return "aprobado";
-  if (r.includes("rechaz")) return "rechazado";
-  return "default";
-}
-
-function colorNodo(tipo: string): string {
-  if (tipo === "inicio") return "var(--success)";
-  if (tipo === "fin") return "var(--n-700)";
-  if (tipo === "decision") return "var(--st-cotizando-fg)";
-  if (tipo === "autorizacion") return "var(--brand)";
-  return "var(--n-500)";
-}
 
 function nuevoId(nodos: Nodo[]): string {
   let i = 0;
@@ -216,6 +119,8 @@ export default function CanvasWorkflowPage() {
   const [reglasComunicacion, setReglasComunicacion] = useState<ReglaComunicacion[]>([]);
   const [esAdmin, setEsAdmin] = useState(false);
   const [modoAsignacionPorRol, setModoAsignacionPorRol] = useState<Record<string, "individual" | "paralelo" | "secuencial">>({});
+  const [viewport, setViewport] = useState<CanvasViewport>(VIEWPORT_DEFAULT);
+  const [terminalExpandida, setTerminalExpandida] = useState(false);
 
   // Chat de correcciones: le pide al modelo una lista de operaciones sobre
   // el grafo actual (nunca uno nuevo) y las aplica con las mismas funciones
@@ -376,6 +281,19 @@ export default function CanvasWorkflowPage() {
   const nodoSel = nodos.find(n => n.id === seleccionado) || null;
   const puedeEditarConfiguracion = esAdmin && workflow?.estado === "borrador";
 
+  // Escape cierra el drawer, salvo que el foco esté en un campo de texto
+  // (para no interferir con "salir de un textarea" del propio formulario).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !seleccionado) return;
+      const tag = (document.activeElement?.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea") return;
+      setSeleccionado(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [seleccionado]);
+
   const actualizarNodo = (id: string, cambios: Partial<Nodo>) => {
     setNodos(prev => prev.map(n => (n.id === id ? { ...n, ...cambios } : n)));
   };
@@ -438,26 +356,29 @@ export default function CanvasWorkflowPage() {
 
   const onMouseDownNodo = (e: React.MouseEvent, n: Nodo) => {
     if (conectando) return;
+    e.stopPropagation(); // no debe disparar el paneo del fondo
     const rect = lienzoRef.current?.getBoundingClientRect();
     if (!rect) return;
+    const world = screenToWorld(e.clientX, e.clientY, rect, viewport);
     arrastre.current = {
       id: n.id,
-      offX: e.clientX - rect.left - (n.posicion?.x ?? 0),
-      offY: e.clientY - rect.top - (n.posicion?.y ?? 0),
+      offX: world.x - (n.posicion?.x ?? 0),
+      offY: world.y - (n.posicion?.y ?? 0),
     };
     setSeleccionado(n.id);
   };
 
-  const onMouseMove = (e: React.MouseEvent) => {
+  const onLienzoMouseMove = (e: React.MouseEvent) => {
     if (!arrastre.current) return;
     const rect = lienzoRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const x = Math.max(0, e.clientX - rect.left - arrastre.current.offX);
-    const y = Math.max(0, e.clientY - rect.top - arrastre.current.offY);
+    const world = screenToWorld(e.clientX, e.clientY, rect, viewport);
+    const x = Math.max(0, world.x - arrastre.current.offX);
+    const y = Math.max(0, world.y - arrastre.current.offY);
     actualizarNodo(arrastre.current.id, { posicion: { x, y } });
   };
 
-  const onMouseUp = () => { arrastre.current = null; };
+  const onLienzoMouseUp = () => { arrastre.current = null; };
 
   const guardar = async () => {
     if (!userId) return;
@@ -715,22 +636,12 @@ export default function CanvasWorkflowPage() {
     <div>
       <SkeletonBox height={13} width={120} style={{ marginBottom: 12 }} />
       <SkeletonBox height={20} width={220} style={{ marginBottom: 14 }} />
-      <div style={{ display: "flex", gap: 14 }}>
-        <Card padding={14} style={{ width: 190, flexShrink: 0 }}>
-          <CascadeWrapper>
-            {Array.from({ length: 9 }).map((_, i) => <SkeletonBox key={i} height={28} width="100%" style={{ marginBottom: 6 }} />)}
-          </CascadeWrapper>
-        </Card>
-        <div style={{ position: "relative", flex: 1, minHeight: 560, background: "var(--canvas)", border: "1px solid var(--n-200)", borderRadius: "var(--r-md)" }}>
-          <CascadeWrapper>
-            <SkeletonBox width={168} height={60} style={{ position: "absolute", left: 60, top: 40 }} />
-            <SkeletonBox width={168} height={60} style={{ position: "absolute", left: 300, top: 40 }} />
-            <SkeletonBox width={168} height={60} style={{ position: "absolute", left: 540, top: 40 }} />
-          </CascadeWrapper>
-        </div>
-        <Card padding={16} style={{ width: 240, flexShrink: 0 }}>
-          <SkeletonBox height={13} width="60%" />
-        </Card>
+      <div style={{ position: "relative", minHeight: 560, background: "var(--canvas)", border: "1px solid var(--n-200)", borderRadius: "var(--r-md)" }}>
+        <CascadeWrapper>
+          <SkeletonBox width={168} height={60} style={{ position: "absolute", left: 60, top: 40 }} />
+          <SkeletonBox width={168} height={60} style={{ position: "absolute", left: 300, top: 40 }} />
+          <SkeletonBox width={168} height={60} style={{ position: "absolute", left: 540, top: 40 }} />
+        </CascadeWrapper>
       </div>
     </div>
   );
@@ -781,14 +692,14 @@ export default function CanvasWorkflowPage() {
         <ArrowLeft size={16} /> Configuración
       </button>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: "var(--n-900)", margin: "0 0 2px" }}>{workflow.nombre}</h1>
           <p style={{ fontSize: 13, color: "var(--n-600)", margin: 0 }}>
             {workflow.estado === "activo" ? "Ciclo activo" : "Borrador"} · arrastra los nodos; conecta desde el punto de salida (derecha) hacia el punto de entrada (izquierda) de otro nodo
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <BtnSecondary onClick={() => setNodos(prev => ordenarPorNiveles(prev, conexiones))} disabled={guardando}>Ordenar automáticamente</BtnSecondary>
           <BtnSecondary onClick={validar} disabled={guardando}>Validar</BtnSecondary>
           {workflow.estado === "activo" ? (
@@ -828,36 +739,16 @@ export default function CanvasWorkflowPage() {
         </Card>
       )}
 
-      <div style={{ display: "flex", gap: 14 }}>
-        {/* Paleta */}
-        <Card padding={14} style={{ width: 190, flexShrink: 0, alignSelf: "flex-start" }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.3 }}>Agregar nodo</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {TIPOS.map(t => (
-              <button key={t.valor} onClick={() => agregarNodo(t.valor)} style={{
-                display: "flex", alignItems: "center", gap: 6, textAlign: "left",
-                background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: "var(--r-sm)",
-                padding: "7px 9px", fontSize: 12.5, color: "var(--n-800)", cursor: "pointer",
-              }}>
-                <Plus size={13} /> {t.label}
-              </button>
-            ))}
-          </div>
-        </Card>
-
-        {/* Lienzo */}
-        <div
-          ref={lienzoRef}
-          onMouseMove={onMouseMove}
-          onMouseUp={onMouseUp}
-          onMouseLeave={onMouseUp}
-          style={{
-            position: "relative", flex: 1, minHeight: 560, background: "var(--canvas)",
-            border: "1px solid var(--n-200)", borderRadius: "var(--r-md)", overflow: "auto",
-            backgroundImage: "radial-gradient(var(--n-200) 1px, transparent 1px)", backgroundSize: "16px 16px",
-          }}
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <WorkflowCanvasViewport
+          viewport={viewport}
+          onViewportChange={setViewport}
+          lienzoRef={lienzoRef}
+          onBackgroundMouseMove={onLienzoMouseMove}
+          onBackgroundMouseUp={onLienzoMouseUp}
+          topRight={<WorkflowNodePalette tipos={TIPOS} onAdd={agregarNodo} />}
         >
-          <svg style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+          <svg style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none", overflow: "visible" }}>
             <defs>
               {Object.entries(COLOR_RESULTADO).map(([clave, color]) => (
                 <marker key={clave} id={`flecha-${clave}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
@@ -902,7 +793,7 @@ export default function CanvasWorkflowPage() {
                       {c.resultado}
                     </text>
                   )}
-                  <circle cx={mx} cy={(p1.y + p2.y) / 2} r={8} fill="transparent" pointerEvents="all" style={{ cursor: "pointer" }} onClick={() => eliminarConexion(i)} />
+                  <circle cx={mx} cy={(p1.y + p2.y) / 2} r={8} fill="transparent" pointerEvents="all" style={{ cursor: "pointer" }} onMouseDown={e => e.stopPropagation()} onClick={() => eliminarConexion(i)} />
                 </g>
               );
             })}
@@ -925,7 +816,7 @@ export default function CanvasWorkflowPage() {
                   <span style={{ width: 7, height: 7, borderRadius: "50%", background: colorNodo(n.tipo), flexShrink: 0 }} />
                   <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--n-900)", flex: 1, lineHeight: 1.3 }}>{n.nombre}</span>
                   {n.tipo !== "inicio" && n.tipo !== "fin" && (
-                    <button onMouseDown={e => e.stopPropagation()} onClick={() => eliminarNodo(n.id)} style={{ border: 0, background: "none", cursor: "pointer", color: "var(--n-400)", padding: 0 }}>
+                    <button aria-label={`Eliminar ${n.nombre}`} onMouseDown={e => e.stopPropagation()} onClick={() => eliminarNodo(n.id)} style={{ border: 0, background: "none", cursor: "pointer", color: "var(--n-400)", padding: 0 }}>
                       <Trash2 size={12} />
                     </button>
                   )}
@@ -942,6 +833,7 @@ export default function CanvasWorkflowPage() {
                 )}
                 {n.tipo !== "inicio" && (
                   <button
+                    aria-label={conectando && conectando !== n.id ? `Conectar aquí, entrada de ${n.nombre}` : `Entrada de ${n.nombre}`}
                     onMouseDown={e => e.stopPropagation()}
                     onClick={() => completarConexionHacia(n.id)}
                     title={conectando && conectando !== n.id ? "Conectar aquí (entrada)" : "Entrada"}
@@ -956,6 +848,7 @@ export default function CanvasWorkflowPage() {
                 )}
                 {n.tipo !== "fin" && (
                   <button
+                    aria-label={`Salida de ${n.nombre}, iniciar conexión`}
                     onMouseDown={e => e.stopPropagation()}
                     onClick={() => iniciarConexionDesde(n.id)}
                     title="Salida — clic para empezar una conexión"
@@ -972,281 +865,51 @@ export default function CanvasWorkflowPage() {
               </div>
             );
           })}
-        </div>
+        </WorkflowCanvasViewport>
 
-        {/* Panel de propiedades */}
-        <Card padding={16} style={{ width: 360, flexShrink: 0, alignSelf: "flex-start", maxHeight: "calc(100vh - 150px)", overflowY: "auto" }}>
-          {!nodoSel ? (
-            <div style={{ fontSize: 13, color: "var(--n-500)" }}>Selecciona un nodo para editarlo.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <Input label="Nombre" value={nodoSel.nombre} onChange={e => actualizarNodo(nodoSel.id, { nombre: e.target.value })} />
-
-              {nodoSel.tipo !== "inicio" && nodoSel.tipo !== "fin" && (
-                <>
-                  <Input
-                    label="Entrada (qué recibe esta etapa)"
-                    value={nodoSel.entrada || ""}
-                    onChange={e => actualizarNodo(nodoSel.id, { entrada: e.target.value })}
-                    placeholder="Ej: la lista de ítems con sus definitivos"
-                  />
-                  <Input
-                    label="Qué debe hacer"
-                    value={nodoSel.proceso || ""}
-                    onChange={e => actualizarNodo(nodoSel.id, { proceso: e.target.value })}
-                    placeholder="Ej: revisar y decidir si autoriza la compra"
-                  />
-                </>
-              )}
-
-              {["tarea_humana", "revision", "autorizacion", "homologacion"].includes(nodoSel.tipo) && (
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 6 }}>Roles</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                    {ROLES_BASE.map(r => {
-                      const activo = (nodoSel.roles || []).includes(r);
-                      return (
-                        <button key={r} onClick={() => {
-                          const roles = activo ? (nodoSel.roles || []).filter(x => x !== r) : [...(nodoSel.roles || []), r];
-                          actualizarNodo(nodoSel.id, { roles });
-                        }} style={{
-                          fontSize: 11.5, padding: "4px 8px", borderRadius: "var(--r-sm)",
-                          border: `1px solid ${activo ? "var(--brand)" : "var(--n-300)"}`,
-                          background: activo ? "var(--brand-50)" : "var(--surface)",
-                          color: activo ? "var(--brand)" : "var(--n-700)", cursor: "pointer",
-                        }}>{r}</button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {["tarea_humana", "revision", "autorizacion", "homologacion"].includes(nodoSel.tipo) && (nodoSel.roles || []).map(rol => {
-                const asignados = asignaciones.filter(a => a.nodo_id === nodoSel.id && a.rol_clave === rol);
-                const disponibles = responsablesOrg.filter(r => r.activo && !asignados.some(a => a.responsables?.id === r.id));
-                return (
-                  <div key={rol}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center", marginBottom: 6 }}>
-                      <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--n-600)" }}>Responsables de &quot;{rol}&quot;</div>
-                      <select disabled={!puedeEditarConfiguracion} value={modoAsignacionPorRol[rol] || asignados[0]?.modo || "individual"} onChange={e => setModoAsignacionPorRol(prev => ({ ...prev, [rol]: e.target.value as "individual" | "paralelo" | "secuencial" }))} style={{ padding: "3px 5px", fontSize: 10.5, border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-700)" }}>
-                        <option value="individual">Uno</option><option value="paralelo">Paralelo</option><option value="secuencial">Secuencial</option>
-                      </select>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 6 }}>
-                      {asignados.length === 0 && <div style={{ fontSize: 11.5, color: "var(--n-500)" }}>Nadie asignado todavía.</div>}
-                      {asignados.map(a => (
-                        <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, fontSize: 11.5, padding: "4px 7px", background: "var(--surface-2)", borderRadius: "var(--r-sm)" }}>
-                          <span>{a.modo === "secuencial" && a.orden ? `${a.orden}. ` : ""}{a.responsables?.nombre} <span style={{ color: "var(--n-500)" }}>· {a.responsables?.email}</span></span>
-                          {puedeEditarConfiguracion && <button onClick={() => quitarAsignacion(rol, a.id)} disabled={guardandoResponsable} style={{ border: 0, background: "none", color: "var(--n-400)", cursor: "pointer", padding: 0, flexShrink: 0 }}>
-                            <Trash2 size={11} />
-                          </button>}
-                        </div>
-                      ))}
-                    </div>
-                    {!puedeEditarConfiguracion ? null : asignandoRol === rol ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                        {disponibles.length > 0 && (
-                          <>
-                            <select
-                              defaultValue=""
-                              disabled={guardandoResponsable}
-                              onChange={e => { if (e.target.value) asignarExistente(rol, e.target.value); }}
-                              style={{ width: "100%", padding: "5px 6px", fontSize: 11.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }}
-                            >
-                              <option value="">Elegir existente…</option>
-                              {disponibles.map(r => <option key={r.id} value={r.id}>{r.nombre} · {r.email}</option>)}
-                            </select>
-                            <div style={{ fontSize: 10, color: "var(--n-500)", marginTop: -2 }}>Se asigna al instante, no hace falta llenar nada más abajo.</div>
-                          </>
-                        )}
-                        <div style={{ fontSize: 10.5, color: "var(--n-500)", marginTop: 4 }}>o crear uno nuevo:</div>
-                        <input placeholder="Nombre" value={nuevoNombre} onChange={e => setNuevoNombre(e.target.value)} style={{ padding: "5px 6px", fontSize: 11.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }} />
-                        <input placeholder="Email" type="email" value={nuevoEmail} onChange={e => setNuevoEmail(e.target.value)} style={{ padding: "5px 6px", fontSize: 11.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }} />
-                        <div style={{ display: "flex", gap: 5 }}>
-                          <BtnGhost onClick={() => { setAsignandoRol(null); setNuevoNombre(""); setNuevoEmail(""); }} size="sm">Cancelar</BtnGhost>
-                          <BtnPrimary onClick={() => crearYAsignar(rol)} disabled={!nuevoNombre.trim() || !nuevoEmail.trim() || guardandoResponsable} size="sm">Crear y asignar</BtnPrimary>
-                        </div>
-                      </div>
-                    ) : (
-                      <button onClick={() => setAsignandoRol(rol)} style={{ display: "inline-flex", alignItems: "center", gap: 4, border: 0, background: "none", color: "var(--brand)", fontSize: 11.5, cursor: "pointer", padding: 0 }}>
-                        <Plus size={11} /> Agregar responsable
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-
-              {nodoSel.tipo !== "inicio" && nodoSel.tipo !== "fin" && (
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 4 }}>
-                    {nodoSel.tipo === "decision" || nodoSel.tipo === "autorizacion"
-                      ? "Ramas de decisión"
-                      : <>Ramas de decisión <span style={{ fontWeight: 400, color: "var(--n-500)" }}>· opcional</span></>}
-                  </div>
-                  <div style={{ fontSize: 10.5, color: "var(--n-500)", marginBottom: 6, lineHeight: 1.4 }}>
-                    Solo si esta etapa se ramifica en varios caminos alternativos (ej: aprobado / rechazado).
-                    Cada rama necesita una flecha de salida hacia otro nodo. Si el flujo simplemente
-                    continúa al siguiente paso, <strong>dejalo vacío</strong>. No uses este campo
-                    para describir qué datos produce la etapa (para eso está &quot;Qué debe hacer&quot;).
-                  </div>
-                  <Input
-                    value={(nodoSel.resultados || []).join(", ")}
-                    onChange={e => actualizarNodo(nodoSel.id, { resultados: e.target.value.split(",").map(s => s.trim()).filter(Boolean) })}
-                    placeholder={nodoSel.tipo === "decision" || nodoSel.tipo === "autorizacion" ? "aprobado, rechazado" : "vacío = una sola salida"}
-                  />
-                  {nodoSel.tipo === "autorizacion" && (
-                    <div style={{ fontSize: 10.5, color: "var(--n-500)", marginTop: 4, lineHeight: 1.4 }}>
-                      El motor real hoy solo distingue aprobado/rechazado (&quot;con observaciones&quot; ya existe como variante de aprobado en el correo de autorización). Salidas adicionales quedan documentadas en el grafo pero no cambian el ruteo todavía.
-                    </div>
-                  )}
-                  {!["decision", "autorizacion"].includes(nodoSel.tipo) && (nodoSel.resultados || []).length > 0 && (
-                    <div style={{ fontSize: 10.5, color: "var(--n-500)", marginTop: 4, lineHeight: 1.4 }}>
-                      Esta etapa todavía no tiene ejecución real conectada (solo el paso de autorización la tiene) — las ramas quedan como documentación del proceso y validan el grafo.
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {nodoSel.tipo === "decision" && (
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 6 }}>Condición</div>
-                  <select
-                    value={nodoSel.condicion_entrada?.campo ?? ""}
-                    onChange={e => actualizarNodo(nodoSel.id, { condicion_entrada: { campo: e.target.value, operador: nodoSel.condicion_entrada?.operador ?? ">", valor: nodoSel.condicion_entrada?.valor ?? "" } })}
-                    style={{ width: "100%", padding: "7px 8px", fontSize: 12.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)", marginBottom: 6 }}
-                  >
-                    <option value="">Sin condición</option>
-                    {CAMPOS_CONDICION.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  {nodoSel.condicion_entrada?.campo && (
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <select
-                        value={nodoSel.condicion_entrada?.operador ?? ">"}
-                        onChange={e => actualizarNodo(nodoSel.id, { condicion_entrada: { ...nodoSel.condicion_entrada!, operador: e.target.value } })}
-                        style={{ flex: 1, padding: "7px 8px", fontSize: 12.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }}
-                      >
-                        {OPERADORES.map(o => <option key={o} value={o}>{o}</option>)}
-                      </select>
-                      <input
-                        value={String(nodoSel.condicion_entrada?.valor ?? "")}
-                        onChange={e => actualizarNodo(nodoSel.id, { condicion_entrada: { ...nodoSel.condicion_entrada!, valor: e.target.value } })}
-                        style={{ flex: 1, padding: "7px 8px", fontSize: 12.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {reglasComunicacion.some(r => r.nodo_id === nodoSel.id && ["rfq_requested", "rfq_followup"].includes(r.evento_plantilla)) && (
-                <div style={{ borderTop: "1px solid var(--n-200)", paddingTop: 12 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-700)", marginBottom: 6 }}>Cierre agregado de cotizaciones</div>
-                  <select
-                    value={nodoSel.criterio_cierre || "todos_resueltos"}
-                    onChange={e => actualizarNodo(nodoSel.id, { criterio_cierre: e.target.value as Nodo["criterio_cierre"] })}
-                    style={{ width: "100%", padding: "7px 8px", fontSize: 12.5, borderRadius: "var(--r-sm)", border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)" }}
-                  >
-                    <option value="todos_resueltos">Todos respondieron o fueron descartados</option>
-                    <option value="minimo_respuestas">Alcanzar un mínimo de respuestas</option>
-                    <option value="cierre_manual">Cierre manual</option>
-                  </select>
-                  {(nodoSel.criterio_cierre || "todos_resueltos") === "minimo_respuestas" && (
-                    <div style={{ marginTop: 7 }}>
-                      <Input
-                        label="Respuestas completas requeridas"
-                        type="number"
-                        value={String(nodoSel.minimo_respuestas || 1)}
-                        onChange={e => actualizarNodo(nodoSel.id, { minimo_respuestas: Math.max(1, Number(e.target.value) || 1) })}
-                      />
-                    </div>
-                  )}
-                  <div style={{ fontSize: 10.5, color: "var(--n-500)", marginTop: 5, lineHeight: 1.4 }}>
-                    El criterio se evalúa por proveedor. Una respuesta incompleta mantiene abierto solamente su loop.
-                  </div>
-                </div>
-              )}
-
-              {nodoSel.tipo === "homologacion" && (
-                <div style={{ borderTop: "1px solid var(--n-200)", paddingTop: 12 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-700)", marginBottom: 5 }}>Antecedentes requeridos</div>
-                  <div style={{ fontSize: 10.5, color: "var(--n-500)", marginBottom: 6, lineHeight: 1.4 }}>
-                    Uno por línea. Evita pedir credenciales, claves o documentos personales innecesarios.
-                  </div>
-                  <textarea
-                    value={(nodoSel.requisitos_homologacion || []).join("\n")}
-                    onChange={e => actualizarNodo(nodoSel.id, { requisitos_homologacion: e.target.value.split("\n").map(v => v.trim()).filter(Boolean) })}
-                    placeholder={"Razón social, RUT, giro y domicilio\nCertificado bancario de titularidad\nCondiciones de pago"}
-                    rows={5}
-                    style={{ width: "100%", resize: "vertical", padding: 8, fontFamily: "inherit", fontSize: 11.5, lineHeight: 1.45, border: "1px solid var(--n-300)", background: "var(--surface)", color: "var(--n-900)", borderRadius: "var(--r-sm)" }}
-                  />
-                </div>
-              )}
-
-              {nodoSel.tipo !== "inicio" && nodoSel.tipo !== "fin" && (
-                <div style={{ borderTop: "1px solid var(--n-200)", paddingTop: 12 }}>
-                  <NodeCommunicationsPanel
-                    workflowId={workflowId}
-                    nodoId={nodoSel.id}
-                    roles={nodoSel.roles || []}
-                    resultados={nodoSel.resultados || []}
-                    reglas={reglasComunicacion.filter(r => r.nodo_id === nodoSel.id)}
-                    readOnly={!puedeEditarConfiguracion}
-                    esAdmin={esAdmin}
-                    onCrearBorrador={workflow.estado === "activo" ? () => crearVersionConCambios(false) : undefined}
-                    onChanged={cargarConfiguracion}
-                  />
-                </div>
-              )}
-
-              {nodoSel.tipo !== "inicio" && nodoSel.tipo !== "fin" && (
-                <div style={{ borderTop: "1px solid var(--n-200)", paddingTop: 12 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-700)", marginBottom: 6 }}>Resumen de la tarjeta</div>
-                  <div style={{ fontSize: 11.5, lineHeight: 1.55, color: "var(--n-600)", padding: 9, background: "var(--canvas)", border: "1px solid var(--n-200)" }}>
-                    {(nodoSel.roles || []).length > 0
-                      ? `${(nodoSel.roles || []).join(", ")} ejecuta “${nodoSel.nombre}”. `
-                      : `“${nodoSel.nombre}” no tiene roles humanos. `}
-                    {asignaciones.filter(a => a.nodo_id === nodoSel.id).length} responsable(s) asignado(s) y {reglasComunicacion.filter(r => r.nodo_id === nodoSel.id).length} comunicación(es) configurada(s).
-                    {reglasComunicacion.filter(r => r.nodo_id === nodoSel.id && r.repetir_cada_dias).map(r => ` Repite ${r.evento_plantilla} cada ${r.repetir_cada_dias} días hasta ${r.evento_termino || "un evento pendiente"}.`).join("")}
-                  </div>
-                  {(errores || []).filter(e => (e as { nodo_id?: string }).nodo_id === nodoSel.id).map((e, i) => (
-                    <div key={`${e.codigo}-${i}`} style={{ fontSize: 11, color: "var(--danger)", marginTop: 5 }}>· {e.mensaje}</div>
-                  ))}
-                </div>
-              )}
-
-              <BtnGhost onClick={() => setSeleccionado(null)} size="sm">Cerrar</BtnGhost>
-            </div>
-          )}
-        </Card>
-
-        {/* Chat de correcciones */}
-        <Card padding={14} style={{ width: 260, flexShrink: 0, display: "flex", flexDirection: "column", height: 560 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--n-600)", marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.3 }}>
-            Corregir por chat
-          </div>
-          <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
-            <ChatBubbles mensajes={mensajesCorreccion} />
-            {enviandoCorreccion && <TypingBubble />}
-          </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            <textarea
-              value={entradaCorreccion}
-              onChange={e => setEntradaCorreccion(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviarCorreccion(); } }}
-              placeholder="Escribe una corrección…"
-              rows={2}
-              disabled={enviandoCorreccion}
-              style={{
-                flex: 1, resize: "none", background: "var(--surface)", color: "var(--n-900)",
-                border: "1px solid var(--n-300)", borderRadius: "var(--r-md)", padding: 8,
-                fontFamily: "inherit", fontSize: 12.5, lineHeight: 1.4, outline: "none",
-              }}
-            />
-            <BtnPrimary onClick={enviarCorreccion} disabled={!entradaCorreccion.trim() || enviandoCorreccion} style={{ alignSelf: "flex-end" }} size="sm">
-              Enviar
-            </BtnPrimary>
-          </div>
-        </Card>
+        <WorkflowCorrectionTerminal
+          mensajes={mensajesCorreccion}
+          entrada={entradaCorreccion}
+          onEntradaChange={setEntradaCorreccion}
+          onEnviar={enviarCorreccion}
+          enviando={enviandoCorreccion}
+          expanded={terminalExpandida}
+          onToggleExpanded={() => setTerminalExpandida(v => !v)}
+        />
       </div>
+
+      {nodoSel && (
+        <WorkflowNodeDrawer
+          nodo={nodoSel}
+          nodos={nodos}
+          conexiones={conexiones}
+          onClose={() => setSeleccionado(null)}
+          onUpdateNodo={actualizarNodo}
+          onDeleteNodo={eliminarNodo}
+          puedeEditarConfiguracion={puedeEditarConfiguracion}
+          asignaciones={asignaciones}
+          responsablesOrg={responsablesOrg}
+          asignandoRol={asignandoRol}
+          setAsignandoRol={setAsignandoRol}
+          nuevoNombre={nuevoNombre}
+          setNuevoNombre={setNuevoNombre}
+          nuevoEmail={nuevoEmail}
+          setNuevoEmail={setNuevoEmail}
+          guardandoResponsable={guardandoResponsable}
+          modoAsignacionPorRol={modoAsignacionPorRol}
+          setModoAsignacionPorRol={setModoAsignacionPorRol}
+          asignarExistente={asignarExistente}
+          crearYAsignar={crearYAsignar}
+          quitarAsignacion={quitarAsignacion}
+          workflowId={workflowId}
+          reglasComunicacion={reglasComunicacion}
+          esAdmin={esAdmin}
+          workflowEstado={workflow.estado}
+          crearVersionConCambios={crearVersionConCambios}
+          cargarConfiguracion={cargarConfiguracion}
+          errores={errores}
+        />
+      )}
     </div>
   );
 }
