@@ -21,6 +21,8 @@ export const metadata: Metadata = {
   description: "Automatiza tus cotizaciones de repuestos y servicios con IA. Búsqueda global, correo automático, orden de compra instantánea.",
 };
 
+const APP_ENVIRONMENT = process.env.NEXT_PUBLIC_ENVIRONMENT ?? "production";
+
 // Aplica el tema guardado antes del primer paint (evita flash de tema claro)
 const THEME_INIT = `
 (function(){try{var t=localStorage.getItem('baiyer-theme');
@@ -35,6 +37,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>
       <body>
+        {APP_ENVIRONMENT !== "production" && (
+          <div className="environment-banner" role="status">
+            ENTORNO DE TESTING · Los datos y acciones no corresponden a producción
+          </div>
+        )}
         {children}
       </body>
     </html>

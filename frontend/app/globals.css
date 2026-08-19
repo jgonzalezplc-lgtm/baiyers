@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+.environment-banner {
+  position: sticky;
+  top: 0;
+  z-index: 10000;
+  padding: 6px 12px;
+  background: #7c5c12;
+  color: #fff;
+  font: 600 11px/1.4 var(--font-plex-mono), monospace;
+  letter-spacing: .08em;
+  text-align: center;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    Baiyer — Design system "soft professional"
    Marca: azul petróleo. Neutros cálidos. Radios moderados. Sentence case.
