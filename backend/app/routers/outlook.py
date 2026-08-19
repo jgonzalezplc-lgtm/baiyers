@@ -442,6 +442,30 @@ async def sincronizar_respuestas(ctx: AuthContext = Depends(get_auth_context)):
     return await _sincronizar_usuario_outlook(ctx.actor_user_id)
 
 
+@router.post("/mensajes/{message_id}/reprocesar")
+async def reprocesar_mensaje(message_id: str, ctx: AuthContext = Depends(get_auth_context)):
+    """Puerto exacto de `reprocesar_mensaje` de gmail.py — ver ahí el porqué."""
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+    msg = ejecutar_maybe_single(
+        sb.table("outlook_messages").select("id,conversation_id,direction").eq("id", message_id).maybe_single()
+    ).data
+    if not msg or msg.get("direction") != "inbound":
+        raise HTTPException(status_code=404, detail="Mensaje no encontrado")
+    conv = ejecutar_maybe_single(
+        sb.table("outlook_conversations").select("id,user_id,estado").eq("id", msg["conversation_id"])
+        .in_("user_id", ctx.user_ids_organizacion).maybe_single()
+    ).data
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+
+    sb.table("outlook_messages").update({"procesado": False}).eq("id", message_id).execute()
+    if conv["estado"] not in ("sent", "waiting_for_supplier", "supplier_replied", "partially_answered", "clarification_required"):
+        sb.table("outlook_conversations").update({"estado": "supplier_replied"}).eq("id", conv["id"]).execute()
+
+    return await _sincronizar_usuario_outlook(conv["user_id"])
+
+
 async def _sincronizar_usuario_outlook(user_id: str) -> dict:
     """Puerto exacto de `_sincronizar_usuario` de gmail.py, sobre Microsoft
     Graph. Recorre conversaciones activas, trae mensajes nuevos del hilo,
@@ -467,8 +491,12 @@ async def _sincronizar_usuario_outlook(user_id: str) -> dict:
     mi_email = (integration["email"] or "").lower()
 
     from app.services.organizacion import ids_organizacion
+    # "clarification_required" queda acá a propósito: significa que una
+    # extracción anterior fue ambigua, no que la conversación terminó — si se
+    # excluye, el hilo deja de revisarse para siempre aunque el proveedor
+    # responda de nuevo con datos claros.
     activas = sb.table("outlook_conversations").select("*").in_("user_id", ids_organizacion(user_id)).in_(
-        "estado", ["sent", "waiting_for_supplier", "supplier_replied", "partially_answered"]
+        "estado", ["sent", "waiting_for_supplier", "supplier_replied", "partially_answered", "clarification_required"]
     ).execute().data or []
 
     resumen = {"conversaciones_revisadas": len(activas), "mensajes_nuevos": 0, "propuestas_generadas": 0}
@@ -662,7 +690,7 @@ async def sincronizar_todos_los_usuarios_outlook() -> dict:
     sb = get_supabase()
 
     activas = sb.table("outlook_conversations").select("user_id").in_(
-        "estado", ["sent", "waiting_for_supplier", "supplier_replied", "partially_answered"]
+        "estado", ["sent", "waiting_for_supplier", "supplier_replied", "partially_answered", "clarification_required"]
     ).execute().data or []
     usuarios = {c["user_id"] for c in activas}
 

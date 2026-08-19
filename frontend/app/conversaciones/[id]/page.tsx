@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ExternalLink, Paperclip, Check, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, ExternalLink, Paperclip, Check, X, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
 import { Card, Badge, BtnPrimary, BtnSecondary, SkeletonText, SkeletonChatBubble, SkeletonBox, CascadeWrapper } from "@/components/ui";
@@ -83,6 +83,8 @@ export default function ConversacionDetallePage() {
   const [propuestas, setPropuestas] = useState<Propuesta[]>([]);
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState<string | null>(null);
+  const [colapsados, setColapsados] = useState<Set<string>>(new Set());
+  const [reprocesando, setReprocesando] = useState<string | null>(null);
 
   const cargar = useCallback((uid: string) => {
     setLoading(true);
@@ -105,6 +107,25 @@ export default function ConversacionDetallePage() {
       cargar(uid);
     });
   }, [cargar]);
+
+  const toggleColapsado = (msgId: string) => {
+    setColapsados(prev => {
+      const next = new Set(prev);
+      if (next.has(msgId)) next.delete(msgId); else next.add(msgId);
+      return next;
+    });
+  };
+
+  const reprocesar = async (msgId: string) => {
+    if (!userId) return;
+    setReprocesando(msgId);
+    try {
+      const res = await authFetch(`${API_URL}/api/${proveedor}/mensajes/${msgId}/reprocesar`, { method: "POST" });
+      if (res.ok) cargar(userId);
+    } finally {
+      setReprocesando(null);
+    }
+  };
 
   const revisar = async (propuestaId: string, accion: "aplicar" | "rechazar") => {
     if (!userId) return;
@@ -175,26 +196,49 @@ export default function ConversacionDetallePage() {
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20, alignItems: "start" }}>
         {/* Timeline de mensajes */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {mensajes.map(m => (
-            <Card key={m.id} padding={16} style={{ background: m.direction === "outbound" ? "var(--brand-50)" : "var(--surface)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: m.direction === "outbound" ? "var(--brand-700)" : "var(--n-700)" }}>
-                  {m.direction === "outbound" ? "Baiyer → proveedor" : "Proveedor"}
-                </span>
-                <span style={{ fontSize: 12, color: "var(--n-500)" }}>{fmtFechaHora(m.received_at)}</span>
-              </div>
-              <div style={{ fontSize: 13.5, color: "var(--n-800)", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{m.body_text || "(sin contenido de texto)"}</div>
-              {adjuntosPorMensaje(m.id).length > 0 && (
-                <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {adjuntosPorMensaje(m.id).map(a => (
-                    <span key={a.id} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--n-600)", background: "var(--canvas)", border: "1px solid var(--n-200)", borderRadius: "var(--r-pill)", padding: "3px 10px" }}>
-                      <Paperclip size={12} strokeWidth={1.75} /> {a.filename}
+          {mensajes.map(m => {
+            const abierto = !colapsados.has(m.id);
+            const tienePropuesta = propuestas.some(p => p.source_id === m.id);
+            return (
+              <Card key={m.id} padding={16} style={{ background: m.direction === "outbound" ? "var(--brand-50)" : "var(--surface)" }}>
+                <button
+                  onClick={() => toggleColapsado(m.id)}
+                  style={{ display: "flex", width: "100%", justifyContent: "space-between", alignItems: "center", gap: 10, background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: abierto ? 8 : 0, textAlign: "left" }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    {abierto ? <ChevronDown size={14} strokeWidth={1.75} color="var(--n-500)" /> : <ChevronRight size={14} strokeWidth={1.75} color="var(--n-500)" />}
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: m.direction === "outbound" ? "var(--brand-700)" : "var(--n-700)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {m.subject || (m.direction === "outbound" ? "Baiyer → proveedor" : "Proveedor")}
                     </span>
-                  ))}
-                </div>
-              )}
-            </Card>
-          ))}
+                  </span>
+                  <span style={{ fontSize: 12, color: "var(--n-500)", flexShrink: 0 }}>{fmtFechaHora(m.received_at)}</span>
+                </button>
+                {abierto && (
+                  <>
+                    <div style={{ fontSize: 13.5, color: "var(--n-800)", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{m.body_text || "(sin contenido de texto)"}</div>
+                    {adjuntosPorMensaje(m.id).length > 0 && (
+                      <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {adjuntosPorMensaje(m.id).map(a => (
+                          <span key={a.id} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--n-600)", background: "var(--canvas)", border: "1px solid var(--n-200)", borderRadius: "var(--r-pill)", padding: "3px 10px" }}>
+                            <Paperclip size={12} strokeWidth={1.75} /> {a.filename}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {m.direction === "inbound" && !tienePropuesta && (
+                      <button
+                        onClick={() => reprocesar(m.id)}
+                        disabled={reprocesando === m.id}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 10, fontSize: 12, color: "var(--brand)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                      >
+                        <RefreshCw size={12} strokeWidth={1.75} /> {reprocesando === m.id ? "Reprocesando…" : "Reprocesar este correo"}
+                      </button>
+                    )}
+                  </>
+                )}
+              </Card>
+            );
+          })}
           {mensajes.length === 0 && <div style={{ color: "var(--n-500)", fontSize: 13.5 }}>Sin mensajes registrados todavía.</div>}
         </div>
 
