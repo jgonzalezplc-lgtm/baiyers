@@ -15,6 +15,22 @@ REQUISITOS_BASICOS = [
     "Condiciones de pago vigentes",
 ]
 
+# No existe todavía un motor de scoring de riesgo (fuentes externas, reglas duras) —
+# ver DISENO_HOMOLOGACION_RIESGO_PROVEEDORES.md. Este nivel es sólo un proxy directo
+# del estado del expediente documental, nunca una evaluación de riesgo verificada.
+NIVEL_RIESGO_POR_ESTADO = {
+    "homologado": "bajo",
+    "rechazado": "alto",
+    "solicitado": "alerta",
+    "recepcion_parcial": "alerta",
+    "en_revision": "alerta",
+    "requiere_aclaracion": "alerta",
+}
+
+
+def nivel_riesgo(estado: str) -> str:
+    return NIVEL_RIESGO_POR_ESTADO.get(estado, "sin_evaluar")
+
 
 def _sb():
     from app.services.supabase import get_supabase
@@ -263,6 +279,37 @@ def listar_casos(user_id: str, instance_id: Optional[str] = None,
     if lista_id:
         q = q.eq("lista_proyecto_id", lista_id)
     return q.order("created_at", desc=True).execute().data or []
+
+
+def mapa_resultado_a_caso(user_id: str, lista_id: str) -> dict:
+    """resultado_id -> {caso_id, estado, riesgo, proveedor_id} para pintar el estado de
+    homologación directamente en la lista de ítems, sin repetir la resolución de proveedor
+    por resultado en el cliente."""
+    casos = listar_casos(user_id, lista_id=lista_id)
+    if not casos:
+        return {}
+    proveedor_a_caso = {c["proveedor_id"]: c for c in casos if c.get("proveedor_id")}
+    sb = _sb()
+    batches = sb.table("rfq_batches").select("id,proveedor_id").eq(
+        "lista_proyecto_id", lista_id
+    ).execute().data or []
+    proveedor_por_batch = {b["id"]: b["proveedor_id"] for b in batches}
+    if not proveedor_por_batch:
+        return {}
+    items = sb.table("rfq_batch_items").select("resultado_id,rfq_batch_id").in_(
+        "rfq_batch_id", list(proveedor_por_batch.keys())
+    ).execute().data or []
+    resultado_a_caso: dict[str, dict] = {}
+    for item in items:
+        proveedor_id = proveedor_por_batch.get(item["rfq_batch_id"])
+        caso = proveedor_a_caso.get(proveedor_id)
+        if not caso:
+            continue
+        resultado_a_caso[item["resultado_id"]] = {
+            "caso_id": caso["id"], "estado": caso["estado"],
+            "riesgo": nivel_riesgo(caso["estado"]), "proveedor_id": proveedor_id,
+        }
+    return resultado_a_caso
 
 
 def _cancelar_acciones(caso: dict) -> None:

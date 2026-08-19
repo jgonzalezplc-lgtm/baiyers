@@ -156,6 +156,33 @@ extracción tolerante a lenguaje natural, fuera de orden y con correcciones. **M
   rediseño de `/settings/autorizaciones` en "roster de un solo ciclo" (ver sección Workflow Builder).
   `WorkflowGuardadoCard.tsx` ya no existe (se borró cuando se sacó la pantalla intermedia "Aceptar" /
   "Ajustar visualmente" — confirmar un workflow pasa directo al canvas en los dos chats).
+- **Entrevista por slots en la fase "proceso" (2026-08-19).** Reemplazó el cuestionario de 5
+  preguntas fijas. Antes el frontend decidía con regex si un tema "ya estaba cubierto"
+  (`/(cotiz|presupuesto|comparacion)/` etc.) y, si no matcheaba, repetía la pregunta y hacía
+  `return` **sin llamar nunca al backend** — una respuesta válida como "Valeria Tapia,
+  admin@reveniu.com" no contiene la palabra "cotizar", así que el chat quedaba en loop infinito
+  (bug real reportado en producción). Ahora las tres responsabilidades están separadas en
+  `services/workflow_proceso_slots.py`: **avance determinístico** (`siguiente_slot()` = primer slot
+  pendiente, con `MAX_INTENTOS_POR_SLOT=2` → la entrevista termina sí o sí en ≤12 turnos aunque el
+  modelo nunca entienda nada), **comprensión por LLM** (`extraer_de_respuesta()`, único punto con
+  Gemini) y **compilación determinística** (`compilar_slots_a_etapas()` → `compilar_a_grafo()`, el
+  grafo nunca lo arma el modelo). Los 6 slots son cotizador/revisor/autorizador/reglas_monto/
+  homologador/comprador. Una sola respuesta puede llenar varios slots y los ya cubiertos no se
+  vuelven a preguntar (verificado real: una respuesta llenó 5 de 6 y sólo preguntó el que faltaba).
+  Endpoint `POST /api/workflows/proceso/turno` (sin auth, igual que `/interpretar`); la ficha
+  (`slots`) viaja en cada request, el backend no persiste la entrevista.
+- **Primer uso de structured output real en el repo:** `ESQUEMA_EXTRACCION` se pasa como
+  `response_schema` (+ `response_mime_type`) en `generation_config`, en vez del patrón de pedir
+  JSON por prompt y limpiar los fences ```` ```json ```` a mano que usa el resto del backend
+  (`identificar.py`, `purchase_invoice_service.py`, `workflow_conversational.py`). Schema plano y
+  sin `null` a propósito (Gemini responde peor con nullables): centinelas `""`/`0` y validación en
+  Python. Verificado en vivo que el SDK 0.8.6 acepta el schema como dict.
+- El caso borde "Coti Zamorano autoriza, cotiz@abc.cl" se verificó contra Gemini real: la clasifica
+  como `autorizador` pese a que se le preguntaba por el cotizador y a que nombre y correo contienen
+  "coti"/"cotiz" — la asignación de rol es 100% semántica, ningún substring la toca.
+- Escape hatch en el chat ("Prefiero describirlo con mis palabras"): sale del cuestionario y cae al
+  flujo LLM completo de `/api/workflows/interpretar`. Descarta la ficha a medio llenar a propósito
+  (mezclarla con una descripción libre produce workflows contradictorios).
 - **Pendiente:** `onboarding_sessions` no guarda el `workflow_id` creado a mitad de camino ni la fase
   `perfil/transicion/proceso` — si el usuario recarga a mitad de la fase "proceso" antes de confirmar,
   vuelve a ver el botón "Confirmar y continuar" del perfil (ya guardado, así que reintentar es inocuo)
@@ -270,7 +297,34 @@ dirección, con fallback genérico "Baiyer" solo si la organización todavía no
 - **Frontend (Railway `sweet-trust`):** NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_API_URL=https://baiyers-production.up.railway.app.
 
 ## Costos infra
-Railway ~$5-10/mes · Supabase free · Serper 2.500 gratis→$50/50k · Gemini free tier. WhatsApp y SII (futuros) sí cuestan.
+Railway ~$5-10/mes · Supabase free · Serper 2.500 gratis→$50/50k · **Gemini: cuenta PAGADA**
+(confirmado por el usuario 2026-08-19 — antes este archivo decía "free tier", dato que ya no aplica).
+WhatsApp y SII (futuros) sí cuestan.
+
+**Consecuencia de seguridad de estar en tier pagado:** en free tier la cuota actuaba como techo
+accidental (un abuso se cortaba solo y el daño era caída, no factura). Pagando ese techo no existe:
+cualquier endpoint que llame a Gemini sin autenticación factura sin freno. Ver "Defensas de costo LLM".
+
+## Defensas de costo LLM (2026-08-19)
+- `services/llm_rate_limit.py` — rate limiting **por IP** en memoria (distinto del de
+  `api_publica/rate_limiter.py`, que va por `api_key_id` y plan). Usa `CF-Connecting-IP` (la
+  sobrescribe Cloudflare, es la confiable) y cae a `X-Forwarded-For`/`request.client`. Los intentos
+  rechazados **no** se contabilizan, si no un loop dejaría a esa IP bloqueada para siempre. Limpia
+  ventanas viejas cada 5 min para no ser él mismo un vector de memoria.
+- Aplicado a los dos endpoints de workflows que llaman a Gemini sin auth:
+  `/api/workflows/interpretar` (10/min, 60/h) y `/api/workflows/proceso/turno` (20/min, 120/h).
+  Un onboarding real gasta ~6-12 llamadas en total.
+- Topes de tamaño del body en `routers/workflows.py` (`MAX_DESCRIPCION=8000`, `MAX_CONTEXTO=20000`,
+  `MAX_RESPUESTA=4000`, `MAX_SLOTS=50`) — antes NO había ninguno: un solo request con cientos de KB
+  costaba lo que miles de usos legítimos. Excederlos devuelve 422 antes de tocar Gemini.
+- **Limitaciones honestas:** el contador es en memoria y por proceso (con varias réplicas el límite
+  efectivo se multiplica); el rate limiting por IP es un freno, no una garantía — un atacante
+  distribuido rota IPs. La mitigación de fondo sigue siendo exigir autenticación.
+- **Exposición que queda abierta y es MAYOR:** `identificar.py`, `buscar.py` y `analisis.py` llaman a
+  Gemini y **no usan `get_auth_context`** (verificado por grep). `buscar` es el más caro de todos
+  (búsquedas en paralelo + scraping + LLM). No se les puso límite todavía a propósito, porque un
+  límite mal calibrado ahí rompe el flujo real de búsqueda de un usuario legítimo — hay que elegir
+  los números mirando uso real antes de activarlo.
 
 ## Estado verificado (10-ago-2026)
 - `frontend/next-env.d.ts` sigue siendo el único cambio preexistente del worktree — se conserva sin commitear (es autogenerado por Next.js en dev).

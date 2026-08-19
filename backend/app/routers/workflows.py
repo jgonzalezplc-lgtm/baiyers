@@ -9,8 +9,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.services.auth_context import AuthContext, get_auth_context
+from app.services.llm_rate_limit import limitar_por_ip
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
+
+# Estos dos endpoints llaman a Gemini SIN autenticación, así que el único
+# freno contra un loop desde afuera es la IP de origen. Los límites son
+# holgados para un onboarding real (que gasta ~6-12 llamadas en total) y
+# apretados frente a un script.
+_limite_interpretar = limitar_por_ip("workflows_interpretar", por_minuto=10, por_hora=60)
+_limite_turno = limitar_por_ip("workflows_proceso_turno", por_minuto=20, por_hora=120)
 
 
 class RolIn(BaseModel):
@@ -39,14 +47,33 @@ class CrearWorkflowRequest(BaseModel):
     responsables: list[ResponsableSemilla] = Field(default_factory=list)
 
 
+# Topes de tamaño para todo lo que termina viajando a Gemini. Con cuenta
+# pagada, cada token de entrada se factura: sin tope, un solo request con
+# cientos de KB de texto cuesta lo que miles de usos legítimos. Los valores
+# son holgados para un uso real (una descripción de proceso de compras no
+# pasa de unos pocos miles de caracteres) y el exceso devuelve 422.
+MAX_DESCRIPCION = 8_000
+MAX_CONTEXTO = 20_000
+MAX_RESPUESTA = 4_000
+MAX_SLOTS = 50
+
+
 class InterpretarRequest(BaseModel):
-    descripcion: str
-    contexto: Optional[str] = None
+    descripcion: str = Field(max_length=MAX_DESCRIPCION)
+    contexto: Optional[str] = Field(default=None, max_length=MAX_CONTEXTO)
 
 
 class RolloutRequest(BaseModel):
     execution_mode: str
     reason: str = ""
+
+
+class ProcesoTurnoRequest(BaseModel):
+    """Un turno de la entrevista por slots. La ficha (`slots`) viaja en cada
+    request: el backend no persiste la entrevista, igual que /interpretar."""
+    respuesta: str = Field(default="", max_length=MAX_RESPUESTA)
+    slots: Optional[list[dict]] = Field(default=None, max_length=MAX_SLOTS)
+    contexto: Optional[str] = Field(default=None, max_length=MAX_CONTEXTO)
 
 
 @router.get("/rollout/estado")
@@ -66,7 +93,7 @@ async def cambiar_estado_rollout(req: RolloutRequest, ctx: AuthContext = Depends
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.post("/interpretar")
+@router.post("/interpretar", dependencies=[Depends(_limite_interpretar)])
 async def interpretar_workflow(req: InterpretarRequest):
     """Solo interpreta y propone — no guarda nada. El frontend confirma con
     el usuario y recién ahí llama a POST /api/workflows con el resultado."""
@@ -81,6 +108,20 @@ async def interpretar_workflow(req: InterpretarRequest):
 
     nodos, conexiones = compilar_a_grafo(propuesta["etapas"], propuesta["reglas_autorizacion"])
     return {**propuesta, "nodos": nodos, "conexiones": conexiones}
+
+
+@router.post("/proceso/turno", dependencies=[Depends(_limite_turno)])
+async def turno_proceso(req: ProcesoTurnoRequest):
+    """Entrevista guiada del proceso de compras: el avance lo decide el
+    backend de forma determinística (primer slot pendiente, con tope de
+    intentos) y el LLM sólo interpreta la respuesta. Al completarse devuelve
+    el mismo contrato que /interpretar (nodos + conexiones + responsables)."""
+    import asyncio
+    from app.services.workflow_proceso_slots import procesar_turno
+
+    return await asyncio.to_thread(
+        procesar_turno, req.respuesta, req.slots, req.contexto or ""
+    )
 
 
 @router.post("")
@@ -223,6 +264,12 @@ async def casos_homologacion(instance_id: str, ctx: AuthContext = Depends(get_au
 async def casos_homologacion_lista(lista_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.workflow_homologation import listar_casos
     return {"casos": listar_casos(ctx.actor_user_id, lista_id=lista_id)}
+
+
+@router.get("/homologacion/estado-items")
+async def estado_homologacion_por_item(lista_id: str, ctx: AuthContext = Depends(get_auth_context)):
+    from app.services.workflow_homologation import mapa_resultado_a_caso
+    return {"items": mapa_resultado_a_caso(ctx.actor_user_id, lista_id)}
 
 
 class DecisionHomologacionRequest(BaseModel):

@@ -31,6 +31,17 @@ import { PropuestaWorkflowCard, type Propuesta } from "@/components/workflow/Pro
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+/** Respuesta de /api/workflows/proceso/turno. Cuando `completo` es true trae
+ *  además el mismo contrato que /interpretar (nodos/conexiones/responsables),
+ *  así que se puede pasar tal cual a PropuestaWorkflowCard. */
+interface TurnoProceso extends Propuesta {
+  slots: unknown[];
+  pregunta: string;
+  clave_pregunta: string;
+  completo: boolean;
+  aclaracion: string;
+}
+
 interface Investigacion {
   empresa: string | null;
   es_empresa_conocida?: boolean;
@@ -110,22 +121,35 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   // Contexto de la fase "proceso" — solo los turnos de esa fase, no arrastra
   // las preguntas de perfil (empresa/RUT/nombre) como contexto ruidoso.
   const procesoDesdeRef = useRef(0);
-  const [pasoProceso, setPasoProceso] = useState(0);
+  // Ficha de la entrevista por slots. Vive en el cliente y viaja en cada
+  // turno: el backend no persiste la entrevista (igual que /interpretar).
+  const slotsProcesoRef = useRef<unknown[] | null>(null);
+  // Escape hatch: el usuario puede salirse del cuestionario y describir su
+  // proceso en texto libre (cae al flujo LLM completo de /interpretar).
+  const [textoLibreProceso, setTextoLibreProceso] = useState(false);
   const respuestasProcesoRef = useRef<string[]>([]);
-  const entrevistaProcesoCompletaRef = useRef(false);
   // Cuántos mensajes del asistente (guardados server-side) ya están
   // reflejados en `msgs` — permite sólo AGREGAR los nuevos en cada turno en
   // vez de reemplazar todo el historial (eso borraba preguntas/tarjetas que
   // sólo existían localmente, ej. cuando silenciar_respuesta=true).
   const mensajesAsistenteSincronizadosRef = useRef(0);
 
-  const PREGUNTAS_PROCESO = [
-    "¿Quién o quiénes se encargan de cotizar? Indica sus nombres y correos.",
-    "¿Quién o quiénes autorizan los presupuestos? Indica nombres y correos. ¿Alguno necesita otra autorización? Dime de quién, su correo y rol.",
-    "¿Cómo homologan a los proveedores nuevos y quién se encarga? Indica su nombre y correo si lo tienes.",
-    "¿Se solicita autorización a partir de un monto? Indica el monto, o responde que no.",
-    "¿Quién envía la orden de compra? Indica su nombre y correo.",
-  ];
+  // Las preguntas del proceso las define el backend (SLOTS_PROCESO), que
+  // además decide cuál toca según lo que ya se extrajo. Esto es sólo el
+  // texto de respaldo si la primera llamada falla por red.
+  const PREGUNTA_PROCESO_FALLBACK =
+    "¿Quién o quiénes se encargan de cotizar? Indica sus nombres y correos.";
+
+  const turnoProceso = async (respuesta: string, slots: unknown[] | null): Promise<TurnoProceso> => {
+    const res = await fetch(`${API_URL}/api/workflows/proceso/turno`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ respuesta, slots, contexto: contextoProceso() }),
+      signal: AbortSignal.timeout(40000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  };
 
   const omitirPorAhora = async () => {
     if (onSkip) {
@@ -415,12 +439,21 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     enviarMensajePerfil(s.valor);
   };
 
-  // Fase "proceso": misma llamada, mismo endpoint y mismos mensajes de error
-  // que usa /settings/autorizaciones — la diferencia es que acá se sigue
-  // agregando a la MISMA lista de mensajes de la conversación, en vez de un
-  // hilo separado.
+  // Fase "proceso": entrevista por slots. El backend decide de forma
+  // determinística cuál es la próxima pregunta (primer slot pendiente, con
+  // tope de intentos) y el LLM sólo interpreta la respuesta — por eso acá no
+  // hay ninguna lógica de "¿ya cubrimos este tema?". Esa lógica, hecha con
+  // regex en el cliente, fue exactamente la causa del loop infinito: una
+  // respuesta válida como "Valeria Tapia, admin@x.cl" no matcheaba la palabra
+  // "cotizar" y la pregunta se repetía para siempre sin llamar al backend.
   const contextoProceso = () =>
     msgs.slice(procesoDesdeRef.current).map(m => `${m.rol === "bot" ? "ASISTENTE" : "USUARIO"}: ${m.texto ?? ""}`).join("\n");
+
+  const mostrarPropuesta = (data: Propuesta) => {
+    addBot(data.resumen || "Esto es lo que entendí:");
+    setPropuestaWorkflow(data);
+    setAInvitarWorkflow(new Set((data.responsables_detectados || []).filter(r => r.email).map(r => r.email)));
+  };
 
   const enviarProceso = async () => {
     const mensaje = input.trim();
@@ -429,50 +462,37 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     addUser(mensaje);
     const respuestas = [...respuestasProcesoRef.current, mensaje];
     respuestasProcesoRef.current = respuestas;
-    const procesoAcumulado = respuestas.join("\n").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const dimensionesCubiertas = [
-      /(cotiz|presupuesto|comparacion)/.test(procesoAcumulado),
-      /(autoriz|aprob|jefe|gerente)/.test(procesoAcumulado),
-      /(homolog|proveedor nuevo|alta de proveedor)/.test(procesoAcumulado),
-      /(monto|umbral|desde |sobre |a partir|sin limite|no se solicita autorizacion)/.test(procesoAcumulado),
-      /(orden de compra|\boc\b|ejecuta la compra)/.test(procesoAcumulado),
-    ];
-    const siguienteFaltante = dimensionesCubiertas.findIndex(cubierta => !cubierta);
-    if (!entrevistaProcesoCompletaRef.current && siguienteFaltante >= 0) {
-      setPasoProceso(siguienteFaltante);
-      addBot(PREGUNTAS_PROCESO[siguienteFaltante]);
-      return;
-    }
     setBusy(true);
     setPropuestaWorkflow(null);
     try {
-      const res = await fetch(`${API_URL}/api/workflows/interpretar`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          descripcion: [
-            ...respuestas.map((r, i) => `Información entregada ${i + 1}:\n${r}`),
-          ].join("\n\n"),
-          contexto: contextoProceso(),
-        }),
-        signal: AbortSignal.timeout(40000),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: Propuesta = await res.json();
-      if (data.requiere_aclaracion) {
-        if (!entrevistaProcesoCompletaRef.current && pasoProceso < PREGUNTAS_PROCESO.length - 1) {
-          const siguiente = pasoProceso + 1;
-          setPasoProceso(siguiente);
-          addBot(PREGUNTAS_PROCESO[siguiente]);
-        } else {
-          entrevistaProcesoCompletaRef.current = true;
-          addBot(data.preguntas?.[0] || "¿Puedes darme un poco más de detalle?");
-        }
+      if (textoLibreProceso) {
+        // Escape hatch: proceso que no calza en el cuestionario. Interpreta
+        // todo el texto libre acumulado con el flujo LLM completo.
+        const res = await fetch(`${API_URL}/api/workflows/interpretar`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            descripcion: respuestas.map((r, i) => `Información entregada ${i + 1}:\n${r}`).join("\n\n"),
+            contexto: contextoProceso(),
+          }),
+          signal: AbortSignal.timeout(40000),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data: Propuesta = await res.json();
+        if (data.requiere_aclaracion) addBot(data.preguntas?.[0] || "¿Puedes darme un poco más de detalle?");
+        else mostrarPropuesta(data);
+        return;
+      }
+
+      const data = await turnoProceso(mensaje, slotsProcesoRef.current);
+      slotsProcesoRef.current = data.slots;
+      if (data.completo) {
+        mostrarPropuesta(data);
       } else {
-        entrevistaProcesoCompletaRef.current = true;
-        addBot(data.resumen || "Esto es lo que entendí:");
-        setPropuestaWorkflow(data);
-        setAInvitarWorkflow(new Set((data.responsables_detectados || []).filter(r => r.email).map(r => r.email)));
+        // `aclaracion` sólo llega cuando la respuesta no aportó nada; el
+        // backend igual garantiza avanzar al segundo intento.
+        if (data.aclaracion) addBot(data.aclaracion);
+        if (data.pregunta) addBot(data.pregunta);
       }
     } catch (error) {
       const timeout = error instanceof DOMException && error.name === "TimeoutError";
@@ -588,13 +608,33 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     router.replace("/dashboard");
   };
 
-  const empezarProceso = () => {
+  const empezarProceso = async () => {
     setFase("proceso");
     procesoDesdeRef.current = msgs.length + 1;
-    setPasoProceso(0);
     respuestasProcesoRef.current = [];
-    entrevistaProcesoCompletaRef.current = false;
-    addBot(PREGUNTAS_PROCESO[0]);
+    slotsProcesoRef.current = null;
+    setTextoLibreProceso(false);
+    // La primera pregunta la define el backend (no llama al modelo): así el
+    // texto de las preguntas vive en un solo lugar y no se desincroniza.
+    setBusy(true);
+    try {
+      const data = await turnoProceso("", null);
+      slotsProcesoRef.current = data.slots;
+      addBot(data.pregunta || PREGUNTA_PROCESO_FALLBACK);
+    } catch {
+      addBot(PREGUNTA_PROCESO_FALLBACK);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pasarATextoLibre = () => {
+    setTextoLibreProceso(true);
+    // Se descarta lo respondido en el cuestionario a propósito: mezclar
+    // media ficha con una descripción libre produce workflows contradictorios.
+    respuestasProcesoRef.current = [];
+    slotsProcesoRef.current = null;
+    addBot("Dale, cuéntame con tus palabras cómo funciona el proceso de compras: quién cotiza, quién autoriza, si depende del monto y quién emite la orden de compra.");
   };
 
   const ofrecerConfigurarProceso = async () => {
@@ -780,6 +820,16 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
             <div style={{ marginLeft: 36, display: "flex", gap: 8 }}>
               <BtnPrimary onClick={() => responderTransicion(true, "Sí, configurémoslo")} size="sm">Sí, configurémoslo</BtnPrimary>
               <BtnGhost onClick={() => responderTransicion(false, "Ahora no")} size="sm">Ahora no</BtnGhost>
+            </div>
+          )}
+
+          {/* Escape hatch: procesos que no calzan en el cuestionario guiado.
+              Sale del modo slots y pasa al flujo LLM completo. */}
+          {fase === "proceso" && !textoLibreProceso && !propuestaWorkflow && !busy && (
+            <div style={{ marginLeft: 36 }}>
+              <BtnGhost size="sm" onClick={pasarATextoLibre}>
+                Prefiero describirlo con mis palabras
+              </BtnGhost>
             </div>
           )}
 
