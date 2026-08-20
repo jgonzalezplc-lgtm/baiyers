@@ -27,7 +27,13 @@ def _ids_organizacion(user_id: str) -> list[str]:
 def crear_borrador(
     user_id: str, nombre: str, nodos: list[dict], conexiones: list[dict],
     origen: str = "visual", roles: Optional[list[dict]] = None,
+    comunicaciones_default: bool = False,
 ) -> dict:
+    """`comunicaciones_default` pre-cablea la batería de correos de cada
+    tarjeta (ver `workflow_comunicaciones_default`). Se usa cuando el ciclo
+    nace del chat: ahí el usuario describió su proceso y espera que funcione,
+    no que haya que configurar cada correo a mano. Un ciclo armado a pulso en
+    el canvas no lo hace, para no pisar decisiones explícitas del usuario."""
     sb = _sb()
     ins = sb.table("workflow_definitions").insert({
         "user_id": user_id, "nombre": nombre, "version": 1, "estado": "borrador",
@@ -40,6 +46,13 @@ def crear_borrador(
             "workflow_id": workflow["id"],
             "clave": rol["clave"], "nombre": rol["nombre"], "descripcion": rol.get("descripcion"),
         }).execute()
+
+    if comunicaciones_default:
+        from app.services.workflow_comunicaciones_default import reglas_por_defecto
+        for regla in reglas_por_defecto(nodos):
+            sb.table("workflow_node_communication_rules").insert({
+                "workflow_id": workflow["id"], **regla,
+            }).execute()
 
     return obtener_workflow(user_id, workflow["id"])
 

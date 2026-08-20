@@ -145,7 +145,12 @@ async def crear_workflow(req: CrearWorkflowRequest, ctx: AuthContext = Depends(g
     if req.origen not in ("conversacional", "visual", "mixto"):
         raise HTTPException(status_code=400, detail="origen inválido")
     roles = [r.model_dump() for r in req.roles] if req.roles else None
-    workflow = crear_borrador(ctx.actor_user_id, req.nombre, req.nodos, req.conexiones, req.origen, roles)
+    # Un ciclo nacido del chat llega con su batería de correos ya armada; uno
+    # dibujado a mano en el canvas no, para no pisar decisiones del usuario.
+    workflow = crear_borrador(
+        ctx.actor_user_id, req.nombre, req.nodos, req.conexiones, req.origen, roles,
+        comunicaciones_default=(req.origen == "conversacional"),
+    )
 
     # Responsables semilla del chat conversacional: crear, asignar a roles y
     # (si corresponde) disparar la invitación. Cada resultado se reporta al
