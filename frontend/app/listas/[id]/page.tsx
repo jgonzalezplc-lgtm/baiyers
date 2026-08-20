@@ -7,11 +7,81 @@ import {
   ArrowLeft, Check, Send, Wand2, Camera, ShoppingBag, Mail, ExternalLink,
   Search, ChevronRight, Cpu, Building2, Hammer, HeartPulse, Factory,
   Wrench, Zap, Droplets, Wind, Briefcase, Package, Boxes, GitBranch,
+  ThumbsUp, ThumbsDown, AlertTriangle, ShieldQuestion,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
-import { Card, Badge, BtnPrimary, BtnSecondary, SummaryPanel, Input, SkeletonBox, SkeletonText, CascadeWrapper } from "@/components/ui";
+import { Card, Badge, BtnPrimary, BtnSecondary, SummaryPanel, Input, SkeletonBox, SkeletonText, CascadeWrapper, Modal } from "@/components/ui";
 import { useMiembrosOrg } from "@/lib/useMiembrosOrg";
+
+interface EstadoHomologacionItem {
+  caso_id: string;
+  estado: string;
+  riesgo: "bajo" | "alerta" | "alto" | "sin_evaluar";
+  proveedor_id: string;
+}
+
+interface HomologacionCaso {
+  id: string;
+  estado: string;
+  requisitos: string[];
+  antecedentes_recibidos: string[];
+  comentario_decision?: string | null;
+  solicitado_at?: string | null;
+  recibido_at?: string | null;
+  decidido_at?: string | null;
+  proveedores?: { id?: string; nombre?: string; email?: string | null };
+  responsables?: { nombre?: string; email?: string | null };
+}
+
+const HOMOLOGACION_LABEL: Record<string, string> = {
+  solicitado: "Homologación: esperando antecedentes",
+  recepcion_parcial: "Homologación: recepción parcial",
+  en_revision: "Homologación: en revisión",
+  requiere_aclaracion: "Homologación: información pendiente",
+  homologado: "Homologado",
+  rechazado: "Rechazado en homologación",
+};
+
+// Espejo de NIVEL_RIESGO_POR_ESTADO en backend/app/services/workflow_homologation.py —
+// no hay motor de scoring todavía, es sólo un proxy del estado documental.
+const NIVEL_RIESGO_POR_ESTADO_FRONT: Record<string, string> = {
+  homologado: "bajo", rechazado: "alto",
+  solicitado: "alerta", recepcion_parcial: "alerta", en_revision: "alerta", requiere_aclaracion: "alerta",
+};
+
+const RIESGO_ESTILO: Record<string, { color: string; bg: string; Icon: typeof ThumbsUp; label: string }> = {
+  bajo: { color: "var(--success)", bg: "var(--brand-50)", Icon: ThumbsUp, label: "Riesgo bajo" },
+  alerta: { color: "var(--warning)", bg: "#fbf3df", Icon: AlertTriangle, label: "Alertas pendientes" },
+  alto: { color: "var(--danger)", bg: "#f7e6e1", Icon: ThumbsDown, label: "Riesgo alto" },
+  sin_evaluar: { color: "var(--n-500)", bg: "var(--n-100)", Icon: ShieldQuestion, label: "Sin evaluar" },
+};
+
+function HomologacionIndicador({ info, onVerMas }: { info: EstadoHomologacionItem; onVerMas: () => void }) {
+  const riesgo = RIESGO_ESTILO[info.riesgo] || RIESGO_ESTILO.sin_evaluar;
+  const Icon = riesgo.Icon;
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 6,
+      padding: "4px 8px", borderRadius: "var(--r-sm)",
+      background: riesgo.bg, color: riesgo.color,
+      fontSize: 11.5, fontWeight: 600,
+    }} title={HOMOLOGACION_LABEL[info.estado] || info.estado}>
+      <Icon size={13} strokeWidth={2} />
+      {HOMOLOGACION_LABEL[info.estado] || info.estado}
+      <button
+        onClick={onVerMas}
+        style={{
+          background: "transparent", border: "none", cursor: "pointer",
+          color: riesgo.color, fontWeight: 700, fontSize: 11, textDecoration: "underline",
+          padding: 0, marginLeft: 2, fontFamily: "var(--font-sans)",
+        }}
+      >
+        Ver más
+      </button>
+    </span>
+  );
+}
 
 const InformeLista = dynamic(() => import("@/components/InformeLista"), { ssr: false });
 const OCModal = dynamic(() => import("@/components/OCModal"), { ssr: false });
@@ -169,6 +239,9 @@ export default function ListaDetallePage() {
   const [mostrarAprobacion, setMostrarAprobacion] = useState(false);
   const [userMeta, setUserMeta] = useState<Record<string, string>>({});
   const [plan, setPlan] = useState<string>("free");
+  const [homologacion, setHomologacion] = useState<Record<string, EstadoHomologacionItem>>({});
+  const [homologacionDetalle, setHomologacionDetalle] = useState<HomologacionCaso | null>(null);
+  const [cargandoDetalleHomologacion, setCargandoDetalleHomologacion] = useState(false);
   // Item cuyo OC se está editando en el modal (solo ese ítem, no toda la lista)
   const [ocItem, setOcItem] = useState<ItemLista | null>(null);
   // Panel "Lista de compras" para ítems que se compran online (no por OC)
@@ -231,6 +304,27 @@ export default function ListaDetallePage() {
     } catch { /* silent */ }
     setLoading(false);
   }, [idUrl, router]);
+
+  useEffect(() => {
+    if (!lista?.id) return;
+    authFetch(`${API_URL}/api/workflows/homologacion/estado-items?lista_id=${encodeURIComponent(lista.id)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.items) setHomologacion(d.items); })
+      .catch(() => { /* silent: indicador es informativo, no bloquea la lista */ });
+  }, [lista?.id]);
+
+  const verDetalleHomologacion = useCallback(async (casoId: string) => {
+    setCargandoDetalleHomologacion(true);
+    try {
+      const res = await authFetch(`${API_URL}/api/workflows/homologacion/casos?lista_id=${encodeURIComponent(id)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const caso = (data.casos || []).find((c: HomologacionCaso) => c.id === casoId);
+        if (caso) setHomologacionDetalle(caso);
+      }
+    } catch { /* silent */ }
+    setCargandoDetalleHomologacion(false);
+  }, [id]);
 
   useEffect(() => {
     fetch("https://open.er-api.com/v6/latest/USD")
@@ -769,6 +863,12 @@ export default function ListaDetallePage() {
                     ` · ${it.cantidad} ${it.unidad || "unidad"} × ${fmtCLP(it.definitivo.precio_clp)}/${it.unidad || "unidad"}`}
                 </Badge>
               )}
+              {it.definitivo?.resultado_id && homologacion[it.definitivo.resultado_id] && (
+                <HomologacionIndicador
+                  info={homologacion[it.definitivo.resultado_id]}
+                  onVerMas={() => void verDetalleHomologacion(homologacion[it.definitivo!.resultado_id!].caso_id)}
+                />
+              )}
               {it.definitivo && hayVariosMiembros && nombreDe(it.definitivo.seleccionado_por) && (
                 <span style={{ fontSize: 11.5, color: "var(--n-500)" }}>
                   seleccionado por <strong style={{ color: "var(--n-700)", fontWeight: 500 }}>{nombreDe(it.definitivo.seleccionado_por)}</strong>
@@ -1206,6 +1306,90 @@ export default function ListaDetallePage() {
           />
         );
       })()}
+
+      <Modal
+        open={!!homologacionDetalle || cargandoDetalleHomologacion}
+        onClose={() => setHomologacionDetalle(null)}
+        title={homologacionDetalle?.proveedores?.nombre || "Homologación del proveedor"}
+        icon={ShieldQuestion}
+        width={560}
+        footer={
+          <div style={{ display: "flex", justifyContent: "space-between", width: "100%", gap: 10 }}>
+            <BtnSecondary onClick={() => router.push(`/listas/${id}/homologacion`)}>
+              Ir a homologación completa
+            </BtnSecondary>
+            <BtnPrimary onClick={() => setHomologacionDetalle(null)}>Cerrar</BtnPrimary>
+          </div>
+        }
+      >
+        {cargandoDetalleHomologacion && !homologacionDetalle ? (
+          <SkeletonBox height={160} />
+        ) : homologacionDetalle && (() => {
+          const riesgoKey = NIVEL_RIESGO_POR_ESTADO_FRONT[homologacionDetalle.estado] || "sin_evaluar";
+          const riesgo = RIESGO_ESTILO[riesgoKey];
+          const RiesgoIcon = riesgo.Icon;
+          return (
+            <div style={{ display: "grid", gap: 16 }}>
+              <div style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+                background: riesgo.bg, borderRadius: "var(--r-md)",
+              }}>
+                <RiesgoIcon size={18} color={riesgo.color} strokeWidth={2} />
+                <div>
+                  <div style={{ fontWeight: 700, color: riesgo.color, fontSize: 13.5 }}>{riesgo.label}</div>
+                  <div style={{ fontSize: 12, color: "var(--n-600)" }}>{HOMOLOGACION_LABEL[homologacionDetalle.estado] || homologacionDetalle.estado}</div>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 12.5, color: "var(--n-600)" }}>
+                {homologacionDetalle.proveedores?.email || "Sin email"}
+                {homologacionDetalle.responsables?.nombre && ` · Responsable: ${homologacionDetalle.responsables.nombre}`}
+              </div>
+
+              <div>
+                <div style={{ fontSize: 11.5, fontWeight: 650, color: "var(--n-700)", marginBottom: 5 }}>
+                  Motivo de la evaluación
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--n-700)", lineHeight: 1.6 }}>
+                  {homologacionDetalle.comentario_decision || "Todavía no hay una decisión ni comentario registrado para este proveedor."}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 11.5, fontWeight: 650, color: "var(--n-700)", marginBottom: 5 }}>
+                  Fuentes consultadas
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--n-600)", lineHeight: 1.6 }}>
+                  Baiyer todavía no integra verificación automática con fuentes externas (SII, Registro de
+                  Empresas, Superir, Mercado Público, buró comercial). El nivel mostrado es un proxy directo
+                  del estado del expediente documental solicitado al proveedor, no un score de riesgo verificado.
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div>
+                  <div style={{ fontSize: 11.5, fontWeight: 650, color: "var(--n-700)", marginBottom: 5 }}>
+                    Antecedentes solicitados
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--n-600)", lineHeight: 1.6 }}>
+                    {(homologacionDetalle.requisitos || []).map(r => <li key={r}>{r}</li>)}
+                  </ul>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11.5, fontWeight: 650, color: "var(--n-700)", marginBottom: 5 }}>
+                    Archivos recibidos
+                  </div>
+                  {(homologacionDetalle.antecedentes_recibidos || []).length ? (
+                    <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "var(--n-600)", lineHeight: 1.6 }}>
+                      {homologacionDetalle.antecedentes_recibidos.map(a => <li key={a}>{a}</li>)}
+                    </ul>
+                  ) : <div style={{ fontSize: 12, color: "var(--n-500)" }}>Sin adjuntos registrados todavía.</div>}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
 
       {/* Panel "Lista de compras" (ítems que se compran online, sin OC por correo) */}
       {lista.aprobacion?.estado === "aprobado" && (() => {
