@@ -157,6 +157,9 @@ async def crear_workflow(req: CrearWorkflowRequest, ctx: AuthContext = Depends(g
     # frontend en 'invitaciones' — no falla el POST si una invitación
     # individual falla, para no perder el workflow ya creado.
     invitaciones = []
+    # rol → responsables creados, para materializar después las asignaciones
+    # POR TARJETA (el roster de roles por sí solo deja el canvas sin nadie).
+    responsables_por_rol: dict[str, list[str]] = {}
     if req.responsables:
         from app.services.organizacion import invitar_a_organizacion
         # Un correo representa una persona. Si el chat la detectó en varias
@@ -190,6 +193,7 @@ async def crear_workflow(req: CrearWorkflowRequest, ctx: AuthContext = Depends(g
             for rol_clave in (r.roles or []):
                 try:
                     asignar_rol(ctx.actor_user_id, nuevo["id"], workflow["id"], rol_clave)
+                    responsables_por_rol.setdefault(rol_clave, []).append(nuevo["id"])
                 except Exception as e:
                     print(f"[workflows] asignar_rol falló {rol_clave}: {e}")
             if not email or not r.invitar:
@@ -200,6 +204,17 @@ async def crear_workflow(req: CrearWorkflowRequest, ctx: AuthContext = Depends(g
                 invitaciones.append({"nombre": nombre, "email": email, "estado": res.get("estado", "invitado")})
             except ValueError as e:
                 invitaciones.append({"nombre": nombre, "email": email, "estado": "error", "detalle": str(e)})
+
+    # Sin esto cada tarjeta queda "Nadie asignado todavía" y el ciclo no se
+    # puede activar: validar_automatizacion exige responsables explícitos por
+    # tarjeta. No falla el POST si algo sale mal — el workflow ya existe y las
+    # asignaciones se pueden completar a mano en el canvas.
+    if responsables_por_rol:
+        try:
+            from app.services.workflow_service import asignar_responsables_a_tarjetas
+            asignar_responsables_a_tarjetas(workflow["id"], req.nodos, responsables_por_rol)
+        except Exception as e:
+            print(f"[workflows] asignaciones por tarjeta fallaron: {e}")
 
     return {**workflow, "invitaciones": invitaciones}
 

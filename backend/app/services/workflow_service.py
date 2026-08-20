@@ -57,6 +57,51 @@ def crear_borrador(
     return obtener_workflow(user_id, workflow["id"])
 
 
+def mapear_asignaciones_por_tarjeta(
+    nodos: list[dict], responsables_por_rol: dict[str, list[str]],
+) -> list[dict]:
+    """Roster de roles → filas de `workflow_node_assignments`. Pura.
+
+    El roster (`responsable_roles`) dice "Ana es autorizadora"; la ejecución
+    necesita además "en ESTA tarjeta la autorizadora es Ana". Fase B decidió
+    a propósito no reinterpretar el roster como asignación por tarjeta de
+    forma implícita, así que un ciclo nacido del chat quedaba con todas las
+    tarjetas sin responsable y no se podía activar. Acá se materializa esa
+    copia una sola vez, al crearlo.
+
+    Si un rol tiene varias personas en la misma tarjeta el modo es
+    "paralelo": "individual" borra las demás asignaciones del rol y dejaría
+    sólo a la última.
+    """
+    filas: list[dict] = []
+    for nodo in nodos:
+        nodo_id = nodo.get("id")
+        if not nodo_id:
+            continue
+        for rol in (nodo.get("roles") or []):
+            ids = responsables_por_rol.get(rol) or []
+            modo = "individual" if len(ids) == 1 else "paralelo"
+            for responsable_id in ids:
+                filas.append({
+                    "nodo_id": nodo_id, "rol_clave": rol,
+                    "responsable_id": responsable_id, "modo": modo, "orden": None,
+                })
+    return filas
+
+
+def asignar_responsables_a_tarjetas(
+    workflow_id: str, nodos: list[dict], responsables_por_rol: dict[str, list[str]],
+) -> int:
+    sb = _sb()
+    filas = mapear_asignaciones_por_tarjeta(nodos, responsables_por_rol)
+    for fila in filas:
+        sb.table("workflow_node_assignments").upsert(
+            {"workflow_id": workflow_id, **fila},
+            on_conflict="workflow_id,nodo_id,rol_clave,responsable_id",
+        ).execute()
+    return len(filas)
+
+
 def crear_version_borrador(user_id: str, workflow_id: str, nodos: list[dict],
                            conexiones: list[dict]) -> dict:
     """Clona una definición activa/archivada a una nueva versión editable.

@@ -96,15 +96,24 @@ class PorTipoTest(unittest.TestCase):
         reglas = reglas_para_nodo({"id": "n", "tipo": "autorizacion", "roles": []})
         self.assertEqual([r["evento_plantilla"] for r in reglas], ["approval_reminder"])
 
-    def test_el_aviso_de_despacho_va_a_quien_recibe_si_ese_rol_existe(self):
-        con = reglas_para_nodo({"id": "n", "tipo": "emision_oc", "roles": []},
-                               roles_disponibles={"comprador", "receptor_facturas"})
-        aviso = next(r for r in con if r["evento_plantilla"] == "dispatch_notified_internal")
-        self.assertEqual(aviso["rol_clave"], "receptor_facturas")
+    def test_todo_correo_interno_apunta_a_un_rol_de_su_propia_tarjeta(self):
+        """Bug real: se usaba rol_clave='receptor_facturas' en la tarjeta de
+        OC, cuyos roles son ['comprador']. Nadie podia asignarse ese correo y
+        validar_automatizacion devolvia 'responsable_sin_email', bloqueando
+        la activacion del ciclo."""
+        nodos = [
+            {"id": "n0", "tipo": "tarea_humana", "roles": ["cotizador"]},
+            {"id": "n1", "tipo": "autorizacion", "roles": ["autorizador"]},
+            {"id": "n2", "tipo": "homologacion", "roles": ["homologador"]},
+            {"id": "n3", "tipo": "emision_oc", "roles": ["comprador"]},
+        ]
+        for nodo in nodos:
+            for regla in reglas_para_nodo(nodo):
+                if regla["audiencia"] == "internal":
+                    self.assertIn(regla["rol_clave"], nodo["roles"], regla["evento_plantilla"])
 
-    def test_sin_rol_de_recepcion_el_aviso_cae_al_comprador(self):
-        sin = reglas_para_nodo({"id": "n", "tipo": "emision_oc", "roles": []},
-                               roles_disponibles={"comprador"})
+    def test_tarjeta_de_oc_sin_roles_cae_al_comprador(self):
+        sin = reglas_para_nodo({"id": "n", "tipo": "emision_oc", "roles": []})
         aviso = next(r for r in sin if r["evento_plantilla"] == "dispatch_notified_internal")
         self.assertEqual(aviso["rol_clave"], "comprador")
 

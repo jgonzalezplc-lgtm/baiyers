@@ -70,9 +70,15 @@ def _aviso_interno(evento: str, rol_clave: str, disparador_evento: Optional[str]
 
 
 def reglas_para_nodo(nodo: dict, roles_disponibles: Optional[set[str]] = None) -> list[dict]:
-    """Reglas por defecto de una tarjeta según su tipo. Pura."""
+    """Reglas por defecto de una tarjeta según su tipo. Pura.
+
+    INVARIANTE: el `rol_clave` de una regla interna debe ser un rol de ESTA
+    tarjeta. Si no, no hay a quién asignarle el correo (el canvas rechaza
+    asignar un rol que no participa) y `validar_automatizacion` lo marca como
+    `responsable_sin_email`, bloqueando la activación del ciclo.
+    """
     tipo = nodo.get("tipo")
-    roles = roles_disponibles if roles_disponibles is not None else set()
+    roles_nodo = nodo.get("roles") or []
 
     if tipo == "autorizacion":
         # El correo inicial (`approval_requested`) lo manda listas.py de forma
@@ -117,16 +123,19 @@ def reglas_para_nodo(nodo: dict, roles_disponibles: Optional[set[str]] = None) -
         }]
 
     if tipo == "emision_oc":
-        # Quien recibe el aviso de despacho es quien recibe la mercadería y la
-        # factura; si ese rol no existe en este ciclo, cae al comprador.
-        rol_recepcion = "receptor_facturas" if "receptor_facturas" in roles else "comprador"
+        # Los avisos internos van al rol de ESTA tarjeta. Sería más natural
+        # avisarle del despacho a quien recibe la mercadería
+        # (`receptor_facturas`), pero ese rol no participa de la tarjeta de OC:
+        # asignarlo acá deja el correo sin destinatario. Reasignarlo es una
+        # decisión explícita del usuario en el canvas.
+        rol = roles_nodo[0] if roles_nodo else "comprador"
         return [
-            _aviso_interno("purchase_order_internal_copy", "comprador"),
+            _aviso_interno("purchase_order_internal_copy", rol),
             _loop_externo("purchase_order_ack_reminder", "oc_recepcion_confirmada"),
-            _aviso_interno("purchase_order_acknowledged_internal", "comprador",
+            _aviso_interno("purchase_order_acknowledged_internal", rol,
                            disparador_evento="oc_recepcion_confirmada"),
             _loop_externo("dispatch_status_request", "despacho_informado"),
-            _aviso_interno("dispatch_notified_internal", rol_recepcion,
+            _aviso_interno("dispatch_notified_internal", rol,
                            disparador_evento="despacho_informado"),
         ]
 
