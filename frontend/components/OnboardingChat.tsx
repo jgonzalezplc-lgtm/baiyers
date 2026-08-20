@@ -124,9 +124,6 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
   // Ficha de la entrevista por slots. Vive en el cliente y viaja en cada
   // turno: el backend no persiste la entrevista (igual que /interpretar).
   const slotsProcesoRef = useRef<unknown[] | null>(null);
-  // Escape hatch: el usuario puede salirse del cuestionario y describir su
-  // proceso en texto libre (cae al flujo LLM completo de /interpretar).
-  const [textoLibreProceso, setTextoLibreProceso] = useState(false);
   const respuestasProcesoRef = useRef<string[]>([]);
   // Cuántos mensajes del asistente (guardados server-side) ya están
   // reflejados en `msgs` — permite sólo AGREGAR los nuevos en cada turno en
@@ -144,7 +141,12 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     const res = await fetch(`${API_URL}/api/workflows/proceso/turno`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ respuesta, slots, contexto: contextoProceso() }),
+      body: JSON.stringify({
+        respuesta, slots, contexto: contextoProceso(),
+        // Permite resolver "yo me encargo" a una persona concreta en vez de
+        // dejar la etapa sin responsable: el chat ya sabe quién eres.
+        usuario_actual: { nombre: draft.nombre_usuario?.valor ?? "", email },
+      }),
       signal: AbortSignal.timeout(40000),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -465,25 +467,6 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     setBusy(true);
     setPropuestaWorkflow(null);
     try {
-      if (textoLibreProceso) {
-        // Escape hatch: proceso que no calza en el cuestionario. Interpreta
-        // todo el texto libre acumulado con el flujo LLM completo.
-        const res = await fetch(`${API_URL}/api/workflows/interpretar`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            descripcion: respuestas.map((r, i) => `Información entregada ${i + 1}:\n${r}`).join("\n\n"),
-            contexto: contextoProceso(),
-          }),
-          signal: AbortSignal.timeout(40000),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: Propuesta = await res.json();
-        if (data.requiere_aclaracion) addBot(data.preguntas?.[0] || "¿Puedes darme un poco más de detalle?");
-        else mostrarPropuesta(data);
-        return;
-      }
-
       const data = await turnoProceso(mensaje, slotsProcesoRef.current);
       slotsProcesoRef.current = data.slots;
       if (data.completo) {
@@ -614,7 +597,6 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     procesoDesdeRef.current = msgs.length + 1;
     respuestasProcesoRef.current = [];
     slotsProcesoRef.current = null;
-    setTextoLibreProceso(false);
     // La primera pregunta la define el backend (no llama al modelo): así el
     // texto de las preguntas vive en un solo lugar y no se desincroniza.
     setBusy(true);
@@ -627,15 +609,6 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     } finally {
       setBusy(false);
     }
-  };
-
-  const pasarATextoLibre = () => {
-    setTextoLibreProceso(true);
-    // Se descarta lo respondido en el cuestionario a propósito: mezclar
-    // media ficha con una descripción libre produce workflows contradictorios.
-    respuestasProcesoRef.current = [];
-    slotsProcesoRef.current = null;
-    addBot("Dale, cuéntame con tus palabras cómo funciona el proceso de compras: quién cotiza, quién autoriza, si depende del monto y quién emite la orden de compra.");
   };
 
   const ofrecerConfigurarProceso = async () => {
@@ -824,15 +797,6 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
             </div>
           )}
 
-          {/* Escape hatch: procesos que no calzan en el cuestionario guiado.
-              Sale del modo slots y pasa al flujo LLM completo. */}
-          {fase === "proceso" && !textoLibreProceso && !propuestaWorkflow && !busy && (
-            <div style={{ marginLeft: 36 }}>
-              <BtnGhost size="sm" onClick={pasarATextoLibre}>
-                Prefiero describirlo con mis palabras
-              </BtnGhost>
-            </div>
-          )}
 
           {(cargandoInicial || busy) && <TypingBubble icon={Bot} />}
         </div>

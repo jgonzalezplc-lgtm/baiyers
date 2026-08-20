@@ -212,13 +212,53 @@ class ProcesarTurnoTest(unittest.TestCase):
                    return_value=_extraccion([
                        {"clave": c, "estado": "resuelto",
                         "personas": [{"nombre": "Ana", "email": "ana@abc.cl"}]}
-                       for c in ("cotizador", "revisor", "autorizador", "homologador", "comprador")
+                       for c in ("cotizador", "revisor", "autorizador", "homologador",
+                                 "comprador", "receptor_facturas")
                    ] + [{"clave": "reglas_monto", "estado": "no_aplica", "personas": []}])):
             r = procesar_turno("Ana hace todo el proceso, ana@abc.cl", estado_inicial(), "")
         self.assertTrue(r["completo"])
         self.assertEqual(validar_grafo(r["nodos"], r["conexiones"]), [])
         self.assertEqual([x["email"] for x in r["responsables_detectados"]], ["ana@abc.cl"])
         self.assertIn("Cotizar", r["resumen"])
+
+    def test_no_completa_sin_haber_preguntado_por_todos_los_roles(self):
+        """Aunque el usuario describa un proceso 'completo', la entrevista no
+        puede cerrarse sin haber preguntado por homologacion y facturas: son
+        opcionales, pero hay que preguntar si existen o no."""
+        with patch("app.services.workflow_proceso_slots.extraer_de_respuesta",
+                   return_value=_extraccion([
+                       {"clave": c, "estado": "resuelto",
+                        "personas": [{"nombre": "Ana", "email": "ana@abc.cl"}]}
+                       for c in ("cotizador", "revisor", "autorizador", "comprador")
+                   ])):
+            r = procesar_turno("Ana cotiza, revisa, autoriza y emite la OC", estado_inicial(), "")
+        self.assertFalse(r["completo"])
+        pendientes = [s["clave"] for s in r["slots"] if s["estado"] == "pendiente"]
+        self.assertIn("homologador", pendientes)
+        self.assertIn("receptor_facturas", pendientes)
+
+    def test_todos_los_roles_del_cuestionario_se_preguntan(self):
+        claves = [s["clave"] for s in SLOTS_PROCESO]
+        for esperado in ("cotizador", "revisor", "autorizador", "reglas_monto",
+                         "homologador", "comprador", "receptor_facturas"):
+            self.assertIn(esperado, claves)
+
+    def test_identidad_del_usuario_llega_al_prompt(self):
+        """'yo me encargo' debe poder resolverse a la persona real: el chat ya
+        sabe su nombre y correo, no hay por que dejar la etapa sin responsable."""
+        from app.services.workflow_proceso_slots import _bloque_usuario
+
+        bloque = _bloque_usuario({"nombre": "Joaquin", "email": "jo@abc.cl"})
+        self.assertIn("Joaquin", bloque)
+        self.assertIn("jo@abc.cl", bloque)
+
+    def test_identidad_invalida_o_ausente_no_ensucia_el_prompt(self):
+        from app.services.workflow_proceso_slots import _bloque_usuario
+
+        self.assertEqual(_bloque_usuario(None), "")
+        self.assertEqual(_bloque_usuario({"nombre": "", "email": ""}), "")
+        # Correo con formato invalido se descarta, pero el nombre se conserva.
+        self.assertNotIn("no-es-mail", _bloque_usuario({"nombre": "Ana", "email": "no-es-mail"}))
 
     def test_ficha_manipulada_desde_el_cliente_se_sanea(self):
         r = procesar_turno("", [{"clave": "inventada", "estado": "resuelto"}], "")

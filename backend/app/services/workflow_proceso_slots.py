@@ -78,7 +78,14 @@ SLOTS_PROCESO: list[dict] = [
         "rol": "comprador",
         "tipo_etapa": "emision_oc",
         "nombre_etapa": "Emitir orden de compra",
-        "pregunta": "¿Quién emite y envía la orden de compra al proveedor? Indica nombre y correo.",
+        "pregunta": "¿Quién concreta la compra y emite la orden de compra al proveedor? Indica nombre y correo.",
+    },
+    {
+        "clave": "receptor_facturas",
+        "rol": "receptor_facturas",
+        "tipo_etapa": "espera_documento",
+        "nombre_etapa": "Recibir factura",
+        "pregunta": "¿Quién recibe y revisa las facturas de los proveedores? Indica nombre y correo, o responde que no aplica.",
     },
 ]
 
@@ -152,7 +159,8 @@ La ficha tiene estos campos ("slots"):
 - autorizador: quién aprueba la compra.
 - reglas_monto: si la autorización depende de tramos de monto.
 - homologador: quién revisa y aprueba a proveedores nuevos.
-- comprador: quién emite y envía la orden de compra.
+- comprador: quién concreta la compra y emite la orden de compra.
+- receptor_facturas: quién recibe y revisa las facturas de los proveedores.
 
 Se le acaba de hacer UNA pregunta al usuario, pero su respuesta puede contener información de
 VARIOS campos a la vez. Extrae todo lo que puedas de todos los campos que la respuesta cubra, no
@@ -161,6 +169,9 @@ sólo del campo preguntado.
 Reglas estrictas:
 - JAMÁS inventes nombres ni correos. Sólo llena "nombre" si el usuario escribió un nombre real de
   persona, y "email" sólo si aparece literalmente con formato usuario@dominio. Si no hay, usa "".
+- EXCEPCIÓN: si más abajo se indica quién es la persona con la que estás hablando, entonces cuando
+  hable de sí misma en primera persona ("yo me encargo", "lo hago yo", "yo autorizo", "yo") debes
+  usar SU nombre y SU correo. Eso no es inventar: es resolver a quién se refiere "yo".
 - Interpreta por SIGNIFICADO, no por parecido de palabras. Si el usuario dice "Coti Zamorano
   autoriza, su correo es cotiz@abc.cl", ella es autorizador aunque su nombre y correo se parezcan
   a la palabra "cotizar".
@@ -342,7 +353,30 @@ def _resumen(etapas: list[dict], reglas: list[dict]) -> str:
     return texto
 
 
-def extraer_de_respuesta(respuesta: str, pregunta: str, contexto: str = "") -> dict:
+def _bloque_usuario(usuario_actual: Optional[dict]) -> str:
+    """Identidad de quien conversa, para poder resolver 'yo me encargo'. Se
+    arma sólo con nombre/correo validados; si no hay ninguno, no se agrega
+    nada al prompt y el modelo sigue con la regla de no inventar."""
+    if not isinstance(usuario_actual, dict):
+        return ""
+    nombre = str(usuario_actual.get("nombre") or "").strip()
+    email = str(usuario_actual.get("email") or "").strip().lower()
+    if email and not EMAIL_RE.match(email):
+        email = ""
+    if not nombre and not email:
+        return ""
+    return (
+        f"\n\nLa persona con la que estás hablando es: nombre=\"{nombre}\", correo=\"{email}\".\n"
+        "Cuando hable en primera persona de sí misma, usa exactamente esos valores."
+    )
+
+
+def extraer_de_respuesta(
+    respuesta: str,
+    pregunta: str,
+    contexto: str = "",
+    usuario_actual: Optional[dict] = None,
+) -> dict:
     """Única parte con LLM. Ante cualquier falla devuelve una extracción
     vacía con entendido=True, para que el avance determinístico siga su
     curso en vez de trabar la entrevista."""
@@ -364,7 +398,7 @@ def extraer_de_respuesta(respuesta: str, pregunta: str, contexto: str = "") -> d
         },
     )
 
-    prompt = PROMPT_EXTRACCION
+    prompt = PROMPT_EXTRACCION + _bloque_usuario(usuario_actual)
     if contexto:
         prompt += f"\n\nConversación previa:\n{contexto}"
     prompt += f"\n\nPregunta que se le hizo al usuario:\n{pregunta}"
@@ -387,7 +421,12 @@ def extraer_de_respuesta(respuesta: str, pregunta: str, contexto: str = "") -> d
     }
 
 
-def procesar_turno(respuesta: str, slots: Optional[list[dict]], contexto: str = "") -> dict:
+def procesar_turno(
+    respuesta: str,
+    slots: Optional[list[dict]],
+    contexto: str = "",
+    usuario_actual: Optional[dict] = None,
+) -> dict:
     """Un turno de la entrevista. Sin `respuesta` y sin ficha previa devuelve
     la primera pregunta sin llamar al modelo."""
     ficha = _sanear_slots(slots)
@@ -414,7 +453,7 @@ def procesar_turno(respuesta: str, slots: Optional[list[dict]], contexto: str = 
     else:
         pregunta_actual = _DEF_POR_CLAVE[actual["clave"]]["pregunta"] if actual else ""
 
-    extraccion = extraer_de_respuesta(respuesta, pregunta_actual, contexto)
+    extraccion = extraer_de_respuesta(respuesta, pregunta_actual, contexto, usuario_actual)
     antes = _huella(ficha)
     aplicar_extraccion(ficha, extraccion)
     hubo_avance = _huella(ficha) != antes

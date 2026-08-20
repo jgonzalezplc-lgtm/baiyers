@@ -29,7 +29,7 @@ TIPOS_ETAPA_VALIDOS = {
 # acá y "decisión" siempre se rechazaba en silencio.
 TIPOS_NODO_AGREGABLES = TIPOS_ETAPA_VALIDOS | {"decision"}
 
-ROLES_VALIDOS = {"cotizador", "revisor", "autorizador", "homologador", "comprador"}
+ROLES_VALIDOS = {"cotizador", "revisor", "autorizador", "homologador", "comprador", "receptor_facturas"}
 
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
 
@@ -45,7 +45,7 @@ Responde SOLO JSON válido, sin markdown, con esta forma exacta:
     {
       "nombre": "nombre corto de la etapa (ej: 'Preparar comparación')",
       "tipo": "una de: tarea_humana, revision, autorizacion, homologacion, emision_oc, compra_sin_oc, espera_documento, accion_automatica",
-      "roles": ["uno o más de: cotizador, revisor, autorizador, homologador, comprador"],
+      "roles": ["uno o más de: cotizador, revisor, autorizador, homologador, comprador, receptor_facturas"],
       "responsables": [
         {"nombre": "solo si el usuario dio el nombre real de la persona (ej: 'María Pérez')",
          "email": "solo si el usuario escribió literalmente un email en el texto (ej: 'maria@empresa.cl')"}
@@ -346,7 +346,7 @@ Reglas:
   nueva (con "conectar"/"desconectar" u otra operación), usa ESE MISMO id como si ya
   existiera — y pon la operación "agregar_nodo" ANTES que las que la usan, en ese orden
   dentro de la lista "operaciones".
-- "roles" solo puede tener valores de: cotizador, revisor, autorizador, homologador, comprador.
+- "roles" solo puede tener valores de: cotizador, revisor, autorizador, homologador, comprador, receptor_facturas.
 - "tipo_nodo" (para agregar_nodo) solo puede ser uno de: tarea_humana, revision,
   autorizacion, decision, homologacion, emision_oc, compra_sin_oc, espera_documento,
   accion_automatica. Usa "decision" para un punto donde el flujo se ramifica según una
@@ -365,7 +365,7 @@ Reglas:
 - "asignar_responsable" asigna una PERSONA real (nombre + email opcional) a un rol que YA
   existe en alguna etapa del grafo actual — "rol_clave" debe ser uno de los roles que
   aparecen en el campo "roles" de algún nodo (mira el grafo actual para saber cuáles hay:
-  cotizador, revisor, autorizador, homologador o comprador). Si el usuario usa un nombre coloquial para
+  cotizador, revisor, autorizador, homologador, comprador o receptor_facturas). Si el usuario usa un nombre coloquial para
   el rol ("el jefe", "el homologador", "quien homologa"), mapéalo al "rol_clave" real que
   tiene esa etapa en el grafo — nunca inventes una clave nueva. Si no puedes determinar con
   seguridad a qué rol_clave se refiere, pon requiere_aclaracion=true y pregunta cuál es.

@@ -68,12 +68,21 @@ class RolloutRequest(BaseModel):
     reason: str = ""
 
 
+class UsuarioActual(BaseModel):
+    nombre: str = Field(default="", max_length=200)
+    email: str = Field(default="", max_length=320)
+
+
 class ProcesoTurnoRequest(BaseModel):
     """Un turno de la entrevista por slots. La ficha (`slots`) viaja en cada
     request: el backend no persiste la entrevista, igual que /interpretar."""
     respuesta: str = Field(default="", max_length=MAX_RESPUESTA)
     slots: Optional[list[dict]] = Field(default=None, max_length=MAX_SLOTS)
     contexto: Optional[str] = Field(default=None, max_length=MAX_CONTEXTO)
+    # Identidad de quien conversa, para resolver "yo me encargo" a una persona
+    # concreta. Es dato del propio usuario y el endpoint no lee nada de la DB
+    # con esto: sólo se inyecta al prompt.
+    usuario_actual: Optional[UsuarioActual] = None
 
 
 @router.get("/rollout/estado")
@@ -120,7 +129,11 @@ async def turno_proceso(req: ProcesoTurnoRequest):
     from app.services.workflow_proceso_slots import procesar_turno
 
     return await asyncio.to_thread(
-        procesar_turno, req.respuesta, req.slots, req.contexto or ""
+        procesar_turno,
+        req.respuesta,
+        req.slots,
+        req.contexto or "",
+        req.usuario_actual.model_dump() if req.usuario_actual else None,
     )
 
 

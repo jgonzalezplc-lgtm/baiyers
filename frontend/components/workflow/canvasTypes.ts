@@ -85,7 +85,7 @@ export const TIPOS: { valor: string; label: string }[] = [
   { valor: "espera_documento", label: "Espera de documento" },
 ];
 
-export const ROLES_BASE = ["cotizador", "revisor", "autorizador", "homologador", "comprador"];
+export const ROLES_BASE = ["cotizador", "revisor", "autorizador", "homologador", "comprador", "receptor_facturas"];
 export const CAMPOS_CONDICION = ["monto_total", "moneda", "categoria", "centro_costo", "proyecto", "proveedor_nuevo", "proveedor_homologado", "requiere_oc"];
 export const OPERADORES = [">", ">=", "<", "<=", "==", "!=", "in", "not in"];
 
