@@ -320,11 +320,34 @@ cualquier endpoint que llame a Gemini sin autenticación factura sin freno. Ver 
 - **Limitaciones honestas:** el contador es en memoria y por proceso (con varias réplicas el límite
   efectivo se multiplica); el rate limiting por IP es un freno, no una garantía — un atacante
   distribuido rota IPs. La mitigación de fondo sigue siendo exigir autenticación.
-- **Exposición que queda abierta y es MAYOR:** `identificar.py`, `buscar.py` y `analisis.py` llaman a
-  Gemini y **no usan `get_auth_context`** (verificado por grep). `buscar` es el más caro de todos
-  (búsquedas en paralelo + scraping + LLM). No se les puso límite todavía a propósito, porque un
-  límite mal calibrado ahí rompe el flujo real de búsqueda de un usuario legítimo — hay que elegir
-  los números mirando uso real antes de activarlo.
+
+### Extensión a identificar/buscar/analisis (2026-08-20, commit `9edbad9`)
+Los 7 endpoints POST de `identificar.py`, `buscar.py` y `analisis.py` ya tienen límite por IP + topes
+de tamaño en Pydantic (rechazan 422 antes de tocar ninguna API paga). Siguen **sin
+`get_auth_context`** — eso no cambió y sigue siendo la mitigación de fondo pendiente.
+- Límites: `/identificar` y `/refinar-busqueda` 15/min·100/h; `/buscar` y `/buscar/stream`
+  20/min·200/h (compartido, calibrado contra el uso real del frontend: una llamada por ítem al abrir
+  su vista de resultados); `/buscar/prefetch` 5/min·30/h; `/analizar-cotizaciones` 10/min·60/h.
+- **`es_llamada_interna()` en `llm_rate_limit.py` es obligatorio entender antes de tocar esto:**
+  `/api/buscar` lo consumen server-to-server el servidor MCP (`mcp/tools/cotizar.py`) y la API
+  pública (`api_publica/endpoints/cotizar.py`) contra `http://localhost:8000`. Sin la exención,
+  ambos comparten la IP de loopback y **se estrangulan entre sí** — el límite pensado para abuso
+  externo rompería el flujo legítimo. La exención sólo aplica si NO hay `cf-connecting-ip` ni
+  `x-forwarded-for` (un request desde internet siempre trae alguna), así nadie se declara interno
+  falsificando `X-Forwarded-For: 127.0.0.1`. Esos dos caminos ya tienen control propio aguas arriba.
+- **El endpoint más caro NO es `buscar`, es `/analizar-cotizaciones`**: usa Anthropic Opus con
+  `max_tokens=16000` y thinking adaptive. Hoy corta con 503 porque `ANTHROPIC_API_KEY` está vacía en
+  prod; el límite existe para que configurarla algún día no abra una vía de facturación sin freno.
+- `/buscar/prefetch` era un **amplificador**: encolaba una búsqueda completa en background por cada
+  `cotizacion_id`, sin tope (`MAX_PREFETCH_IDS=50` ahora). Ojo: **no lo llama nadie** — ni el
+  frontend ni el backend. Candidato a eliminar.
+- **SSRF cerrado en `/identificar`**: `imagen_url` se descargaba con un `client.get()` directo sobre
+  cualquier URL del cliente, sin auth — apuntaba sin problema a `169.254.169.254` y a la red interna
+  de Railway. Ahora reusa `descargar_y_validar_url()` de `services/logo_upload.py` (valida esquema,
+  resuelve DNS y rechaza IPs privadas en cada redirección, más content-type y tamaño). **Para
+  cualquier descarga nueva de una URL provista por el usuario, reusar esa función, no reimplementarla.**
+- Cobertura: `tests/test_llm_rate_limit.py` (incluye el bypass de `X-Forwarded-For`) y
+  `tests/test_endpoints_llm_topes.py`.
 
 ## Estado verificado (10-ago-2026)
 - `frontend/next-env.d.ts` sigue siendo el único cambio preexistente del worktree — se conserva sin commitear (es autogenerado por Next.js en dev).
@@ -346,6 +369,23 @@ cualquier endpoint que llame a Gemini sin autenticación factura sin freno. Ver 
 3. Probar el onboarding conversacional de punta a punta con una segunda cuenta invitada real: aceptar la invitación, confirmar que queda como responsable y que puede iniciar sesión.
 4. Migrar los 3 sitios de correo que quedaron fuera de la Fase 6 (copia interna de OC, aviso de proveedor confirmó recepción, encuesta de satisfacción) si se decide agregar eventos nuevos al catálogo para ellos.
 5. Probar en producción el seguimiento de OC por correo (023): responder "recibido, gracias" desde otra cuenta y verificar que `ordenes_compra.estado` pasa a `recibido_conforme` solo, vía el cron de 1 min.
+
+### Estado de ramas (2026-08-20)
+El trabajo reciente está en la rama **`testing`**, no en `main` — son 8 commits sin mergear ni
+pushear (fixes del chat de onboarding por slots, el blindaje de costo LLM `9edbad9` y el indicador de
+homologación `b24bcaf`). Recordar que **`main` es la rama de deploy**: Railway auto-deploya al pushear
+ahí, así que nada de esto está en producción todavía.
+
+### Bloqueantes conocidos y no resueltos (2026-08-20)
+1. **Checkpoint productivo de Fase G** — correr un ciclo real `unified` antes de retirar legacy.
+2. **Los endpoints LLM siguen sin autenticación** (ver "Defensas de costo LLM"). Tienen rate limit y
+   topes, que son un freno, no una garantía.
+3. **`+ Lista` en `/cotizar/[id]/resultados` tira 500** — `procurement.py` usa tablas que no existen.
+4. **Auto-aplicación Gmail no atómica** — `item_field_updates` se marca `aplicado` antes de escribir
+   en `resultados`; si el segundo paso falla, la auditoría dice "Aplicada" sin que el dato exista.
+5. **`registrar_envio()` es sólo auditoría** — no bloquea ni deduplica, un reintento todavía puede
+   duplicar un correo real.
+6. **Rotar los secretos** expuestos en capturas durante el desarrollo.
 
 ## MCP Baiyer — Fases 0 y 1 (2026-08-13)
 - El contrato operativo completo está en `MCP_FASE_0_CONTRATO.md` (tools,
@@ -436,7 +476,7 @@ correo declarativos y un motor que recorre el ciclo completo (RFQ → autorizaci
 OC → despacho), reemplazando gradualmente el flujo legado. Es deliberadamente incremental: el propio
 PRD exige "una fase por vez" y checkpoints, no un big-bang.
 - **Fase A completa. Migración 041 aplicada y verificada en Supabase producción el 17-08-2026.**
-  El código sigue sin commitear. `backend/migrations/041_workflow_communications_foundation.sql`
+  `backend/migrations/041_workflow_communications_foundation.sql`
   (crea `workflow_node_assignments`, `workflow_node_communication_rules`, `workflow_node_executions`,
   `workflow_scheduled_actions`, más las RPCs atómicas `claim_workflow_scheduled_action` y
   `reserve_mail_delivery_event`, con RLS por organización — no toca comportamiento productivo, sólo
@@ -469,7 +509,7 @@ PRD exige "una fase por vez" y checkpoints, no un big-bang.
   si todos se descartan sin cotización, la instancia se pausa. La instancia RFQ se reutiliza luego
   en autorización para no partir un segundo motor. Canvas permite configurar el criterio agregado.
 - Verificación al cierre de Fase D: compilación Python correcta, 44 pruebas enfocadas, suite backend
-  completa de 310 pruebas pasando y build Next.js correcto. El trabajo A-D continúa sin commit.
+  completa de 310 pruebas pasando y build Next.js correcto.
   La migración 042 fue aplicada manualmente y confirmada por el usuario.
 - **Fase E completa y habilitada:** crea expedientes mínimos por proveedor
   (`supplier_homologation_cases`), asigna la tarea al homologador de la tarjeta, solicita antecedentes
@@ -482,8 +522,16 @@ PRD exige "una fase por vez" y checkpoints, no un big-bang.
 - `backend/migrations/043_workflow_supplier_homologation.sql` también amplía el tipo de conversación
   Gmail con `homologacion`; **fue aplicada manualmente en Supabase y confirmada por el usuario el
   17-08-2026**.
+- **Indicador en la lista (2026-08-20, commit `b24bcaf`):** `/listas/[id]` muestra el estado de
+  homologación del proveedor definitivo junto a cada ítem, con "Ver más" que abre el expediente
+  (antecedentes solicitados/recibidos, responsable, comentario). Consume
+  `GET /api/workflows/homologacion/estado-items` y `/homologacion/casos`. `NIVEL_RIESGO_POR_ESTADO_FRONT`
+  espeja a propósito el mapa de `workflow_homologation.py` — **si cambia uno hay que cambiar el otro**.
+  El modal aclara explícitamente que el nivel es un proxy del estado documental y no un score
+  verificado (no hay integración con SII/Mercado Público/buró); esa aclaración es deliberada, mostrar
+  "riesgo bajo" a secas sugeriría una validación que no existe.
 - Verificación al cierre de Fase E: 63 pruebas enfocadas, suite backend completa de 314 pruebas pasando,
-  compilación Python, `git diff --check` y build Next.js correctos. El trabajo A-E sigue sin commit.
+  compilación Python, `git diff --check` y build Next.js correctos.
 - **Fase F completa y habilitada:** las OCs creadas desde una lista
   en el nodo `emision_oc` quedan enlazadas a la instancia y ejecución unificadas. El correo inicial
   reserva su clave antes de Gmail, usa la plantilla de la tarjeta y deja `delivery_uncertain` ante
@@ -499,8 +547,8 @@ PRD exige "una fase por vez" y checkpoints, no un big-bang.
 - Verificación al cierre de Fase F: 20 pruebas enfocadas, 317 pruebas backend pasando y 1
   deseleccionada (el caso preexistente que llama Gemini real), compilación Python, `git diff --check`
   y build Next.js correctos. `tsc --noEmit` conserva errores preexistentes en calendario, resultados,
-  estadísticas, proyectos y reportes; ninguno está en archivos tocados por F. El trabajo A-F sigue
-  sin commit. Ese fue el checkpoint previo a implementar la Fase G descrita a continuación.
+  estadísticas, proyectos y reportes; ninguno está en archivos tocados por F. Ese fue el checkpoint
+  previo a implementar la Fase G descrita a continuación.
 - **Fase G completa y habilitada, pendiente checkpoint productivo:**
   `workflow_rollout_settings` fija `legacy|unified` por organización. RFQ y autorización nuevas
   consultan esa bandera; cada instancia ya iniciada conserva para siempre su `execution_owner`, por
@@ -519,7 +567,13 @@ PRD exige "una fase por vez" y checkpoints, no un big-bang.
   rollback y el criterio de compatibilidad.
 - Verificación al cierre de código de Fase G: 28 pruebas focalizadas; suite backend de 325 pruebas
   pasando y 1 deseleccionada (Gemini real); compilación Python, `git diff --check` y build Next.js
-  correctos. El trabajo A-G continúa sin commit.
+  correctos.
+- **TODO A-G está commiteado** (verificado 2026-08-20 con `git ls-files`: `workflow_automation.py`,
+  `workflow_automation_service.py`, `workflow_execution.py`, `workflow_scheduler.py`,
+  `workflow_homologation.py`, `workflow_rollout.py`, sus tests y las migraciones 041-045). Hasta el
+  2026-08-20 este archivo afirmaba en cuatro lugares que A-D/E/F/G seguían sin commit; era información
+  vieja. **Lo único realmente pendiente de la Fase G es el checkpoint productivo**: correr y observar
+  al menos un ciclo real con `execution_owner=unified` antes de retirar las bifurcaciones legacy.
 
 ## Cubicación conversacional (primer corte)
 - Motor puro en `backend/app/services/cubicacion.py`: unidades/dimensiones, conversiones, merma,
