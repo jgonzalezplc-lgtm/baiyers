@@ -85,6 +85,17 @@ SLOTS_PROCESO: list[dict] = [
 CLAVES_VALIDAS = {s["clave"] for s in SLOTS_PROCESO}
 _DEF_POR_CLAVE = {s["clave"]: s for s in SLOTS_PROCESO}
 
+# La entrevista ABRE en texto libre, no con el cuestionario: la gente describe
+# su proceso con sus palabras, y una sola respuesta suele cubrir casi todos los
+# slots. Las preguntas puntuales de SLOTS_PROCESO quedan sólo para los huecos
+# que hayan quedado — así el cuestionario deja de ser el camino principal y
+# pasa a ser el mecanismo de completitud.
+PREGUNTA_APERTURA = (
+    "Cuéntame con tus palabras cómo funciona el proceso de compras en tu empresa: "
+    "quién cotiza, quién revisa o autoriza, si depende del monto, y quién emite la "
+    "orden de compra."
+)
+
 # Esquema de salida tipada. Deliberadamente plano y sin `null`: Gemini
 # responde peor con uniones/nullables, así que se usan centinelas ("" y 0) y
 # se validan en Python. Sin `enum` en el schema a propósito — se valida acá
@@ -163,6 +174,10 @@ Reglas estrictas:
 - "reglas_autorizacion" sólo si el usuario menciona montos. Usa 0 en "desde" o "hasta" cuando el
   tramo no tiene ese límite (ej: "sobre 500000" => desde=500001, hasta=0). Interpreta montos
   coloquiales chilenos ("500 lucas" = 500000, "2 palos" = 2000000).
+- Que la autorización NO dependa del monto es una respuesta VÁLIDA y COMPLETA, no información
+  faltante. Si el usuario dice "siempre debe autorizar", "no depende del monto", "siempre pasa por
+  él" o "no hay tramos", devuelve el campo reglas_monto con estado="no_aplica", deja
+  "reglas_autorizacion" vacío y "entendido"=true. NO repreguntes por tramos en ese caso.
 - "entendido"=false SÓLO si la respuesta no aporta nada interpretable para ningún campo (ej: el
   usuario preguntó otra cosa, o escribió algo sin relación). En ese caso escribe en "aclaracion"
   una repregunta corta y amable sobre el campo que se estaba preguntando.
@@ -241,6 +256,11 @@ def _sanear_reglas(reglas) -> list[dict]:
             "descripcion": descripcion,
         })
     return limpias
+
+
+def _huella(slots: list[dict]) -> list[tuple]:
+    """Estado observable de la ficha, para detectar si un turno aportó algo."""
+    return [(s["estado"], len(s["personas"]), len(s["reglas"])) for s in slots]
 
 
 def siguiente_slot(slots: list[dict]) -> Optional[dict]:
@@ -371,28 +391,42 @@ def procesar_turno(respuesta: str, slots: Optional[list[dict]], contexto: str = 
     """Un turno de la entrevista. Sin `respuesta` y sin ficha previa devuelve
     la primera pregunta sin llamar al modelo."""
     ficha = _sanear_slots(slots)
-    primer_turno = not slots
 
-    if primer_turno and not (respuesta or "").strip():
-        actual = siguiente_slot(ficha)
+    if not slots and not (respuesta or "").strip():
         return {
             "slots": ficha,
-            "pregunta": _DEF_POR_CLAVE[actual["clave"]]["pregunta"],
-            "clave_pregunta": actual["clave"],
+            "pregunta": PREGUNTA_APERTURA,
+            "clave_pregunta": "apertura",
             "completo": False,
             "aclaracion": "",
             "etapas": [], "reglas_autorizacion": [], "responsables_detectados": [],
             "resumen": "", "nodos": [], "conexiones": [],
         }
 
+    # La ficha intacta significa que esto responde a la pregunta abierta. Ahí
+    # no se le descuenta intento a ningún slot: no se preguntó por uno en
+    # particular, así que sería injusto penalizar al primero de la lista.
+    es_apertura = all(s["estado"] == "pendiente" and s["intentos"] == 0 for s in ficha)
+
     actual = siguiente_slot(ficha)
-    pregunta_actual = _DEF_POR_CLAVE[actual["clave"]]["pregunta"] if actual else ""
+    if es_apertura:
+        pregunta_actual = PREGUNTA_APERTURA
+    else:
+        pregunta_actual = _DEF_POR_CLAVE[actual["clave"]]["pregunta"] if actual else ""
 
     extraccion = extraer_de_respuesta(respuesta, pregunta_actual, contexto)
+    antes = _huella(ficha)
     aplicar_extraccion(ficha, extraccion)
+    hubo_avance = _huella(ficha) != antes
 
     aclaracion = ""
-    if actual and actual["estado"] == "pendiente":
+    # Se descuenta intento salvo que la respuesta a la pregunta ABIERTA haya
+    # aportado algo — ahí no corresponde penalizar al slot que quedó primero,
+    # porque no se preguntaba por él. Pero si no aportó nada, se descuenta
+    # igual aunque sea la apertura: de lo contrario una respuesta que el
+    # modelo nunca entiende deja la ficha intacta, el turno siguiente vuelve a
+    # parecer "apertura" y la entrevista no avanza nunca.
+    if actual and actual["estado"] == "pendiente" and not (es_apertura and hubo_avance):
         # El turno no resolvió el slot que se estaba preguntando. Se insiste
         # una vez; al agotar los intentos se salta, garantizando avance.
         actual["intentos"] += 1

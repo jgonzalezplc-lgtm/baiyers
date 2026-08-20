@@ -489,10 +489,11 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
       if (data.completo) {
         mostrarPropuesta(data);
       } else {
-        // `aclaracion` sólo llega cuando la respuesta no aportó nada; el
-        // backend igual garantiza avanzar al segundo intento.
+        // Si el modelo reformula la pregunta, esa reformulación REEMPLAZA a
+        // la pregunta base: mostrar las dos seguidas se lee como si el bot se
+        // repitiera solo (se veía igual que el loop que estamos arreglando).
         if (data.aclaracion) addBot(data.aclaracion);
-        if (data.pregunta) addBot(data.pregunta);
+        else if (data.pregunta) addBot(data.pregunta);
       }
     } catch (error) {
       const timeout = error instanceof DOMException && error.name === "TimeoutError";

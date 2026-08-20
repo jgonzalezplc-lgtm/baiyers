@@ -5,6 +5,7 @@ from app.services.workflow_conversational import compilar_a_grafo
 from app.services.workflow_engine import validar_grafo
 from app.services.workflow_proceso_slots import (
     MAX_INTENTOS_POR_SLOT,
+    PREGUNTA_APERTURA,
     SLOTS_PROCESO,
     aplicar_extraccion,
     compilar_slots_a_etapas,
@@ -140,12 +141,28 @@ class CompilarSlotsTest(unittest.TestCase):
 
 
 class ProcesarTurnoTest(unittest.TestCase):
-    def test_primer_turno_no_llama_al_modelo(self):
+    def test_primer_turno_abre_en_texto_libre_y_no_llama_al_modelo(self):
+        """La entrevista arranca pidiendo que lo describan con sus palabras,
+        no con la primera pregunta del cuestionario."""
         with patch("app.services.workflow_proceso_slots.extraer_de_respuesta") as fake:
             r = procesar_turno("", None, "")
         fake.assert_not_called()
         self.assertFalse(r["completo"])
-        self.assertEqual(r["clave_pregunta"], SLOTS_PROCESO[0]["clave"])
+        self.assertEqual(r["clave_pregunta"], "apertura")
+        self.assertEqual(r["pregunta"], PREGUNTA_APERTURA)
+
+    def test_la_apertura_no_penaliza_al_primer_slot(self):
+        """Si la descripción libre no menciona al cotizador, no se le puede
+        descontar un intento: la pregunta abierta no era sobre él."""
+        with patch("app.services.workflow_proceso_slots.extraer_de_respuesta",
+                   return_value=_extraccion([
+                       {"clave": "comprador", "estado": "resuelto",
+                        "personas": [{"nombre": "Ana", "email": ""}]},
+                   ])):
+            r = procesar_turno("la OC la emite Ana", estado_inicial(), "")
+        por_clave = {s["clave"]: s for s in r["slots"]}
+        self.assertEqual(por_clave["cotizador"]["intentos"], 0)
+        self.assertEqual(r["clave_pregunta"], "cotizador")
 
     def test_una_respuesta_util_siempre_avanza_de_pregunta(self):
         """Regresión directa del bug: 'Valeria Tapia, admin@reveniu.com' como
@@ -161,16 +178,20 @@ class ProcesarTurnoTest(unittest.TestCase):
         self.assertEqual(r["aclaracion"], "")
 
     def test_respuesta_incomprensible_repregunta_una_vez_y_luego_avanza(self):
-        ficha = estado_inicial()
+        # Se parte de una ficha ya iniciada (no la apertura) para que sí
+        # aplique el descuento de intentos.
+        ficha = aplicar_extraccion(estado_inicial(), _extraccion([
+            {"clave": "cotizador", "estado": "resuelto", "personas": [{"nombre": "Ana", "email": ""}]},
+        ]))
         with patch("app.services.workflow_proceso_slots.extraer_de_respuesta",
-                   return_value=_extraccion(entendido=False, aclaracion="¿Quién cotiza?")):
+                   return_value=_extraccion(entendido=False, aclaracion="¿Quién revisa?")):
             primero = procesar_turno("???", ficha, "")
-            self.assertEqual(primero["clave_pregunta"], "cotizador")
-            self.assertEqual(primero["aclaracion"], "¿Quién cotiza?")
+            self.assertEqual(primero["clave_pregunta"], "revisor")
+            self.assertEqual(primero["aclaracion"], "¿Quién revisa?")
 
             segundo = procesar_turno("???", primero["slots"], "")
         # Al agotar los intentos el slot se salta: la entrevista nunca se traba.
-        self.assertNotEqual(segundo["clave_pregunta"], "cotizador")
+        self.assertNotEqual(segundo["clave_pregunta"], "revisor")
 
     def test_la_entrevista_termina_aunque_el_modelo_nunca_entienda_nada(self):
         """Garantía dura contra loops: con extracción siempre vacía, la
@@ -182,7 +203,8 @@ class ProcesarTurnoTest(unittest.TestCase):
             while not r["completo"] and r["clave_pregunta"]:
                 r = procesar_turno("bla", r["slots"], "")
                 turnos += 1
-                self.assertLessEqual(turnos, len(SLOTS_PROCESO) * MAX_INTENTOS_POR_SLOT)
+                # +1 por el turno de apertura, que no descuenta intentos.
+                self.assertLessEqual(turnos, len(SLOTS_PROCESO) * MAX_INTENTOS_POR_SLOT + 1)
         self.assertEqual(r["clave_pregunta"], "")
 
     def test_al_completar_devuelve_grafo_valido_y_responsables(self):
