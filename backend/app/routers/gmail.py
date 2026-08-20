@@ -13,6 +13,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from app.services.auth_context import AuthContext, get_auth_context
+from app.services.item_field_updates import registrar_actualizacion_campo
 from app.services.supabase import ejecutar_maybe_single
 
 router = APIRouter(prefix="/api/gmail", tags=["gmail"])
@@ -812,16 +813,20 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                             "supplier_email": conv.get("proveedor_email"),
                             "confidence": p["confidence"],
                         }
-                        if auto_aplicar:
-                            fila_propuesta.update({
-                                "estado": "aplicado", "updated_by": "gmail_agent",
-                                "reviewed_at": recibido_iso, "reviewed_by": "gmail_agent_auto",
-                            })
-                        sb.table("item_field_updates").insert(fila_propuesta).execute()
+                        # El orden (propuesta → aplicar → marcar aplicado) es
+                        # deliberado y está explicado en el servicio.
+                        registrar_actualizacion_campo(
+                            sb, fila_propuesta,
+                            auto_aplicar=auto_aplicar,
+                            agente="gmail_agent",
+                            cuando_iso=recibido_iso,
+                            aplicar=lambda: _aplicar_campo_resultado(
+                                sb, entity_id, p["field"], p["new_value"], recibido_iso
+                            ),
+                        )
                         resumen["propuestas_generadas"] += 1
 
                         if auto_aplicar:
-                            _aplicar_campo_resultado(sb, entity_id, p["field"], p["new_value"], recibido_iso)
                             try:
                                 sb.table("rfq_batch_items").update({
                                     "estado": "responded", "updated_at": recibido_iso,
