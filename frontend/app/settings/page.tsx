@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { AlertCircle, Workflow, Mail } from "lucide-react";
+import { AlertCircle, Workflow, Mail, GitBranch } from "lucide-react";
 import { BtnPrimary, Input, PageHeader, Card, SkeletonBox, CascadeWrapper } from "@/components/ui";
 import { authFetch } from "@/lib/authFetch";
 
@@ -267,6 +267,29 @@ export default function SettingsPage() {
               </div>
               <Link href="/settings/comunicaciones" className="btn-swiss-secondary" style={{ textDecoration: "none", whiteSpace: "nowrap" }}>
                 Abrir biblioteca →
+              </Link>
+            </Card>
+
+            {/* Operación del rollout (Fase G). Antes sólo se cambiaba por curl,
+                lo que hacía depender el rollback de tener a mano un JWT. */}
+            <Card padding={20} style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{
+                width: 44, height: 44, flexShrink: 0, borderRadius: "var(--r-md)",
+                background: "var(--brand-50)", color: "var(--brand)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <GitBranch size={22} strokeWidth={1.75} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)" }}>
+                  Rollout del ciclo unificado
+                </div>
+                <div style={{ fontSize: 13, color: "var(--n-600)", marginTop: 2 }}>
+                  Elige qué motor gobierna las compras nuevas, compara métricas de ambos y ejecuta el rollback.
+                </div>
+              </div>
+              <Link href="/settings/rollout" className="btn-swiss-secondary" style={{ textDecoration: "none", whiteSpace: "nowrap" }}>
+                Ver estado →
               </Link>
             </Card>
           </>
