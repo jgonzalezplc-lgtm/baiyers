@@ -4,7 +4,9 @@ from unittest.mock import MagicMock
 from fastapi import HTTPException
 
 from app.services.llm_rate_limit import (
+    es_llamada_interna,
     ip_cliente,
+    limitar_por_ip,
     registrar_intento,
     reset_para_tests,
 )
@@ -72,6 +74,48 @@ class RegistrarIntentoTest(unittest.TestCase):
             with self.assertRaises(HTTPException):
                 registrar_intento("x", "ip1", por_minuto=2, por_hora=100)
         self.assertEqual(len(mod._ventanas[("x", "ip1")]), 2)
+
+
+class LlamadaInternaTest(unittest.TestCase):
+    """`/api/buscar` lo consumen el servidor MCP y la API pública contra
+    `http://localhost:8000`. Sin exención, ambos comparten la IP de loopback y
+    se estrangulan entre sí."""
+
+    def setUp(self):
+        reset_para_tests()
+
+    def test_loopback_sin_headers_de_proxy_es_interno(self):
+        self.assertTrue(es_llamada_interna(_request(host="127.0.0.1")))
+        self.assertTrue(es_llamada_interna(_request(host="::1")))
+
+    def test_x_forwarded_for_falsificado_no_alcanza_para_pasar_por_interno(self):
+        """El bypass obvio: declararse localhost desde internet. Un request que
+        entra por Cloudflare → Railway siempre trae alguna de las dos cabeceras,
+        así que su sola presencia descalifica la exención."""
+        self.assertFalse(
+            es_llamada_interna(_request({"x-forwarded-for": "127.0.0.1"}, host="127.0.0.1"))
+        )
+        self.assertFalse(
+            es_llamada_interna(_request({"cf-connecting-ip": "127.0.0.1"}, host="127.0.0.1"))
+        )
+
+    def test_ip_publica_no_es_interna(self):
+        self.assertFalse(es_llamada_interna(_request(host="8.8.8.8")))
+
+    def test_host_no_parseable_no_es_interno(self):
+        self.assertFalse(es_llamada_interna(_request(host="localhost")))
+        self.assertFalse(es_llamada_interna(_request(host=None)))
+
+    def test_la_dependencia_no_gasta_cupo_en_llamadas_internas(self):
+        dep = limitar_por_ip("interna", por_minuto=1, por_hora=1)
+        for _ in range(10):
+            dep(_request(host="127.0.0.1"))  # no lanza aunque el límite sea 1
+
+    def test_la_dependencia_si_limita_trafico_externo(self):
+        dep = limitar_por_ip("externa", por_minuto=1, por_hora=10)
+        dep(_request({"cf-connecting-ip": "9.9.9.9"}))
+        with self.assertRaises(HTTPException):
+            dep(_request({"cf-connecting-ip": "9.9.9.9"}))
 
 
 if __name__ == "__main__":

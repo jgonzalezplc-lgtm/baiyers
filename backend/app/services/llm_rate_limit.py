@@ -15,6 +15,7 @@ Alcance honesto de esta defensa:
   límite efectivo se multiplica por la cantidad de réplicas. Alcanza para el
   despliegue actual (Railway Hobby, una instancia) y no agrega dependencias.
 """
+import ipaddress
 import threading
 import time
 from collections import deque
@@ -49,6 +50,32 @@ def ip_cliente(request: Request) -> str:
     if xff and xff.strip():
         return xff.split(",")[0].strip()
     return request.client.host if request.client else "desconocido"
+
+
+def es_llamada_interna(request: Request) -> bool:
+    """True si el request viene del propio backend (loopback), no de internet.
+
+    Existe porque `/api/buscar` lo consumen server-to-server el servidor MCP
+    (`app/mcp/tools/cotizar.py`) y la API pública (`app/api_publica/endpoints/
+    cotizar.py`), ambos contra `http://localhost:8000`. Sin esta exención los
+    dos comparten la misma IP de origen y se estrangulan entre sí: el límite
+    pensado para frenar abuso externo terminaría rompiendo el flujo legítimo.
+    No se pierde protección: esos dos caminos ya tienen su propio control
+    aguas arriba (JWT en MCP, `rate_limiter.py` por `api_key_id` en la API
+    pública).
+
+    La detección es deliberadamente estricta: un request que llega de internet
+    pasa por Cloudflare → Railway y **siempre** trae `cf-connecting-ip` o
+    `x-forwarded-for`. Exigir que no exista ninguno de los dos evita que un
+    atacante se declare interno falsificando `X-Forwarded-For: 127.0.0.1`.
+    """
+    if request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for"):
+        return False
+    host = request.client.host if request.client else ""
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def _limpiar(ahora: float) -> None:
@@ -90,6 +117,8 @@ def limitar_por_ip(nombre: str, por_minuto: int, por_hora: int) -> Callable:
     """Dependencia FastAPI. `nombre` separa los contadores por endpoint para
     que gastar uno no bloquee el otro."""
     def dependencia(request: Request) -> None:
+        if es_llamada_interna(request):
+            return
         registrar_intento(nombre, ip_cliente(request), por_minuto, por_hora)
     return dependencia
 

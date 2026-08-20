@@ -12,10 +12,19 @@ proveedor basado en historial (procurement_ledger).
 import json
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
+from app.services.llm_rate_limit import limitar_por_ip
 
 router = APIRouter(prefix="/api", tags=["analisis"])
+
+# El request más caro del backend: Opus con `max_tokens=16000` y thinking
+# adaptive, y el prompt crece con cada opción enviada. Hoy en producción corta
+# antes con 503 porque `ANTHROPIC_API_KEY` está vacía — el límite existe para
+# que configurarla algún día no abra una vía de facturación sin freno.
+MAX_OPCIONES = 30
+_limite_analizar = limitar_por_ip("analizar_cotizaciones", por_minuto=10, por_hora=60)
 
 
 class OpcionCotizacion(BaseModel):
@@ -36,10 +45,10 @@ class OpcionCotizacion(BaseModel):
 
 
 class AnalizarRequest(BaseModel):
-    user_id: str
-    item_nombre: str
-    cantidad: int = 1
-    opciones: list[OpcionCotizacion]
+    user_id: str = Field(max_length=100)
+    item_nombre: str = Field(max_length=500)
+    cantidad: int = Field(default=1, ge=1, le=1_000_000)
+    opciones: list[OpcionCotizacion] = Field(max_length=MAX_OPCIONES)
 
 
 SCHEMA_ANALISIS = {
@@ -138,7 +147,7 @@ def _historial_confianza(sb, user_id: str, proveedores: list[str]) -> dict[str, 
         return {}
 
 
-@router.post("/analizar-cotizaciones")
+@router.post("/analizar-cotizaciones", dependencies=[Depends(_limite_analizar)])
 async def analizar_cotizaciones(req: AnalizarRequest):
     from app.config import settings
 

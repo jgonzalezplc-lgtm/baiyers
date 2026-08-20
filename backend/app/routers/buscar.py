@@ -1,26 +1,52 @@
 import asyncio
 import json
 import re
-from typing import Optional, AsyncGenerator
+from typing import Annotated, Optional, AsyncGenerator
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from app.services.llm_rate_limit import limitar_por_ip
 
 router = APIRouter(prefix="/api", tags=["buscar"])
 
+# Topes de tamaño del body. Antes no había ninguno: un solo request con listas
+# de miles de términos multiplicaba scrapers, llamadas a Serper y tokens de
+# Gemini sin techo. Excederlos devuelve 422 antes de tocar ninguna fuente.
+MAX_TERMINOS = 10
+MAX_LARGO_TERMINO = 200
+MAX_CATEGORIAS = 10
+# Amplificación: cada id encola una búsqueda completa en background.
+MAX_PREFETCH_IDS = 50
+
+# El `max_length` de una lista topa cuántos elementos trae, no cuánto mide cada
+# uno: sin esto, 10 términos de 1 MB cada uno pasaban la validación.
+Termino = Annotated[str, Field(max_length=MAX_LARGO_TERMINO)]
+
+# Calibrados contra el uso real del frontend: `/buscar/stream` se llama una vez
+# por ítem al abrir su vista de resultados (`cotizar/[id]/resultados`), más los
+# "rebuscar con contexto". Una lista larga recorrida rápido no pasa de ~20 por
+# minuto. Las llamadas internas de MCP y la API pública quedan exentas por
+# loopback (ver `es_llamada_interna`), así que este número sólo gobierna tráfico
+# de internet.
+_limite_buscar = limitar_por_ip("buscar", por_minuto=20, por_hora=200)
+_limite_prefetch = limitar_por_ip("buscar_prefetch", por_minuto=5, por_hora=30)
+
 
 class BuscarRequest(BaseModel):
-    cotizacion_id: str
-    terminos_es: list[str]
-    terminos_en: list[str]
-    nombre_item: str
+    cotizacion_id: str = Field(max_length=100)
+    terminos_es: list[Termino] = Field(default_factory=list, max_length=MAX_TERMINOS)
+    terminos_en: list[Termino] = Field(default_factory=list, max_length=MAX_TERMINOS)
+    nombre_item: str = Field(default="", max_length=MAX_LARGO_TERMINO)
     # v2 — búsqueda orientada por categoría (opcionales, retrocompatible)
-    categoria: Optional[str] = None
+    categoria: Optional[str] = Field(default=None, max_length=100)
     # v2.1 — el usuario puede marcar varias categorías; se consultan las fuentes de todas
-    categorias: Optional[list[str]] = None
-    user_id: Optional[str] = None
+    categorias: Optional[list[Annotated[str, Field(max_length=100)]]] = Field(
+        default=None, max_length=MAX_CATEGORIAS
+    )
+    user_id: Optional[str] = Field(default=None, max_length=100)
     incluir_proveedores_custom: bool = True
     busqueda_expandida: bool = False
 
@@ -493,7 +519,7 @@ def _marcar_relevancia(resultados: list[dict], nombre_item: str, categoria: str 
         r["relevante"] = es_relevante(titulo, nombre_item, categoria)
 
 
-@router.post("/buscar")
+@router.post("/buscar", dependencies=[Depends(_limite_buscar)])
 async def buscar_proveedores(req: BuscarRequest):
     from app.config import settings
 
@@ -523,11 +549,11 @@ _prefetch_sem = asyncio.Semaphore(3)  # máx 3 ítems buscando a la vez (≈45 r
 
 
 class PrefetchRequest(BaseModel):
-    cotizacion_ids: list[str]
-    user_id: Optional[str] = None
+    cotizacion_ids: list[Annotated[str, Field(max_length=100)]] = Field(max_length=MAX_PREFETCH_IDS)
+    user_id: Optional[str] = Field(default=None, max_length=100)
 
 
-@router.post("/buscar/prefetch")
+@router.post("/buscar/prefetch", dependencies=[Depends(_limite_prefetch)])
 async def prefetch_busquedas(req: PrefetchRequest):
     """Encola búsquedas en background para varias cotizaciones. Responde al tiro;
     los resultados quedan guardados en la tabla `resultados` al terminar cada una."""
@@ -574,7 +600,7 @@ def _sse(data: dict) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-@router.post("/buscar/stream")
+@router.post("/buscar/stream", dependencies=[Depends(_limite_buscar)])
 async def buscar_stream(req: BuscarRequest):
     """
     Misma búsqueda pero con Server-Sent Events: cada fuente envía sus resultados

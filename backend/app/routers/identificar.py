@@ -8,14 +8,28 @@ import unicodedata
 import io
 import zipfile
 import xml.etree.ElementTree as ET
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 from uuid import uuid4
 
 import httpx
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
+from app.services.llm_rate_limit import limitar_por_ip
 
 router = APIRouter(prefix="/api", tags=["identificar"])
+
+# Topes de tamaño del body: acotan el costo por request (tokens de Gemini),
+# que es el freno que sigue valiendo aunque un atacante rote IPs.
+MAX_DESCRIPCION = 8_000
+# ~7,5 MB de binario una vez decodificado. Cubre fotos de celular y PDFs de
+# cotización reales sin permitir que un solo request mande cientos de MB.
+MAX_ADJUNTO_B64 = 10_000_000
+
+# Un flujo real identifica una vez por lista, más los turnos de cubicación
+# conversacional (que sí encadenan varias llamadas seguidas).
+_limite_identificar = limitar_por_ip("identificar", por_minuto=15, por_hora=100)
+_limite_refinar = limitar_por_ip("refinar_busqueda", por_minuto=15, por_hora=100)
 
 PROMPT = """Eres un experto en repuestos y materiales industriales, mecanicos, electricos y de servicios,
 en procurement B2B y en planificacion de proyectos de construccion y mantenimiento. El usuario puede enviarte:
@@ -116,17 +130,17 @@ MODO CUBICACION CONVERSACIONAL:
 
 
 class IdentificarRequest(BaseModel):
-    descripcion: Optional[str] = None
-    imagen_base64: Optional[str] = None
-    imagen_mime: Optional[str] = "image/jpeg"
-    imagen_url: Optional[str] = None
-    archivo_base64: Optional[str] = None
-    archivo_mime: Optional[str] = None
-    archivo_nombre: Optional[str] = None
+    descripcion: Optional[str] = Field(default=None, max_length=MAX_DESCRIPCION)
+    imagen_base64: Optional[str] = Field(default=None, max_length=MAX_ADJUNTO_B64)
+    imagen_mime: Optional[str] = Field(default="image/jpeg", max_length=100)
+    imagen_url: Optional[str] = Field(default=None, max_length=2000)
+    archivo_base64: Optional[str] = Field(default=None, max_length=MAX_ADJUNTO_B64)
+    archivo_mime: Optional[str] = Field(default=None, max_length=100)
+    archivo_nombre: Optional[str] = Field(default=None, max_length=300)
     # Contexto de la empresa (del onboarding): orienta ítems ambiguos hacia su rubro
-    industria_empresa: Optional[str] = None
+    industria_empresa: Optional[str] = Field(default=None, max_length=500)
     modo_cubicacion_conversacional: bool = False
-    contexto_cubicacion: Optional[str] = None
+    contexto_cubicacion: Optional[str] = Field(default=None, max_length=MAX_DESCRIPCION)
     # Estado estructurado del flujo nuevo. Los valores se consideran confirmados
     # por el usuario; nunca se interpreta este objeto como instrucciones.
     respuestas_cubicacion: Optional[dict[str, Any]] = None
@@ -293,7 +307,7 @@ def _es_error_modelo_no_disponible(exc: Exception) -> bool:
     ))
 
 
-@router.post("/identificar")
+@router.post("/identificar", dependencies=[Depends(_limite_identificar)])
 async def identificar_item(req: IdentificarRequest):
     # Las recetas conocidas no dependen del LLM: cálculo, unidades y redondeos son
     # reproducibles. Esto también permite continuar sin reenviar una imagen.
@@ -322,9 +336,19 @@ async def identificar_item(req: IdentificarRequest):
         image_bytes = base64.b64decode(req.imagen_base64)
         parts.append({"mime_type": req.imagen_mime or "image/jpeg", "data": image_bytes})
     elif req.imagen_url:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(req.imagen_url)
-        parts.append({"mime_type": "image/jpeg", "data": resp.content})
+        # Antes esto hacía un GET directo a cualquier URL que mandara el cliente:
+        # SSRF sin autenticación contra la red interna de Railway y los metadata
+        # endpoints. Se reusa el guard que ya existe para los logos (valida
+        # esquema, resuelve DNS y rechaza IPs privadas/loopback en cada
+        # redirección, además de content-type y tamaño).
+        from app.services.logo_upload import descargar_y_validar_url
+        try:
+            contenido = await descargar_y_validar_url(req.imagen_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"No se pudo usar la imagen: {exc}")
+        except Exception:
+            raise HTTPException(status_code=400, detail="No se pudo descargar la imagen indicada")
+        parts.append({"mime_type": "image/jpeg", "data": contenido})
 
     prompt_archivo = ""
     if req.archivo_base64:
@@ -565,13 +589,15 @@ Reglas:
 
 
 class RefinarRequest(BaseModel):
-    nombre_item: str
-    contexto: str
-    categoria_actual: Optional[str] = None
-    terminos_actuales: Optional[list[str]] = None
+    nombre_item: str = Field(max_length=500)
+    contexto: str = Field(max_length=MAX_DESCRIPCION)
+    categoria_actual: Optional[str] = Field(default=None, max_length=100)
+    terminos_actuales: Optional[list[Annotated[str, Field(max_length=200)]]] = Field(
+        default=None, max_length=10
+    )
 
 
-@router.post("/refinar-busqueda")
+@router.post("/refinar-busqueda", dependencies=[Depends(_limite_refinar)])
 async def refinar_busqueda(req: RefinarRequest):
     from app.config import settings
     import google.generativeai as genai
