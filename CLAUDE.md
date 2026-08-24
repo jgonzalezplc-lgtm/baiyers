@@ -532,6 +532,38 @@ ambos servicios al pushear ahí.
   Supabase. Variables MCP configuradas en Railway; falta el despliegue de Fase 9.
 - `/api/mcp/sse` y `/rpc` son solo legado temporal; los clientes nuevos deben
   usar Streamable HTTP en `/api/mcp`.
+
+## MCP Baiyer — conexión global y login unificado (2026-08-24)
+- `/integraciones` muestra instalación global real para los dos clientes
+  principales: Claude Code usa `claude mcp add --scope user --transport http`
+  (antes omitía `--scope user` y quedaba local pese a que el texto decía otra
+  cosa); Codex usa `codex mcp add baiyer --url ...` + `codex mcp login baiyer`
+  (ya no obliga a editar `~/.codex/config.toml` a mano). La documentación
+  pública `/docs/mcp` fue reemplazada porque todavía mostraba el paquete npx
+  inexistente `@claria/mcp-server` y un token manual que el producto no usa.
+- El authorization endpoint MCP mantiene la validación OAuth 2.1/DCR/PKCE y
+  luego redirige a `/mcp/autorizar` en el frontend con un `request_id` interno
+  opaco. Ya no usa el `state` elegido por el cliente como clave de persistencia
+  (dos clientes podían pisarse si lo repetían) ni renderiza un formulario HTML
+  del backend que sólo aceptaba contraseña.
+- La pantalla de consentimiento reutiliza Supabase Auth: sesión Baiyer ya
+  abierta (un botón), Google, Microsoft o correo+contraseña. Google/Microsoft
+  regresan por `/auth/callback` y completan la autorización automáticamente;
+  ese callback ahora acepta sólo destinos internos para cerrar el open redirect
+  que existía en su parámetro `next`. Este login social sólo autentica Baiyer:
+  no vuelve a pedir scopes de Gmail/Outlook ni toca la conexión del buzón.
+- `POST /api/mcp/oauth/consent/session` verifica el access token Supabase contra
+  Auth antes de consumir atómicamente el request pendiente y emitir el código
+  MCP de un solo uso. La contraseña se procesa en Supabase desde el navegador y
+  nunca llega al servidor MCP. Cancelar también consume el request. `GET
+  /api/mcp/oauth/request/{request_id}` entrega al frontend sólo nombre del
+  cliente y scopes; no expone redirect URI ni PKCE.
+- `/api/mcp/connections` enriquece el `client_id` aleatorio de DCR con el
+  `client_name` registrado para que la pantalla muestre "Codex"/"Claude Code"
+  en vez de un identificador opaco. Verificación: 416 pruebas backend passing +
+  1 test Gemini real deseleccionado; `next build` completo y QA visual desktop/
+  móvil correctos. `tsc --noEmit` conserva sólo la deuda preexistente ya
+  documentada en calendario/resultados/estadísticas/proyectos/reportes.
 6. Probar Supplier Capability Intelligence (024) con datos reales: completar un onboarding y confirmar que aparece la fila en `procurement_profiles`; hacer una búsqueda y confirmar que se crea `search_sessions`; usar "Rebuscar con contexto" y confirmar que cae en `search_feedback`.
 7. Verificar visualmente Fases 4–6 de Supplier Capability Intelligence con proveedores categorizados, enviar una RFQ agrupada de prueba desde Gmail y recorrer una búsqueda complementaria hasta el comparador.
 8. ~~Eliminar `procurement.py` + `frontend/app/procurement/`~~ — hecho el 2026-08-24 (ver Gotchas). Queda pendiente decidir qué hacer con el Gantt sin uso (`proyectos.py`), dentro de `PLAN_DATA_FOUNDATION.md`.

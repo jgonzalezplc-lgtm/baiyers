@@ -60,15 +60,28 @@ function CallbackInner() {
     // Un callback sin destino explícito corresponde a un login, no a un
     // registro. El onboarding decide por completitud del perfil, nunca por
     // el mero hecho de haber usado Google OAuth.
-    const next = params.get("next") || "/dashboard";
+    const nextSolicitado = params.get("next") || "/dashboard";
+    // `next` viene en la URL del callback: sólo aceptamos destinos internos.
+    // Además de cerrar un open redirect, esto permite volver con seguridad al
+    // consentimiento MCP después de Google/Microsoft.
+    const next = nextSolicitado.startsWith("/") && !nextSolicitado.startsWith("//")
+      ? nextSolicitado
+      : "/dashboard";
     const isRecovery = params.get("flow") === "recovery";
     const conectarGmail = params.get("conectar_gmail") === "1";
     const conectarOutlook = params.get("conectar_outlook") === "1";
     const supabase = createClient();
 
     const irA = (destino: string) => window.location.replace(destino);
+    const destinoErrorOAuth = next.startsWith("/mcp/autorizar")
+      ? `${next}${next.includes("?") ? "&" : "?"}oauth_error=1`
+      : "/login?error=oauth";
 
-    if (!code) { irA("/login?error=oauth"); return; }
+    if (!code) {
+      if (next.startsWith("/mcp/autorizar")) sessionStorage.removeItem("baiyer_mcp_auto_authorize");
+      irA(destinoErrorOAuth);
+      return;
+    }
 
     supabase.auth.exchangeCodeForSession(code).then(async ({ data, error }) => {
       if (!error) {
@@ -106,8 +119,9 @@ function CallbackInner() {
         return;
       }
       // Si "falló" pero la sesión igual quedó creada (código ya consumido), entrar.
+      if (next.startsWith("/mcp/autorizar")) sessionStorage.removeItem("baiyer_mcp_auto_authorize");
       const { data: sessionData } = await supabase.auth.getSession();
-      irA(sessionData.session ? next : "/login?error=oauth");
+      irA(sessionData.session ? next : destinoErrorOAuth);
     });
   }, [params]);
 

@@ -257,6 +257,29 @@ async def list_connections(request: Request):
     except Exception:
         connections = []
 
+    # `client_id` es aleatorio por DCR y no le dice nada al usuario. Enriquecer
+    # la vista con el nombre registrado, sin perder la lista si este lookup
+    # secundario falla de manera transitoria.
+    try:
+        client_ids = list({item.get("client_id") for item in connections if item.get("client_id")})
+        if client_ids:
+            clientes_resp = (
+                SUPABASE.table("mcp_registered_clients")
+                .select("client_id,client_name")
+                .in_("client_id", client_ids)
+                .execute()
+            )
+            nombres = {
+                item["client_id"]: item.get("client_name")
+                for item in (clientes_resp.data or [])
+            }
+            connections = [
+                {**item, "client_name": nombres.get(item.get("client_id")) or "Cliente MCP"}
+                for item in connections
+            ]
+    except Exception:
+        pass
+
     return {"connections": connections}
 
 

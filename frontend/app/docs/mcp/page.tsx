@@ -1,272 +1,127 @@
 import { Metadata } from "next";
+import type { CSSProperties } from "react";
 
 export const metadata: Metadata = {
-  title: "Claria MCP, Documentacion",
-  description: "Integra Claude, ChatGPT y otros LLMs con Claria Cotizador Inteligente via Model Context Protocol (MCP).",
+  title: "Baiyer MCP · Conectar Claude Code y Codex",
+  description: "Conecta globalmente Claude Code o Codex a Baiyer mediante OAuth, sin copiar tokens manuales.",
 };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const MCP_URL = `${API_URL}/api/mcp`;
 
-const TOOLS = [
+const CLIENTES = [
   {
-    name: "cotizar_item",
-    label: "Cotizar Item",
-    description: "Busca precios para un producto en multiples proveedores chilenos e internacionales.",
-    params: [
-      { name: "descripcion", type: "string", required: true, desc: "Descripcion del item a cotizar" },
-      { name: "cantidad", type: "integer", required: false, desc: "Cantidad requerida (default: 1)" },
-    ],
-    example: `{
-  "name": "cotizar_item",
-  "arguments": {
-    "descripcion": "cable HDMI 2.0 10 metros",
-    "cantidad": 3
-  }
-}`,
+    nombre: "Claude Code",
+    descripcion: "Guarda Baiyer con alcance de usuario para usarlo desde cualquier proyecto.",
+    comando: `claude mcp add --scope user --transport http baiyer ${MCP_URL}`,
+    siguiente: "Abre Claude Code, escribe /mcp, elige «baiyer» y autentica.",
   },
   {
-    name: "buscar_proveedores",
-    label: "Buscar Proveedores",
-    description: "Lista proveedores registrados con scores, datos de contacto y estadisticas.",
-    params: [
-      { name: "rubro", type: "string", required: false, desc: "Filtrar por rubro (ej: electronica, ferreteria)" },
-      { name: "ciudad", type: "string", required: false, desc: "Filtrar por ciudad" },
-      { name: "min_score", type: "number", required: false, desc: "Score minimo 0-5" },
-    ],
-    example: `{
-  "name": "buscar_proveedores",
-  "arguments": {
-    "rubro": "electronica",
-    "min_score": 4.0
-  }
-}`,
+    nombre: "Codex",
+    descripcion: "La configuración global se comparte entre Codex app, CLI y extensión IDE.",
+    comando: `codex mcp add baiyer --url ${MCP_URL}\ncodex mcp login baiyer`,
+    siguiente: "La segunda línea abre automáticamente la autorización de Baiyer en tu navegador.",
   },
-  {
-    name: "emitir_oc",
-    label: "Emitir Orden de Compra",
-    description: "Emite una OC oficial a un proveedor. Requiere plan Pro o superior.",
-    params: [
-      { name: "proveedor_id", type: "string", required: true, desc: "ID del proveedor" },
-      { name: "items", type: "array", required: true, desc: "Lista de items [{nombre, cantidad, precio_unitario_clp}]" },
-      { name: "notas", type: "string", required: false, desc: "Notas adicionales" },
-    ],
-    example: `{
-  "name": "emitir_oc",
-  "arguments": {
-    "proveedor_id": "uuid-del-proveedor",
-    "items": [
-      {"nombre": "cable HDMI", "cantidad": 3, "precio_unitario_clp": 15990}
-    ]
-  }
-}`,
-  },
-  {
-    name: "consultar_gastos",
-    label: "Consultar Gastos",
-    description: "Estadisticas de gasto: total, top proveedores, top items, tendencias.",
-    params: [
-      { name: "periodo", type: "string", required: false, desc: "mes | trimestre | anio | todo" },
-    ],
-    example: `{
-  "name": "consultar_gastos",
-  "arguments": {
-    "periodo": "trimestre"
-  }
-}`,
-  },
-  {
-    name: "crear_recurrencia",
-    label: "Crear Recurrencia",
-    description: "Configura compras automaticas periodicas para un item.",
-    params: [
-      { name: "item_nombre", type: "string", required: true, desc: "Item a comprar periodicamente" },
-      { name: "cantidad", type: "integer", required: true, desc: "Cantidad por compra" },
-      { name: "frecuencia", type: "string", required: true, desc: "semanal | quincenal | mensual | bimestral | trimestral" },
-      { name: "precio_maximo_clp", type: "integer", required: false, desc: "Precio maximo aceptable" },
-    ],
-    example: `{
-  "name": "crear_recurrencia",
-  "arguments": {
-    "item_nombre": "papel bond A4",
-    "cantidad": 10,
-    "frecuencia": "mensual",
-    "precio_maximo_clp": 5000
-  }
-}`,
-  },
-  {
-    name: "historico_precios",
-    label: "Historico de Precios",
-    description: "Consulta historial de precios de items comprados anteriormente.",
-    params: [
-      { name: "item_nombre", type: "string", required: true, desc: "Item a consultar" },
-      { name: "precio_actual_clp", type: "integer", required: false, desc: "Precio actual para comparar" },
-    ],
-    example: `{
-  "name": "historico_precios",
-  "arguments": {
-    "item_nombre": "toner HP 85A",
-    "precio_actual_clp": 29990
-  }
-}`,
-  },
-  {
-    name: "crear_proyecto",
-    label: "Crear Proyecto",
-    description: "Crea un proyecto con lista de materiales (cubicacion).",
-    params: [
-      { name: "nombre", type: "string", required: true, desc: "Nombre del proyecto" },
-      { name: "items", type: "array", required: true, desc: "Lista de materiales [{nombre, cantidad, unidad}]" },
-      { name: "fecha_inicio", type: "string", required: false, desc: "YYYY-MM-DD" },
-      { name: "fecha_fin", type: "string", required: false, desc: "YYYY-MM-DD" },
-    ],
-    example: `{
-  "name": "crear_proyecto",
-  "arguments": {
-    "nombre": "Remodelacion oficina",
-    "items": [
-      {"nombre": "pintura latex blanca", "cantidad": 20, "unidad": "litro"},
-      {"nombre": "rodillo pintura", "cantidad": 4, "unidad": "unidad"}
-    ]
-  }
-}`,
-  },
-  {
-    name: "generar_reporte",
-    label: "Generar Reporte",
-    description: "Genera reporte PDF o Excel de cotizaciones, OCs o gastos.",
-    params: [
-      { name: "tipo", type: "string", required: true, desc: "cotizacion | oc | gastos | proyecto | comparativo" },
-      { name: "formato", type: "string", required: false, desc: "pdf | excel (default: pdf)" },
-      { name: "periodo", type: "string", required: false, desc: "mes | trimestre | anio" },
-    ],
-    example: `{
-  "name": "generar_reporte",
-  "arguments": {
-    "tipo": "gastos",
-    "formato": "excel",
-    "periodo": "mes"
-  }
-}`,
-  },
+];
+
+const CAPACIDADES = [
+  "Crear y administrar listas y proyectos de compra.",
+  "Buscar ofertas web y comparar cobertura, precio y proveedor.",
+  "Preparar RFQs y revisar respuestas de proveedores.",
+  "Solicitar aprobaciones y consultar la trazabilidad del workflow.",
+  "Preparar órdenes de compra, facturas, reportes y métricas.",
 ];
 
 export default function MCPDocsPage() {
   return (
-    <div style={{ minHeight: "100vh", background: "var(--canvas)", padding: "40px 20px" }}>
-      <div style={{ maxWidth: 900, margin: "0 auto" }}>
+    <main style={{ minHeight: "100vh", background: "var(--bg-base)", padding: "42px 20px" }}>
+      <div style={{ maxWidth: 820, margin: "0 auto" }}>
+        <a href="/" style={{ fontSize: 10, color: "var(--text-muted)", textDecoration: "none" }}>← Baiyer</a>
 
-        {/* Header */}
-        <div style={{ marginBottom: 40 }}>
-          <a href="/" style={{ fontSize: 10, color: "var(--n-600)", textDecoration: "none" }}>← Claria</a>
-          <div style={{ marginTop: 20 }}>
-            <div style={{ display: "inline-block", background: "var(--brand)22", color: "var(--brand)", borderRadius: 6, padding: "3px 10px", fontSize: 10, fontWeight: 700, marginBottom: 12, letterSpacing: "0.1em" }}>
-              MODEL CONTEXT PROTOCOL
-            </div>
-            <h1 style={{ fontSize: 28, fontWeight: 800, color: "var(--n-900)", margin: "0 0 8px" }}>Claria MCP Server</h1>
-            <p style={{ fontSize: 13, color: "var(--n-500)", maxWidth: 600 }}>
-              Conecta Claude, ChatGPT, Gemini y cualquier LLM compatible con MCP a tu cuenta Claria.
-              Cotiza productos, emite OCs y analiza gastos directamente desde el chat de IA.
-            </p>
-          </div>
-        </div>
-
-        {/* Quick start */}
-        <div style={{ background: "var(--surface)", border: "1px solid var(--brand)33", borderRadius: 12, padding: "24px", marginBottom: 32 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--n-900)", margin: "0 0 16px" }}>Inicio rapido, Claude Desktop</h2>
-          <p style={{ fontSize: 11, color: "var(--n-600)", marginBottom: 16 }}>
-            Agrega esto a tu archivo <code style={{ background: "var(--n-200)", padding: "1px 6px", borderRadius: 3, color: "var(--n-500)" }}>claude_desktop_config.json</code>:
+        <header style={{ margin: "24px 0 34px" }}>
+          <span className="label" style={{ display: "block", color: "var(--accent)", marginBottom: 8 }}>MODEL CONTEXT PROTOCOL</span>
+          <h1 style={{ fontSize: 28, color: "var(--text-primary)", margin: "0 0 9px", letterSpacing: "-0.025em" }}>Conecta Baiyer con tu asistente</h1>
+          <p style={{ maxWidth: 640, fontSize: 13, lineHeight: 1.65, color: "var(--text-secondary)", margin: 0 }}>
+            La conexión usa Streamable HTTP y OAuth 2.1. Se instala una vez, queda disponible de
+            forma global y no requiere crear, copiar ni guardar tokens manuales.
           </p>
-          <pre style={{ background: "var(--canvas)", border: "1px solid var(--n-200)", borderRadius: 8, padding: "16px", fontSize: 11, color: "var(--n-500)", overflow: "auto", fontFamily: "monospace" }}>{`{
-  "mcpServers": {
-    "claria-cotizador": {
-      "command": "npx",
-      "args": ["-y", "@claria/mcp-server"],
-      "env": {
-        "CLARIA_TOKEN": "<tu-token-mcp>",
-        "CLARIA_USER_ID": "<tu-user-id>"
-      }
-    }
-  }
-}`}</pre>
-          <a
-            href="/integraciones"
-            style={{ display: "inline-block", marginTop: 16, background: "var(--brand)", color: "#fff", padding: "10px 24px", borderRadius: 6, fontSize: 12, fontWeight: 700, textDecoration: "none" }}
-          >
-            Obtener mi token →
-          </a>
-        </div>
+        </header>
 
-        {/* OAuth endpoints */}
-        <div style={{ background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: 12, padding: "24px", marginBottom: 32 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--n-900)", margin: "0 0 16px" }}>Endpoints OAuth 2.1</h2>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {[
-              { method: "GET", path: "/api/mcp/oauth/authorize", desc: "Pagina de autorizacion (PKCE)" },
-              { method: "POST", path: "/api/mcp/oauth/token", desc: "Intercambio de codigo por token" },
-              { method: "GET", path: "/api/mcp/oauth/userinfo", desc: "Info del usuario autenticado" },
-              { method: "DELETE", path: "/api/mcp/oauth/revoke", desc: "Revocar acceso" },
-            ].map(ep => (
-              <div key={ep.path} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <span style={{
-                  fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 3,
-                  background: ep.method === "GET" ? "var(--success)22" : ep.method === "POST" ? "var(--brand)22" : "var(--danger)22",
-                  color: ep.method === "GET" ? "var(--success)" : ep.method === "POST" ? "var(--brand)" : "var(--danger)",
-                  fontFamily: "monospace", minWidth: 44, textAlign: "center",
-                }}>{ep.method}</span>
-                <code style={{ fontSize: 11, color: "var(--n-500)", fontFamily: "monospace" }}>{ep.path}</code>
-                <span style={{ fontSize: 11, color: "var(--n-600)" }}>{ep.desc}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <section style={sectionStyle}>
+          <div className="label" style={{ color: "var(--text-muted)", marginBottom: 8 }}>DIRECCIÓN DEL SERVIDOR</div>
+          <code style={{ display: "block", padding: "12px 14px", background: "var(--bg-base)", border: "1px solid var(--border-default)", color: "var(--text-primary)", fontSize: 11, overflowX: "auto" }}>{MCP_URL}</code>
+        </section>
 
-        {/* Tools */}
-        <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--n-900)", margin: "0 0 16px" }}>Herramientas disponibles ({TOOLS.length})</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {TOOLS.map(tool => (
-            <div key={tool.name} style={{ background: "var(--surface)", border: "1px solid var(--n-200)", borderRadius: 12, overflow: "hidden" }}>
-              <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--surface-2)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
-                  <code style={{ fontSize: 12, color: "var(--brand)", fontFamily: "monospace", fontWeight: 700 }}>{tool.name}</code>
-                  <span style={{ fontSize: 11, color: "var(--n-900)", fontWeight: 700 }}>{tool.label}</span>
-                </div>
-                <p style={{ fontSize: 11, color: "var(--n-500)", margin: 0 }}>{tool.description}</p>
+        <div style={{ display: "grid", gap: 16, marginBottom: 28 }}>
+          {CLIENTES.map((cliente, index) => (
+            <section key={cliente.nombre} style={sectionStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 7 }}>
+                <h2 style={{ margin: 0, fontSize: 15, color: "var(--text-primary)" }}>{index + 1}. {cliente.nombre}</h2>
+                <span style={{ fontSize: 9, color: "var(--accent)", border: "1px solid var(--accent)", padding: "2px 7px" }}>GLOBAL</span>
               </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
-                <div style={{ padding: "16px 20px", borderRight: "1px solid var(--surface-2)" }}>
-                  <div style={{ fontSize: 9, color: "var(--n-600)", letterSpacing: "0.1em", marginBottom: 10 }}>Parametros</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {tool.params.map(p => (
-                      <div key={p.name}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <code style={{ fontSize: 10, color: "var(--brand-400)", fontFamily: "monospace" }}>{p.name}</code>
-                          <span style={{ fontSize: 9, color: "var(--n-600)" }}>{p.type}</span>
-                          {p.required && <span style={{ fontSize: 8, color: "var(--danger)", background: "var(--danger)22", padding: "1px 5px", borderRadius: 3 }}>req</span>}
-                        </div>
-                        <div style={{ fontSize: 10, color: "var(--n-600)", marginTop: 2, paddingLeft: 0 }}>{p.desc}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div style={{ padding: "16px 20px" }}>
-                  <div style={{ fontSize: 9, color: "var(--n-600)", letterSpacing: "0.1em", marginBottom: 10 }}>Ejemplo</div>
-                  <pre style={{ fontSize: 9, color: "var(--n-500)", fontFamily: "monospace", margin: 0, overflow: "auto", background: "var(--canvas)", borderRadius: 6, padding: "10px" }}>{tool.example}</pre>
-                </div>
-              </div>
-            </div>
+              <p style={{ margin: "0 0 14px", fontSize: 11, lineHeight: 1.6, color: "var(--text-secondary)" }}>{cliente.descripcion}</p>
+              <pre style={codeStyle}>{cliente.comando}</pre>
+              <p style={{ margin: "12px 0 0", fontSize: 11, lineHeight: 1.6, color: "var(--text-secondary)" }}>{cliente.siguiente}</p>
+            </section>
           ))}
         </div>
 
-        {/* Footer */}
-        <div style={{ marginTop: 40, paddingTop: 24, borderTop: "1px solid var(--n-200)", textAlign: "center" }}>
-          <p style={{ fontSize: 10, color: "var(--n-700)" }}>
-            Claria MCP · Protocol version 2024-11-05 ·{" "}
-            <a href="https://modelcontextprotocol.io" style={{ color: "var(--n-600)" }}>modelcontextprotocol.io</a>
+        <section style={{ ...sectionStyle, borderLeft: "3px solid var(--accent)" }}>
+          <h2 style={{ margin: "0 0 8px", fontSize: 14, color: "var(--text-primary)" }}>Autoriza con tu cuenta Baiyer</h2>
+          <p style={{ margin: "0 0 14px", fontSize: 11, lineHeight: 1.65, color: "var(--text-secondary)" }}>
+            Cuando se abra el navegador, usa la misma forma con la que creaste tu cuenta: el botón
+            de Google/Gmail, el botón de Outlook/Microsoft o tu correo y contraseña. Si ya tienes una sesión
+            abierta, sólo debes confirmar la conexión.
           </p>
-        </div>
+          <a href="/integraciones" className="btn-swiss-primary" style={{ display: "inline-flex", textDecoration: "none" }}>
+            Abrir Baiyer → MCP
+          </a>
+        </section>
+
+        <section style={{ ...sectionStyle, marginTop: 28 }}>
+          <h2 style={{ margin: "0 0 12px", fontSize: 14, color: "var(--text-primary)" }}>Qué puede hacer</h2>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 11, lineHeight: 1.8, color: "var(--text-secondary)" }}>
+            {CAPACIDADES.map(capacidad => <li key={capacidad}>{capacidad}</li>)}
+          </ul>
+          <p style={{ margin: "12px 0 0", fontSize: 10, lineHeight: 1.6, color: "var(--text-muted)" }}>
+            Las acciones sensibles exigen confirmación explícita. Las conexiones y su actividad se
+            pueden revisar o revocar desde la sección MCP de Baiyer.
+          </p>
+        </section>
+
+        <section style={{ marginTop: 28, paddingTop: 20, borderTop: "1px solid var(--border-default)" }}>
+          <details style={{ fontSize: 10, color: "var(--text-muted)" }}>
+            <summary style={{ cursor: "pointer", color: "var(--text-secondary)" }}>Detalles técnicos de OAuth</summary>
+            <div style={{ marginTop: 12, display: "grid", gap: 7, fontFamily: "var(--font-mono)" }}>
+              <span>GET /.well-known/oauth-protected-resource/api/mcp</span>
+              <span>GET /.well-known/oauth-authorization-server</span>
+              <span>POST /api/mcp/oauth/register · DCR</span>
+              <span>GET /api/mcp/oauth/authorize · PKCE S256</span>
+              <span>POST /api/mcp/oauth/token · código + refresh rotativo</span>
+            </div>
+          </details>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }
+
+const sectionStyle: CSSProperties = {
+  background: "var(--bg-surface)",
+  border: "1px solid var(--border-default)",
+  padding: "20px 22px",
+  marginBottom: 16,
+};
+
+const codeStyle: CSSProperties = {
+  margin: 0,
+  padding: "13px 14px",
+  background: "var(--bg-base)",
+  border: "1px solid var(--border-default)",
+  color: "var(--text-primary)",
+  fontFamily: "var(--font-mono)",
+  fontSize: 10,
+  lineHeight: 1.65,
+  whiteSpace: "pre-wrap",
+  overflowX: "auto",
+};

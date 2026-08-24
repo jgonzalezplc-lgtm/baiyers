@@ -19,6 +19,7 @@ const MCP_URL = `${API_URL}/api/mcp`;
 interface MCPConnection {
   id: string;
   client_id: string;
+  client_name?: string;
   scopes: string[];
   connected_at: string;
   last_used_at?: string;
@@ -31,43 +32,29 @@ interface AuditEntry {
   called_at: string;
 }
 
-/** Instrucciones por cliente. El comando es lo único que el usuario necesita. */
+/** Instalación global: se configura una vez y queda en todos los proyectos. */
 const CLIENTES = [
   {
     id: "claude-code",
     nombre: "Claude Code",
-    detalle: "CLI de Anthropic en la terminal",
-    lenguaje: "bash",
-    comando: (url: string) => `claude mcp add --transport http baiyer ${url}`,
+    detalle: "Disponible globalmente en todos tus proyectos de Claude Code",
+    comando: (url: string) => `claude mcp add --scope user --transport http baiyer ${url}`,
     pasos: [
-      "Corré el comando en cualquier carpeta.",
-      "Abrí Claude Code y escribí /mcp.",
-      "Elegí «baiyer» y autenticá: se abre el navegador con tu sesión de Baiyer.",
+      "Pega y ejecuta el comando una sola vez.",
+      "En Claude Code escribe /mcp, elige «baiyer» y autentica.",
+      "En Baiyer continúa con Google/Gmail, Outlook/Microsoft o tu correo y contraseña.",
     ],
   },
   {
     id: "codex",
     nombre: "Codex",
-    detalle: "CLI de OpenAI",
-    lenguaje: "toml",
+    detalle: "Disponible globalmente en Codex app, CLI y extensión IDE",
     comando: (url: string) =>
-      `# ~/.codex/config.toml\n[mcp_servers.baiyer]\nurl = "${url}"`,
+      `codex mcp add baiyer --url ${url}\ncodex mcp login baiyer`,
     pasos: [
-      "Agregá ese bloque a ~/.codex/config.toml (o usá los subcomandos codex mcp).",
-      "Al detectar una url en vez de un command, Codex usa transporte HTTP solo.",
-      "En el primer uso te pide autenticar por OAuth en el navegador.",
-    ],
-  },
-  {
-    id: "claude-desktop",
-    nombre: "Claude Desktop / claude.ai",
-    detalle: "Conector remoto, sin instalar nada",
-    lenguaje: "text",
-    comando: (url: string) => url,
-    pasos: [
-      "Configuración → Conectores → Agregar conector personalizado.",
-      "Pegá la URL. No hace falta comando ni token.",
-      "Autorizá en la ventana que se abre.",
+      "Pega las dos líneas en tu terminal; no necesitas editar config.toml.",
+      "Codex abrirá Baiyer en el navegador para autenticar la conexión.",
+      "Continúa con Google/Gmail, Outlook/Microsoft o tu correo y contraseña.",
     ],
   },
 ];
@@ -142,8 +129,8 @@ export default function IntegracionesPage() {
         </span>
         <h1 style={{ fontSize: 26, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.02em" }}>MCP</h1>
         <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0, maxWidth: 620 }}>
-          Conectá Claude Code, Codex u otro cliente MCP a tu cuenta Baiyer para cotizar, comparar
-          proveedores y consultar OCs desde tu terminal.
+          Conecta Baiyer una sola vez y úsalo desde cualquier proyecto de Claude Code o Codex para
+          cotizar, comparar proveedores y consultar órdenes de compra.
         </p>
       </div>
 
@@ -159,12 +146,11 @@ export default function IntegracionesPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderLeft: "3px solid var(--accent)", padding: "18px 20px" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
-              No necesitás ningún token
+              Una instalación global. Sin tokens manuales.
             </div>
             <p style={{ fontSize: 11, color: "var(--text-secondary)", margin: "0 0 14px", lineHeight: 1.6 }}>
-              El servidor usa OAuth 2.1 con registro dinámico: tu cliente se registra solo y te pide
-              autorización en el navegador con la sesión que ya tenés abierta. La única cosa que
-              tenés que copiar es esta dirección.
+              Elige tu cliente, copia su comando y autoriza en el navegador con la misma cuenta que
+              usaste para entrar a Baiyer: Google/Gmail, Outlook/Microsoft o correo y contraseña.
             </p>
             <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
               <code style={{ ...bloqueSt, flex: 1, display: "flex", alignItems: "center", color: "var(--text-primary)" }}>{MCP_URL}</code>
@@ -175,24 +161,19 @@ export default function IntegracionesPage() {
           </div>
 
           {CLIENTES.map(cliente => {
-            const conectado = conexiones.some(c => c.client_id.includes(cliente.id));
             const texto = cliente.comando(MCP_URL);
             return (
               <div key={cliente.id} style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: "18px 20px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{cliente.nombre}</div>
-                  {conectado && (
-                    <span style={{ fontSize: 9, fontWeight: 700, color: "var(--text-success)", border: "1px solid var(--text-success)", padding: "2px 7px" }}>
-                      Conectado
-                    </span>
-                  )}
+                  <span style={{ fontSize: 9, fontWeight: 700, color: "var(--accent)", border: "1px solid var(--accent)", padding: "2px 7px" }}>GLOBAL</span>
                 </div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 14 }}>{cliente.detalle}</div>
 
                 <div style={{ display: "flex", gap: 8, alignItems: "stretch", marginBottom: 14 }}>
                   <pre style={{ ...bloqueSt, flex: 1 }}>{texto}</pre>
                   <button onClick={() => copiar(texto, cliente.id)} className="btn-swiss-secondary" style={{ fontSize: 10, padding: "6px 14px", whiteSpace: "nowrap", alignSelf: "flex-start" }}>
-                    {copiado === cliente.id ? "Copiado ✓" : "Copiar"}
+                    {copiado === cliente.id ? "Copiado ✓" : "Copiar instalación"}
                   </button>
                 </div>
 
@@ -223,12 +204,13 @@ export default function IntegracionesPage() {
             {conexiones.map((conn, i) => (
               <div key={conn.id} style={{ padding: "14px 16px", borderBottom: i < conexiones.length - 1 ? "1px solid var(--border-subtle)" : "none", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", marginBottom: 2 }}>{conn.client_id}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", marginBottom: 2 }}>{conn.client_name || "Cliente MCP"}</div>
                   <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
                     Conectado: {new Date(conn.connected_at).toLocaleDateString("es-CL")}
                     {conn.last_used_at && ` · Último uso: ${new Date(conn.last_used_at).toLocaleDateString("es-CL")}`}
                     {conn.scopes?.length ? ` · ${conn.scopes.length} permisos` : ""}
                   </div>
+                  <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 3, fontFamily: "var(--font-mono)" }}>{conn.client_id}</div>
                 </div>
                 <button onClick={() => desconectar(conn.client_id)} disabled={revocando === conn.client_id}
                   style={{ fontSize: 10, color: "var(--text-error)", background: "none", border: "1px solid var(--text-error)", padding: "5px 10px", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>

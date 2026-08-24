@@ -2,13 +2,13 @@
 import secrets
 import hashlib
 import base64
-import html
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Literal, Optional
 from urllib.parse import urlencode, urlparse
-from fastapi import APIRouter, HTTPException, Request, Form, Query, Body
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import APIRouter, HTTPException, Request, Form, Query, Body, Header
+from fastapi.responses import JSONResponse, RedirectResponse
+from pydantic import BaseModel
 from supabase import create_client
 from app.config import settings
 from app.services.supabase import ejecutar_maybe_single
@@ -27,6 +27,12 @@ VALID_SCOPES = {
 }
 DEFAULT_SCOPES = ["lists:read", "quotes:read", "suppliers:read", "jobs:read", "data:read"]
 PKCE_RE = re.compile(r"^[A-Za-z0-9_-]{43,128}$")
+AUTH_REQUEST_RE = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
+
+
+class SessionConsentRequest(BaseModel):
+    request_id: str
+    action: Literal["allow", "deny"] = "allow"
 
 # El estado del flujo OAuth vive en Supabase (migración 032), NO en un dict
 # en memoria del proceso — Railway corre el backend con más de un
@@ -95,6 +101,28 @@ def _validar_scopes(scope: str) -> list[str]:
     return scopes
 
 
+def _url_resultado(redirect_uri: str, parametros: dict[str, str]) -> str:
+    """Agrega el resultado OAuth sin romper redirect_uri con query previa."""
+    separador = "&" if "?" in redirect_uri else "?"
+    return redirect_uri + separador + urlencode(parametros)
+
+
+def _validar_request_id(request_id: str) -> None:
+    if not AUTH_REQUEST_RE.fullmatch(request_id):
+        raise HTTPException(400, "Solicitud de autorización inválida o expirada")
+
+
+def _emitir_codigo(pending: dict, user_id: str) -> str:
+    """Emite el código MCP de un solo uso después de verificar al usuario."""
+    code = secrets.token_urlsafe(32)
+    try:
+        _guardar_estado(code, {**pending, "user_id": user_id}, ttl_minutos=10)
+    except Exception as e:
+        print(f"[MCP OAuth] error guardando código emitido: {e}")
+        raise HTTPException(500, "No se pudo completar la autorización, intenta de nuevo")
+    return code
+
+
 @router.post("/register")
 async def registrar_cliente(body: dict = Body(...)):
     """Dynamic Client Registration (RFC 7591). Cliente público (PKCE, sin
@@ -142,7 +170,7 @@ def verify_mcp_token(token: str) -> Optional[dict]:
     return {"sub": row["user_id"], "client_id": row["client_id"], "scopes": row.get("scopes") or [], "resource": row["resource"]}
 
 
-@router.get("/authorize", response_class=HTMLResponse)
+@router.get("/authorize")
 async def authorize(
     client_id: str = Query(...),
     redirect_uri: str = Query(...),
@@ -153,7 +181,15 @@ async def authorize(
     code_challenge_method: str = Query("S256"),
     resource: str = Query(""),
 ):
-    """OAuth 2.1 authorization endpoint — renders consent page."""
+    """Valida OAuth 2.1 y deriva el consentimiento a la app de Baiyer.
+
+    La sesión de Supabase vive en el dominio del frontend, por lo que el
+    backend no puede reutilizarla desde una página HTML propia. Guardamos la
+    solicitud completa bajo un identificador interno de alta entropía y
+    enviamos al navegador sólo ese identificador. Así Google, Microsoft y
+    email/contraseña terminan en el mismo consentimiento sin exponer
+    credenciales al servidor MCP.
+    """
     if response_type != "code":
         raise HTTPException(400, "Only code flow supported")
     if not 8 <= len(state) <= 512 or not PKCE_RE.fullmatch(code_challenge) or code_challenge_method != "S256":
@@ -165,9 +201,11 @@ async def authorize(
         raise HTTPException(400, detail={"error": "invalid_target"})
     scopes = _validar_scopes(scope)
 
-    # Estado pendiente, compartido entre procesos vía Supabase (ver nota
-    # arriba de _guardar_estado).
-    _guardar_estado(f"pending_{state}", {
+    # No usamos el `state` que eligió el cliente como clave interna: dos
+    # clientes podrían reutilizarlo y pisarse. El request_id es opaco, propio
+    # de Baiyer y suficientemente impredecible para viajar por el navegador.
+    request_id = secrets.token_urlsafe(32)
+    _guardar_estado(f"pending_{request_id}", {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "scope": " ".join(scopes),
@@ -176,69 +214,68 @@ async def authorize(
         "code_challenge_method": code_challenge_method,
         "resource": settings.mcp_resource_url,
     })
+    destino = settings.frontend_url.rstrip("/") + "/mcp/autorizar?" + urlencode({"request": request_id})
+    return RedirectResponse(destino, status_code=302)
 
-    scopes_display = {
-        "read": "Leer cotizaciones, proveedores y estadisticas",
-        "write": "Crear cotizaciones, OCs y recurrencias",
-        "admin": "Acceso completo incluyendo configuracion",
+
+@router.get("/request/{request_id}")
+async def authorization_request(request_id: str):
+    """Metadata mínima para renderizar el consentimiento en el frontend."""
+    _validar_request_id(request_id)
+    pending = _leer_estado_vigente(f"pending_{request_id}")
+    if not pending:
+        raise HTTPException(404, "Solicitud de autorización inválida o expirada")
+    client = _cliente(pending["client_id"])
+    if not client:
+        raise HTTPException(404, "Cliente MCP no disponible")
+    return {
+        "client_name": client.get("client_name") or "Cliente MCP",
+        "scopes": pending.get("scope", "").split(),
     }
-    scope_desc = ", ".join(scopes)
-    safe_client_id = html.escape(client.get("client_name") or client_id)
-    safe_scope = html.escape(" ".join(scopes))
-    safe_scope_desc = html.escape(scope_desc)
-    safe_state = html.escape(state, quote=True)
-    cancel_url = html.escape(redirect_uri + "?" + urlencode({"error": "access_denied", "state": state}), quote=True)
 
-    consent_page = f"""<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Baiyer — Autorizar acceso MCP</title>
-  <style>
-    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    body {{ background: #060610; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; }}
-    .card {{ background: #0a0a18; border: 1px solid #1a1a2e; border-radius: 12px; padding: 32px; max-width: 440px; width: 100%; margin: 20px; }}
-    .logo {{ font-size: 22px; font-weight: 800; color: #6366f1; margin-bottom: 4px; }}
-    .subtitle {{ font-size: 11px; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 24px; }}
-    h2 {{ font-size: 16px; color: #f1f5f9; margin-bottom: 8px; }}
-    .client {{ font-size: 13px; color: #94a3b8; margin-bottom: 20px; }}
-    .scope-box {{ background: #060610; border: 1px solid #1a1a2e; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; }}
-    .scope-label {{ font-size: 9px; color: #475569; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }}
-    .scope-desc {{ font-size: 12px; color: #94a3b8; }}
-    .scope-badge {{ display: inline-block; background: #6366f122; color: #6366f1; border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 700; margin-bottom: 8px; }}
-    form {{ display: flex; flex-direction: column; gap: 10px; }}
-    input[type=text], input[type=password] {{ background: #060610; border: 1px solid #1a1a2e; border-radius: 6px; padding: 10px 12px; color: #f1f5f9; font-size: 12px; font-family: inherit; outline: none; }}
-    input::placeholder {{ color: #334155; }}
-    input:focus {{ border-color: #6366f1; }}
-    .btn-allow {{ background: #6366f1; color: #fff; border: none; border-radius: 6px; padding: 12px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; }}
-    .btn-deny {{ background: none; color: #475569; border: 1px solid #1a1a2e; border-radius: 6px; padding: 12px; font-size: 12px; cursor: pointer; font-family: inherit; text-decoration: none; display: block; text-align: center; }}
-    .warning {{ font-size: 10px; color: #475569; text-align: center; margin-top: 8px; }}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="logo">Baiyer</div>
-    <div class="subtitle">Cotizador Inteligente</div>
-    <h2>Autorizar acceso MCP</h2>
-    <p class="client">La aplicación <strong style="color:#f1f5f9">{safe_client_id}</strong> solicita acceso a tu cuenta Baiyer.</p>
-    <div class="scope-box">
-      <div class="scope-label">Permisos solicitados</div>
-      <div class="scope-badge">{safe_scope}</div>
-      <div class="scope-desc">{safe_scope_desc}</div>
-    </div>
-    <form method="post" action="/api/mcp/oauth/consent">
-      <input type="hidden" name="state" value="{safe_state}">
-      <input type="email" name="email" placeholder="Email de tu cuenta Baiyer" autocomplete="email" required>
-      <input type="password" name="password" placeholder="Contrasena" autocomplete="current-password" required>
-      <button type="submit" name="action" value="allow" class="btn-allow">Autorizar acceso</button>
-      <a href="{cancel_url}" class="btn-deny">Cancelar</a>
-    </form>
-    <p class="warning">Solo autoriza aplicaciones de confianza. Puedes revocar el acceso en Integraciones.</p>
-  </div>
-</body>
-</html>"""
-    return HTMLResponse(consent_page)
+
+@router.post("/consent/session")
+async def consent_session(
+    body: SessionConsentRequest,
+    authorization: Optional[str] = Header(default=None),
+):
+    """Autoriza usando la sesión Supabase que ya tiene el navegador.
+
+    El token se verifica contra Supabase y nunca se transforma en un token MCP:
+    sólo identifica al usuario que recibirá el código OAuth de un solo uso.
+    """
+    _validar_request_id(body.request_id)
+    pending_key = f"pending_{body.request_id}"
+    pending = _leer_estado_vigente(pending_key)
+    if not pending:
+        raise HTTPException(400, "Solicitud de autorización inválida o expirada")
+
+    if body.action == "deny":
+        consumed = _leer_y_consumir_estado(pending_key)
+        if not consumed:
+            raise HTTPException(400, "Solicitud de autorización inválida o ya utilizada")
+        return {
+            "redirect_url": _url_resultado(
+                consumed["redirect_uri"],
+                {"error": "access_denied", "state": consumed["state"]},
+            )
+        }
+
+    from app.services.auth_context import verificar_token
+
+    user_id = verificar_token(authorization)
+    # Consumir sólo después de autenticar: un token vencido no invalida el
+    # request y el usuario todavía puede volver a iniciar sesión.
+    pending = _leer_y_consumir_estado(pending_key)
+    if not pending:
+        raise HTTPException(400, "Solicitud de autorización inválida o ya utilizada")
+    code = _emitir_codigo(pending, user_id)
+    return {
+        "redirect_url": _url_resultado(
+            pending["redirect_uri"],
+            {"code": code, "state": pending["state"]},
+        )
+    }
 
 
 @router.post("/consent")
@@ -255,8 +292,14 @@ async def consent(
         raise HTTPException(400, "Estado de autorización inválido o expirado")
 
     if action != "allow":
+        consumed = _leer_y_consumir_estado(pending_key)
+        if not consumed:
+            raise HTTPException(400, "Estado de autorización inválido o ya utilizado")
         return RedirectResponse(
-            pending["redirect_uri"] + "?" + urlencode({"error": "access_denied", "state": state}),
+            _url_resultado(
+                consumed["redirect_uri"],
+                {"error": "access_denied", "state": consumed["state"]},
+            ),
             status_code=302,
         )
 
@@ -281,16 +324,10 @@ async def consent(
     if not pending:
         raise HTTPException(400, "Estado de autorización inválido o ya utilizado")
 
-    # Generate auth code
-    code = secrets.token_urlsafe(32)
-    try:
-        _guardar_estado(code, {**pending, "user_id": user_id}, ttl_minutos=10)
-    except Exception as e:
-        print(f"[MCP OAuth] error guardando código emitido: {e}")
-        raise HTTPException(500, "No se pudo completar la autorización, intenta de nuevo")
+    code = _emitir_codigo(pending, user_id)
 
     return RedirectResponse(
-        pending["redirect_uri"] + "?" + urlencode({"code": code, "state": state}),
+        _url_resultado(pending["redirect_uri"], {"code": code, "state": pending["state"]}),
         status_code=302,
     )
 
