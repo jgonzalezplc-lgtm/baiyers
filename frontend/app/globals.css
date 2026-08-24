@@ -202,7 +202,12 @@
 
 html, body {
   max-width: 100vw;
-  overflow-x: hidden;
+  /* `clip` y no `hidden`: `overflow-x: hidden` convierte a html/body en un
+     contenedor de scroll, y eso rompe `position: sticky` en los descendientes
+     — el panel pegado de la landing (`/`, sección de features) quedaba
+     estático. `clip` recorta igual el desborde horizontal sin crear ese
+     contenedor. */
+  overflow-x: clip;
   background: var(--canvas);
   color: var(--n-900);
   font-family: var(--font-sans);
@@ -372,6 +377,48 @@ input, textarea, select, button { font-family: inherit; }
 .acc-panel > .acc-inner {
   overflow: hidden;
   min-height: 0;
+}
+
+/* ═══════════════════════ Landing pública ═══════════════════════════════════
+   Sólo la usa `/` (components/landing/). Vive acá y no como estilo inline
+   porque son un keyframe y un grid con áreas nombradas: ninguno de los dos se
+   expresa bien inline.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Entrada del logo alternante del titular (Claude ↔ ChatGPT). */
+@keyframes landingLogoIn {
+  from { opacity: 0; transform: translateY(0.12em); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.landing-bento {
+  display: grid;
+  gap: clamp(16px, 1.6vw, 22px);
+  align-items: stretch;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas:
+    "left black green"
+    "left blue  blue";
+}
+
+/* El bento de 3 columnas no entra en tablet ni en móvil. El handoff dejaba
+   esto como pendiente conocido ("pulir espaciado en móvil"); sin estos saltos
+   las tarjetas quedan ilegibles bajo ~900px. */
+@media (max-width: 900px) {
+  .landing-bento {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "left  black"
+      "left  green"
+      "blue  blue";
+  }
+}
+
+@media (max-width: 640px) {
+  .landing-bento {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "left" "black" "green" "blue";
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, IBM_Plex_Mono } from "next/font/google";
+import { Inter, IBM_Plex_Mono, Roboto } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
@@ -13,6 +13,15 @@ const plexMono = IBM_Plex_Mono({
   subsets: ["latin"],
   weight: ["400", "500", "600"],
   variable: "--font-plex-mono",
+  display: "swap",
+});
+
+// Sólo la usa el mock de bandeja de Gmail de la landing: ahí Roboto es
+// deliberado, para que el hilo se lea como Gmail y no como la app.
+const roboto = Roboto({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-roboto",
   display: "swap",
 });
 
@@ -32,7 +41,7 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" className={`${inter.variable} ${plexMono.variable}`} suppressHydrationWarning>
+    <html lang="es" className={`${inter.variable} ${plexMono.variable} ${roboto.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>
