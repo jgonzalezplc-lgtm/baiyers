@@ -60,15 +60,13 @@ PREFIJOS_CON_GUARDIA_PROPIO: tuple[str, ...] = (
 # ── 3. DEUDA — esto tiene que llegar a CERO ─────────────────────────────────
 # Rutas que todavía deducen la identidad de un `user_id` que manda el cliente.
 # Están acá SÓLO para que activar el guardia no rompa la app mientras se
-# migran (Bloque 3). Cada línea que se borra de esta lista es un agujero menos.
+# migran. Cada línea que se borra de esta lista es un agujero menos: empezó con
+# 72 entradas y hoy quedan 2.
 #
 # No agregar rutas nuevas acá bajo ninguna circunstancia: una ruta nueva se
 # escribe con `Depends(get_auth_context)` desde el principio. Esta lista sólo
 # puede achicarse.
 DEUDA_SIN_AUTENTICAR: frozenset[str] = frozenset({
-    # Riesgo alto: leen o escriben datos de toda una organización.
-    # Envían correo en nombre del usuario con su integración conectada.
-    # Sesiones y feedback de búsqueda (Supplier Capability Intelligence).
     # Estos dos NO se pueden cerrar todavía sin romper cosas reales: el
     # servidor MCP (`mcp/tools/cotizar.py`) y la API pública
     # (`api_publica/endpoints/cotizar.py`) los consumen server-to-server por
@@ -82,22 +80,6 @@ DEUDA_SIN_AUTENTICAR: frozenset[str] = frozenset({
     # inyecta `incluir_proveedores_custom` si se acierta un UUID ajeno.
     "POST /api/identificar",
     "POST /api/buscar",
-    # `procurement.py` es código muerto sobre tablas que no existen en
-    # producción. No se migra: se borra (Bloque 5).
-    "POST /api/procurement/eventos",
-    "GET /api/procurement/eventos",
-    "GET /api/procurement/eventos/{evento_id}",
-    "POST /api/procurement/eventos/{evento_id}/items",
-    "POST /api/procurement/items/{item_id}/proveedores",
-    "DELETE /api/procurement/items/{item_id}",
-    "DELETE /api/procurement/proveedores/{qs_id}",
-    "PATCH /api/procurement/proveedores/{qs_id}/badge",
-    "POST /api/procurement/cotizar",
-    "POST /api/procurement/proveedores/{qs_id}/respuesta",
-    "POST /api/procurement/proveedores/{qs_id}/seleccionar",
-    "POST /api/procurement/proveedores/{qs_id}/emitir-oc",
-    "POST /api/procurement/proveedores/{qs_id}/recibir",
-    "GET /api/procurement/calendario",
 })
 
 

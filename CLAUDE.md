@@ -42,9 +42,9 @@ cd frontend && npx tsc --noEmit
 - `mail_templates.py` — API de plantillas de correo versionadas por organización (ver sección "Plantillas de correo" más abajo).
 - `contacto.py` + `services/contacto_scraper.py` — al cotizar, scrapea email + WhatsApp del proveedor y arma mensaje pre-hecho (`wa.me`).
 - `cuenta.py` — `/api/cuenta/eliminar` (darse de baja; verifica token, borra usuario auth).
-- `listas.py` — listas de cotización multi-ítem (guardadas como JSON en `proyectos.descripcion`; lock por lista). **Es el sistema real y en uso** para proyectos multi-ítem — no confundir con `proyectos.py` (Gantt, tablas `items_proyecto`/`cotizaciones_proyecto`, existen pero con 0 filas reales) ni con `procurement.py` (`quote_items`/`quote_suppliers`/`purchase_events`, **tablas que no existen en producción** — ver Gotchas). Cada ítem de una lista ya tiene identidad estable real: `it.cotizacion_id` es una fila propia de `cotizaciones`, no depende de su posición en el JSON.
+- `listas.py` — listas de cotización multi-ítem (guardadas como JSON en `proyectos.descripcion`; lock por lista). **Es el sistema real y en uso** para proyectos multi-ítem — no confundir con `proyectos.py` (Gantt, tablas `items_proyecto`/`cotizaciones_proyecto`, existen pero con 0 filas reales); `procurement.py`, el otro modelo paralelo, fue eliminado el 2026-08-24. Cada ítem de una lista ya tiene identidad estable real: `it.cotizacion_id` es una fila propia de `cotizaciones`, no depende de su posición en el JSON.
 - `procurement_profile.py` / `search_feedback.py` — Fase 1 de Supplier Capability Intelligence (ver sección dedicada más abajo).
-- Otros: `cotizaciones`, `oc`, `aprobaciones`, `proyectos` (Gantt, sin uso real), `analisis` (IA), `gmail`, `facturas` (parser de correos entrantes), `procurement` (roto, ver Gotchas), `ledger`, `recurrencias`, `estadisticas`, `chat`, `historico`, `suppliers`, `proveedores_import`, `notificaciones`, MCP + API pública.
+- Otros: `cotizaciones`, `oc`, `aprobaciones`, `proyectos` (Gantt, sin uso real), `analisis` (IA), `gmail`, `facturas` (parser de correos entrantes), `recurrencias`, `estadisticas`, `chat`, `historico`, `suppliers`, `proveedores_import`, `notificaciones`, MCP + API pública.
 
 ### Agente de Gmail
 - Migraciones **019, 020 y 021 aplicadas en producción**: conversaciones/mensajes/adjuntos/propuestas, contactos multi-proveedor y etapa `compra_iniciada`.
@@ -302,7 +302,8 @@ una segunda capa para el camino del backend. No requirió migración.
 - El guardia deja el actor verificado en `request.state.actor_user_id` y `get_auth_context` lo reusa:
   **una sola verificación contra Supabase por request**, no dos.
 - **56 endpoints migrados a `Depends(get_auth_context)`** (`proyectos` 15, `workflows` 11,
-  `procurement-profile`/`ledger` 9, `notificaciones`/`buscar/sesiones` 7, LLM 6, correo 3, resto 5).
+  `procurement-profile` 5, `notificaciones`/`buscar/sesiones` 7, LLM 6, correo 3, resto 9). Los 18
+  de `procurement.py`/`ledger.py` no se migraron: se borraron.
   En el frontend, ~20 archivos pasaron de `fetch` a `authFetch` y **`user_id` salió de las query
   strings y de los bodies** (viajaba a logs de Railway/Cloudflare, historial y `Referer`).
 - **Cinco endpoints no tenían NINGÚN filtro de propietario** (no es que confiaran en un `user_id`
@@ -311,8 +312,8 @@ una segunda capa para el camino del backend. No requirió migración.
   `reportes/datos` y dos de `proyectos`. Ahora verifican pertenencia y devuelven **404, no 403** — un
   403 confirmaría que el id existe en otra organización. En `proyectos.py` eso está centralizado en
   `_proyecto_de_la_org()`.
-- **Quedan 16 rutas abiertas, a propósito:** 14 son `procurement.py` (código muerto sobre tablas
-  inexistentes — corresponde borrarlo, no asegurarlo) y **`POST /api/buscar` + `POST /api/identificar`,
+- **Quedan 2 rutas abiertas, a propósito** (la deuda arrancó en 72): **`POST /api/buscar` y
+  `POST /api/identificar`,
   que NO se pueden cerrar sin romper el servidor MCP (`mcp/tools/cotizar.py`) y la API pública
   (`api_publica/endpoints/cotizar.py`): ambos les pegan por HTTP a `localhost:8000` sin JWT.** El
   arreglo correcto NO es una exención por IP (falsificable), sino que esos dos caminos llamen a la capa
@@ -327,21 +328,14 @@ una segunda capa para el camino del backend. No requirió migración.
 - **Migraciones = manuales.** El service key de Supabase NO hace DDL, y no hay `DATABASE_URL` para conexión directa — Claude Code prepara el `.sql` y lo copia al portapapeles (`pbcopy`), pero el usuario lo pega y ejecuta en el SQL Editor de Supabase. Aplicadas y **confirmadas contra la DB real**: 019–021 agente Gmail, 022 notificaciones, 023 seguimiento de OC por correo, 024 Supplier Capability Intelligence, 025 ficha de proveedores, 026 `rfq_batches`, 027 Workflow Builder, 029 workflow↔aprobación real, 030 organizaciones, 031 RLS organizacional, **034 perfil organizacional + `onboarding_sessions`, 035 `direccion`, 036 plantillas de correo** (estas 3 confirmadas en esta sesión). Estado de 028 (capo control plane, de otra sesión), 032 (mcp oauth state) y 033 (supplier_ratings) no reverificado en esta sesión — no asumir sin chequear.
 - **Bug real de `postgrest-py` 2.x encontrado en producción — ya corregido en todo el backend (commit `43fd9c4`).** `.maybe_single().execute()` devuelve `None` directamente (no un objeto con `.data = None`) cuando la consulta no matchea ninguna fila — cualquier `.execute().data` sin chequear `None` antes crashea con `AttributeError`. Se encontró primero en `resolver_organizacion()` (rompía dashboard/listas/gmail/workflows enteros para cualquier usuario sin fila en `membresias_organizacion`) y se terminó de auditar el resto del backend: **57 ocurrencias en 12 archivos** corregidas con `ejecutar_maybe_single()` (`services/supabase.py`) — envuelve el query y siempre devuelve un objeto con `.data` accesible, sin tener que reescribir la lógica de cada sitio. Para queries nuevas: usar `ejecutar_maybe_single(query.maybe_single())` en vez de `query.maybe_single().execute()`. **Ojo:** había un chip de tarea en background para esto mismo que el usuario alcanzó a iniciar por separado — si existe un worktree/sesión paralela tocando los mismos archivos, revisar por conflictos antes de mergear.
 - **`get_auth_context` ahora autocrea la organización si falta** (usuarios registrados después del backfill de la 030 no tenían fila en `membresias_organizacion` y quedaban bloqueados con 403 en TODO endpoint protegido) — usa la misma red de seguridad que ya tenía `obtener_organizacion()` para `/api/organizacion/mia`.
-- **Tablas referenciadas en código que NO EXISTEN en producción (confirmado con `sb.table(x).select('*').limit(1)` contra la DB real, no contra los `.sql`):** `supplier_categories` y `procurement_ledger` (de `014_smart_procurement.sql`, migración numerada pero aplicada solo a medias — `approval_workflows`/`approval_requests`/`recurrencia_logs` de ese mismo archivo sí existen), `quote_items`/`quote_suppliers`/`purchase_events` (de `013_procurement_flow.sql`, usadas por `procurement.py` — ver "El módulo `/procurement` está huérfano" más abajo), `supplier_ratings`/`rating_pendiente` (usadas por `supplier_intelligence.py` y `POST /api/suppliers/rating` — fallan en silencio o 500). Ningún numero de migración garantiza que esté realmente en prod: **antes de asumir que una tabla existe, verificar con una query real**, no solo mirar `backend/migrations/`.
-- **El módulo `/procurement` está huérfano (verificado 2026-08-20).** Hasta hoy este archivo decía que
-  "el botón `+ Lista` en `/cotizar/[id]/resultados` llama a `POST /api/procurement/eventos` y hoy tira
-  500". **Es falso:** `frontend/app/cotizar/[id]/resultados/page.tsx` no tiene ninguna referencia a
-  `procurement` (verificado por grep). Ese 500 no le está pasando a nadie; no hay urgencia acá.
-  Lo que sí es cierto: `routers/procurement.py` (585 líneas, 15 endpoints) y las páginas
-  `frontend/app/procurement/{page.tsx,[id]/}` son **código muerto de punta a punta** — ningún link de
-  la app navega a `/procurement`, y ni siquiera desde adentro se pueden crear eventos (no existe un
-  POST a `/eventos` en el frontend; la página lista eventos que nadie puede crear). Sólo es alcanzable
-  escribiendo la URL a mano, y ahí falla por las tablas inexistentes.
-  **No borrarlo por las tuyas:** `PLAN_DATA_FOUNDATION.md` (sin trackear, en la raíz) ya lo tiene
-  identificado como "modelos paralelos o inconclusos" a resolver junto con `proveedores`/`suppliers` y
-  `organizaciones`/`organizations`. La decisión pertenece a ese plan, no a una limpieza suelta.
-  Ojo: `procurement_profile.py` y `/api/procurement-profile/*` son **otra cosa** (Supplier Capability
-  Intelligence, en uso real) — no confundir por el nombre.
+- **Tablas referenciadas en código que NO EXISTEN en producción (confirmado con `sb.table(x).select('*').limit(1)` contra la DB real, no contra los `.sql`):** `supplier_categories` y `procurement_ledger` (de `014_smart_procurement.sql`, migración numerada pero aplicada solo a medias — `approval_workflows`/`approval_requests`/`recurrencia_logs` de ese mismo archivo sí existen), `quote_items`/`quote_suppliers`/`purchase_events` (de `013_procurement_flow.sql`; el código que las usaba se borró el 2026-08-24), `supplier_ratings`/`rating_pendiente` (usadas por `supplier_intelligence.py` y `POST /api/suppliers/rating` — fallan en silencio o 500). Ningún numero de migración garantiza que esté realmente en prod: **antes de asumir que una tabla existe, verificar con una query real**, no solo mirar `backend/migrations/`.
+- **`procurement.py` y `ledger.py` ya no existen (borrados 2026-08-24).** Eran código muerto de punta
+  a punta sobre tablas que nunca existieron en producción (`quote_items`/`quote_suppliers`/
+  `purchase_events`/`procurement_ledger`): ningún link navegaba a `/procurement`, nada los importaba y
+  sus 18 endpoints respondían 500. Se fueron con ellos `frontend/app/procurement/` y la rama
+  `quote_supplier:` de `aprobaciones.py`, que era inalcanzable. La decisión quedó registrada en la
+  Fase 3 de `PLAN_DATA_FOUNDATION.md`. Ojo: `procurement_profile.py` y `/api/procurement-profile/*`
+  son **otra cosa** (Supplier Capability Intelligence, en uso real) — no confundir por el nombre.
 - **Orden de auto-aplicación Gmail:** hoy `item_field_updates` se inserta como `aplicado` antes de actualizar `resultados`. Si el segundo paso falla, la auditoría puede decir “Aplicada” sin que el dato exista. Esto ocurrió en datos antiguos y sigue siendo un riesgo del código actual; conviene hacer la escritura atómica o marcar `aplicado` sólo después del update exitoso.
 - **Estado de conexión Gmail:** el dashboard debe consultar `/api/gmail/status`; no inferir la conexión desde `?gmail=conectado`, porque ese query param sólo existe inmediatamente después del callback OAuth. Al reconectar, conservar el `refresh_token` persistente si Google no devuelve uno nuevo.
 - **credentials.json** (OAuth Gmail) está **gitignored** — en prod se usan env vars `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`.
@@ -427,17 +421,20 @@ de tamaño en Pydantic (rechazan 422 antes de tocar ninguna API paga). Siguen **
 4. Migrar los 3 sitios de correo que quedaron fuera de la Fase 6 (copia interna de OC, aviso de proveedor confirmó recepción, encuesta de satisfacción) si se decide agregar eventos nuevos al catálogo para ellos.
 5. Probar en producción el seguimiento de OC por correo (023): responder "recibido, gracias" desde otra cuenta y verificar que `ordenes_compra.estado` pasa a `recibido_conforme` solo, vía el cron de 1 min.
 
-### Estado de ramas (2026-08-20)
-El trabajo reciente está en la rama **`testing`**, no en `main` — son 8 commits sin mergear ni
-pushear (fixes del chat de onboarding por slots, el blindaje de costo LLM `9edbad9` y el indicador de
-homologación `b24bcaf`). Recordar que **`main` es la rama de deploy**: Railway auto-deploya al pushear
-ahí, así que nada de esto está en producción todavía.
+### Estado de ramas (verificado 2026-08-24)
+**`main` está al día con `origin/main` y `testing` ya está mergeada** (`git rev-list main..testing`
+= 0). Hasta el 2026-08-24 este archivo decía que había "8 commits sin mergear ni pushear" en
+`testing`; era información vieja. Recordar que **`main` es la rama de deploy**: Railway auto-deploya
+ambos servicios al pushear ahí.
 
-### Bloqueantes conocidos y no resueltos (2026-08-20)
+### Bloqueantes conocidos y no resueltos (actualizado 2026-08-24)
 1. **Checkpoint productivo de Fase G** — correr un ciclo real `unified` antes de retirar legacy.
-2. **Los endpoints LLM siguen sin autenticación** (ver "Defensas de costo LLM"). Tienen rate limit y
-   topes, que son un freno, no una garantía.
-3. **`+ Lista` en `/cotizar/[id]/resultados` tira 500** — `procurement.py` usa tablas que no existen.
+2. **`POST /api/buscar` y `POST /api/identificar` siguen sin autenticación** — no por deuda sino
+   porque el servidor MCP y la API pública les pegan por HTTP sin JWT. Se destraba haciendo que esos
+   dos caminos usen la capa de servicios en proceso (ver la sección de aislamiento).
+3. **Aislamiento en profundidad** — el borde HTTP está cerrado, pero el backend usa service key: un
+   `.eq()` olvidado dentro de un servicio todavía cruza organizaciones. Falta el test de aislamiento
+   con dos organizaciones reales y la Fase 1 de `PLAN_DATA_FOUNDATION.md`.
 4. **Auto-aplicación Gmail no atómica** — `item_field_updates` se marca `aplicado` antes de escribir
    en `resultados`; si el segundo paso falla, la auditoría dice "Aplicada" sin que el dato exista.
 5. **`registrar_envio()` es sólo auditoría** — no bloquea ni deduplica, un reintento todavía puede
@@ -522,7 +519,7 @@ ahí, así que nada de esto está en producción todavía.
   usar Streamable HTTP en `/api/mcp`.
 6. Probar Supplier Capability Intelligence (024) con datos reales: completar un onboarding y confirmar que aparece la fila en `procurement_profiles`; hacer una búsqueda y confirmar que se crea `search_sessions`; usar "Rebuscar con contexto" y confirmar que cae en `search_feedback`.
 7. Verificar visualmente Fases 4–6 de Supplier Capability Intelligence con proveedores categorizados, enviar una RFQ agrupada de prueba desde Gmail y recorrer una búsqueda complementaria hasta el comparador.
-8. Eliminar `procurement.py` + `frontend/app/procurement/` y el Gantt sin uso (`proyectos.py`), o resolverlos dentro de `PLAN_DATA_FOUNDATION.md`. **No es urgente**: es código muerto sin puerta de entrada, no un error que alguien esté viendo (ver el gotcha "El módulo `/procurement` está huérfano").
+8. ~~Eliminar `procurement.py` + `frontend/app/procurement/`~~ — hecho el 2026-08-24 (ver Gotchas). Queda pendiente decidir qué hacer con el Gantt sin uso (`proyectos.py`), dentro de `PLAN_DATA_FOUNDATION.md`.
 
 ## Workflow de compras + comunicaciones unificado (PRD, Fases A-G — 17-08-2026)
 Proyecto nuevo, grande, **no confundir con el "Workflow Builder" ya descrito arriba** (ese sigue

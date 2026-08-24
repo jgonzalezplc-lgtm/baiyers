@@ -244,26 +244,10 @@ async def decidir(token: str, req: DecisionRequest):
 
     from app.services.notificaciones import crear_notificacion
 
-    # Si la referencia es un quote_supplier y fue aprobado, marcarlo seleccionado
-    if nuevo == "aprobado" and row["referencia"].startswith("quote_supplier:"):
-        qs_id = row["referencia"].split(":", 1)[1]
-        try:
-            sb.table("quote_suppliers").update({"estado": "seleccionado", "updated_at": _now()}).eq("id", qs_id).execute()
-            qs = ejecutar_maybe_single(sb.table("quote_suppliers").select("proveedor_nombre, quote_item_id").eq("id", qs_id).maybe_single())
-            if qs.data and row.get("user_id"):
-                item_nombre = qs.data.get("proveedor_nombre") or "ítem"
-                if qs.data.get("quote_item_id"):
-                    it = ejecutar_maybe_single(sb.table("quote_items").select("nombre").eq("id", qs.data["quote_item_id"]).maybe_single())
-                    item_nombre = (it.data or {}).get("nombre") or item_nombre
-                proveedor_nombre = qs.data.get("proveedor_nombre") or "proveedor"
-                crear_notificacion(
-                    sb, row["user_id"], "cotizacion_aprobada",
-                    "Cotización aprobada",
-                    f"Se aprobó {proveedor_nombre} para '{item_nombre}'.",
-                    {"quote_supplier_id": qs_id, "proveedor_nombre": proveedor_nombre, "item_nombre": item_nombre},
-                )
-        except Exception:
-            pass
+    # Acá vivía el manejo de referencias `quote_supplier:`. Sólo `procurement.py`
+    # podía crearlas, y ese router se eliminó junto con sus tablas
+    # (`quote_items`/`quote_suppliers`/`purchase_events`, que nunca llegaron a
+    # existir en producción), así que la rama era inalcanzable.
 
     # Si la referencia es una lista, actualizar su estado de aprobación
     if row["referencia"].startswith("lista:"):
