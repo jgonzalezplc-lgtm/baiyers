@@ -30,7 +30,26 @@ cd frontend && npx tsc --noEmit
 ```
 
 ## Convenciones
-- **Estilo Swiss:** IBM Plex Mono, acento `#c0392b`, `border-radius: 0`. Usa variables CSS (`var(--accent)`, `var(--bg-surface)`, `var(--text-primary)`, etc.). Botones `.btn-swiss-primary` / `.btn-swiss-secondary`, chips `.label`.
+- **Design system "soft professional"** (definido en `frontend/app/globals.css` — leerlo antes de
+  escribir UI). Marca **azul petróleo** (`--brand`, base `#136b76`), neutros cálidos, **radios
+  moderados** (`--r-sm/md/lg`), sombras suaves y **sentence case** — nada de mayúsculas con
+  `letter-spacing`. Fuente base **Inter** (`--font-sans`); **IBM Plex Mono sólo para montos, códigos
+  e identificadores** (`.mono`, `.tabular`), no para texto corriente. Tamaños de 13–15px, no de 9–11.
+  - **Usar los componentes de `components/ui`** en vez de estilos inline propios: `PageHeader`,
+    `Card`, `BtnPrimary`/`BtnSecondary`/`BtnGhost`, `Badge`, `Input`, `Modal`, `EmptyState`,
+    `SkeletonBox`, `Table`. Iconos: `lucide-react`.
+  - **Ojo con los alias.** Los nombres viejos (`--accent`, `--bg-surface`, `--text-primary`,
+    `.btn-swiss-*`, `.label`, `.section-rule`) **siguen existiendo pero apuntan a los valores
+    nuevos**. Por eso una pantalla escrita con el lenguaje anterior compila y *casi* se ve bien:
+    toma los colores nuevos pero conserva mono en todo, mayúsculas y esquinas rectas. Pasó de
+    verdad en `/integraciones` (2026-08-24). Preferir los tokens nuevos (`--brand`, `--surface`,
+    `--n-600`, `--r-md`).
+  - **Hasta el 2026-08-24 este archivo decía "Estilo Swiss: IBM Plex Mono, acento `#c0392b`,
+    `border-radius: 0`"** — describía el sistema anterior y llevó a escribir una pantalla entera
+    con el estilo equivocado. Si la UI real no coincide con lo que dice acá, la fuente de verdad es
+    `globals.css`.
+  - Gotcha de Tailwind: su preflight pone `list-style: none`, así que un `<ol>` **no numera** salvo
+    que lo declares explícitamente.
 - **Idioma:** UI y comentarios en español.
 - **Commits:** terminar con `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. Commit/push solo cuando corresponde; `main` es la rama de deploy.
 - El build de Next **ignora errores de TS/lint** (`next.config.js`: `ignoreBuildErrors`/`ignoreDuringBuilds`) — hay deuda de tipos pre-existente. No confíes en el build para atrapar tipos; corre `tsc --noEmit`.
@@ -564,6 +583,16 @@ ambos servicios al pushear ahí.
   1 test Gemini real deseleccionado; `next build` completo y QA visual desktop/
   móvil correctos. `tsc --noEmit` conserva sólo la deuda preexistente ya
   documentada en calendario/resultados/estadísticas/proyectos/reportes.
+
+## Navegación — Chat IA y API ocultos (2026-08-24)
+- `frontend/components/AppShell.tsx` ya no incluye `Chat IA` (`/chat`) ni `API`
+  (`/developers`) en la sección «Sistema» del menú lateral. El cambio aplica al
+  riel de escritorio y al drawer móvil porque ambos renderizan el mismo `NAV`.
+- Las páginas y rutas se conservan: siguen accesibles por URL directa para no
+  romper enlaces ni integraciones existentes; sólo se ocultaron de la
+  navegación principal. `MCP` y `Configuración` permanecen visibles.
+- Cambio desplegado desde `main` en el commit `d827263`; `next build` verificado.
+
 6. Probar Supplier Capability Intelligence (024) con datos reales: completar un onboarding y confirmar que aparece la fila en `procurement_profiles`; hacer una búsqueda y confirmar que se crea `search_sessions`; usar "Rebuscar con contexto" y confirmar que cae en `search_feedback`.
 7. Verificar visualmente Fases 4–6 de Supplier Capability Intelligence con proveedores categorizados, enviar una RFQ agrupada de prueba desde Gmail y recorrer una búsqueda complementaria hasta el comparador.
 8. ~~Eliminar `procurement.py` + `frontend/app/procurement/`~~ — hecho el 2026-08-24 (ver Gotchas). Queda pendiente decidir qué hacer con el Gantt sin uso (`proyectos.py`), dentro de `PLAN_DATA_FOUNDATION.md`.
