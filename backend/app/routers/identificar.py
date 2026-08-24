@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.services.llm_rate_limit import limitar_por_ip
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api", tags=["identificar"])
 
@@ -598,7 +599,7 @@ class RefinarRequest(BaseModel):
 
 
 @router.post("/refinar-busqueda", dependencies=[Depends(_limite_refinar)])
-async def refinar_busqueda(req: RefinarRequest):
+async def refinar_busqueda(req: RefinarRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.config import settings
     import google.generativeai as genai
 

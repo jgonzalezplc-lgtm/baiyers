@@ -63,27 +63,31 @@ async def actualizar_mi_organizacion(
 
 
 @router.get("/miembros")
-async def miembros_organizacion(user_id: str):
+async def miembros_organizacion(ctx: AuthContext = Depends(get_auth_context)):
     """Fase D — mapa user_id → nombre para el 'hecho por X' del frontend."""
     from app.services.organizacion import listar_miembros
-    return listar_miembros(user_id)
+    return listar_miembros(ctx.actor_user_id)
 
 
 class InvitarRequest(BaseModel):
-    user_id: str            # el invitador (debe ser admin)
     email: str
     rol: str = "miembro"    # "admin" | "miembro"
     responsable_id: Optional[str] = None  # si viene del canvas del Workflow Builder
 
 
 @router.post("/invitar")
-async def invitar_miembro(req: InvitarRequest):
+async def invitar_miembro(req: InvitarRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Fase C: dispara el correo de invitación de Supabase y registra la
-    membresía. Idempotente si ya estaba en la organización."""
+    membresía. Idempotente si ya estaba en la organización.
+
+    El invitador es SIEMPRE el actor autenticado. Antes venía como `user_id`
+    en el body: con el UUID de un admin de otra empresa, cualquiera podía
+    invitarse a sí mismo como admin de esa organización sin autenticarse.
+    """
     from app.services.organizacion import invitar_a_organizacion
     try:
         return invitar_a_organizacion(
-            req.user_id, req.email, req.rol, req.responsable_id,
+            ctx.actor_user_id, req.email, req.rol, req.responsable_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

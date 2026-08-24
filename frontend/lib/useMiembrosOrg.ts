@@ -13,6 +13,7 @@
  */
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -30,7 +31,7 @@ async function cargar(userId: string): Promise<MiembroOrg[]> {
   if (cacheHit) return cacheHit;
   const enVuelo = inflight.get(userId);
   if (enVuelo) return enVuelo;
-  const p = fetch(`${API_URL}/api/organizacion/miembros?user_id=${userId}`)
+  const p = authFetch(`${API_URL}/api/organizacion/miembros`)
     .then(r => (r.ok ? r.json() : []))
     .then((data: MiembroOrg[]) => {
       cache.set(userId, data || []);

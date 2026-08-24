@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import GanttChart from "@/components/GanttChart";
+import { authFetch } from "@/lib/authFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -111,8 +112,8 @@ export default function ProyectoDetallePage() {
     setLoading(true);
     try {
       const [pRes, iRes] = await Promise.all([
-        fetch(`${API_URL}/api/proyectos/${id}?user_id=${userId}`),
-        fetch(`${API_URL}/api/proyectos/${id}/items`),
+        authFetch(`${API_URL}/api/proyectos/${id}`),
+        authFetch(`${API_URL}/api/proyectos/${id}/items`),
       ]);
       if (pRes.ok) {
         const data = await pRes.json();
@@ -126,13 +127,13 @@ export default function ProyectoDetallePage() {
 
   const cargarGantt = async () => {
     if (!userId) return;
-    const res = await fetch(`${API_URL}/api/proyectos/${id}/gantt?user_id=${userId}`);
+    const res = await authFetch(`${API_URL}/api/proyectos/${id}/gantt`);
     if (res.ok) setGantt(await res.json());
   };
 
   const cargarLiquidez = async () => {
     if (!userId) return;
-    const res = await fetch(`${API_URL}/api/proyectos/${id}/liquidez?user_id=${userId}`);
+    const res = await authFetch(`${API_URL}/api/proyectos/${id}/liquidez`);
     if (res.ok) setLiquidez(await res.json());
   };
 
@@ -143,7 +144,7 @@ export default function ProyectoDetallePage() {
   }, [tab, userId]);
 
   const handleSelectProveedor = async (itemId: string, cotizacionId: string) => {
-    await fetch(`${API_URL}/api/proyectos/${id}/items/${itemId}/seleccionar`, {
+    await authFetch(`${API_URL}/api/proyectos/${id}/items/${itemId}/seleccionar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cotizacion_id: cotizacionId }),
@@ -156,7 +157,7 @@ export default function ProyectoDetallePage() {
     setEmitiendo(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/api/proyectos/${id}/emitir-ocs?user_id=${userId}`, { method: "POST" });
+      const res = await authFetch(`${API_URL}/api/proyectos/${id}/emitir-ocs`, { method: "POST" });
       if (!res.ok) throw new Error(await res.text());
       router.push("/oc");
     } catch (e: unknown) {
@@ -494,10 +495,10 @@ export default function ProyectoDetallePage() {
             <div style={{ display: "flex", gap: 8 }}>
               <button
                 onClick={() => {
-                  fetch(`${API_URL}/api/reportes/exportar-excel`, {
+                  authFetch(`${API_URL}/api/reportes/exportar-excel`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ user_id: userId, proyecto_id: id, titulo: proyecto.nombre }),
+                    body: JSON.stringify({ proyecto_id: id, titulo: proyecto.nombre }),
                   }).then(r => r.blob()).then(blob => {
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement("a");

@@ -93,7 +93,7 @@ export default function ConfiguracionAutorizacionesPage() {
   const cargarDetalle = async (uid: string, workflowId: string | null) => {
     let arr = workflowsExistentes;
     try {
-      const lista: WorkflowExistente[] = await fetch(`${API_URL}/api/workflows?user_id=${uid}`).then(r => r.json());
+      const lista: WorkflowExistente[] = await authFetch(`${API_URL}/api/workflows`).then(r => r.json());
       arr = Array.isArray(lista) ? lista : [];
       setWorkflowsExistentes(arr);
     } catch {
@@ -106,7 +106,7 @@ export default function ConfiguracionAutorizacionesPage() {
     }
 
     try {
-      const res = await fetch(`${API_URL}/api/workflows/${workflowId}?user_id=${uid}`);
+      const res = await authFetch(`${API_URL}/api/workflows/${workflowId}`);
       if (res.status === 404) {
         setPrincipal(null);
         return arr;
@@ -114,7 +114,7 @@ export default function ConfiguracionAutorizacionesPage() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const detalle: WorkflowDetalle = await res.json();
       setPrincipal(detalle);
-      const org: ResponsableInfo[] = await fetch(`${API_URL}/api/workflows/responsables/listar?user_id=${uid}`).then(r => r.json());
+      const org: ResponsableInfo[] = await authFetch(`${API_URL}/api/workflows/responsables/listar`).then(r => r.json());
       setResponsablesOrg(Array.isArray(org) ? org : []);
     } catch {
       avisar("El cambio se guardó, pero no pudimos refrescar la vista — intenta recargar la página.");
@@ -126,7 +126,7 @@ export default function ConfiguracionAutorizacionesPage() {
   // llama al montar la página o después de eliminar un ciclo, nunca tras
   // asignar/quitar una persona del ciclo que ya se está viendo.
   const elegirPrincipal = async (uid: string) => {
-    const lista: WorkflowExistente[] = await fetch(`${API_URL}/api/workflows?user_id=${uid}`).then(r => r.json()).catch(() => []);
+    const lista: WorkflowExistente[] = await authFetch(`${API_URL}/api/workflows`).then(r => r.json()).catch(() => []);
     const arr = Array.isArray(lista) ? lista : [];
     const candidato = arr.find(w => w.estado === "activo") || arr.find(w => w.estado === "borrador") || arr[0] || null;
     await cargarDetalle(uid, candidato?.id ?? null);
@@ -156,7 +156,7 @@ export default function ConfiguracionAutorizacionesPage() {
     setCargando(true);
     setPropuesta(null);
     try {
-      const res = await fetch(`${API_URL}/api/workflows/interpretar`, {
+      const res = await authFetch(`${API_URL}/api/workflows/interpretar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ descripcion: texto, contexto: contextoAcumulado() }),
@@ -243,9 +243,9 @@ export default function ConfiguracionAutorizacionesPage() {
     if (!userId || !principal) return;
     setGuardandoResponsable(true);
     try {
-      const res = await fetch(`${API_URL}/api/workflows/responsables/${responsableId}/roles`, {
+      const res = await authFetch(`${API_URL}/api/workflows/responsables/${responsableId}/roles`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, workflow_id: principal.id, rol_clave: rol }),
+        body: JSON.stringify({ workflow_id: principal.id, rol_clave: rol }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -265,19 +265,19 @@ export default function ConfiguracionAutorizacionesPage() {
     if (!userId || !principal || !nuevoNombre.trim() || !nuevoEmail.trim()) return;
     setGuardandoResponsable(true);
     try {
-      const creado = await fetch(`${API_URL}/api/workflows/responsables`, {
+      const creado = await authFetch(`${API_URL}/api/workflows/responsables`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, nombre: nuevoNombre.trim(), email: nuevoEmail.trim() }),
+        body: JSON.stringify({ nombre: nuevoNombre.trim(), email: nuevoEmail.trim() }),
       }).then(r => r.json());
-      await fetch(`${API_URL}/api/workflows/responsables/${creado.id}/roles`, {
+      await authFetch(`${API_URL}/api/workflows/responsables/${creado.id}/roles`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, workflow_id: principal.id, rol_clave: rol }),
+        body: JSON.stringify({ workflow_id: principal.id, rol_clave: rol }),
       });
       let mensajeInvitacion = "";
       try {
-        const inv = await fetch(`${API_URL}/api/organizacion/invitar`, {
+        const inv = await authFetch(`${API_URL}/api/organizacion/invitar`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: userId, email: nuevoEmail.trim(), responsable_id: creado.id }),
+          body: JSON.stringify({ email: nuevoEmail.trim(), responsable_id: creado.id }),
         });
         const invData = await inv.json();
         if (!inv.ok) {
@@ -302,7 +302,7 @@ export default function ConfiguracionAutorizacionesPage() {
     if (!userId || !principal) return;
     setGuardandoResponsable(true);
     try {
-      await fetch(`${API_URL}/api/workflows/responsables/${responsableId}/roles/${principal.id}/${rol}?user_id=${userId}`, { method: "DELETE" });
+      await authFetch(`${API_URL}/api/workflows/responsables/${responsableId}/roles/${principal.id}/${rol}`, { method: "DELETE" });
       await cargarDetalle(userId, principal.id);
     } finally {
       setGuardandoResponsable(false);

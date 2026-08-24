@@ -141,7 +141,7 @@ export default async function DashboardPage({
       fetchConTimeout(`${API_URL}/api/dashboard/stats`, 5000, true),
       fetchConTimeout(`${API_URL}/api/listas`, 5000, true),
       fetchConTimeout(`${API_URL}/api/gmail/status`, 5000, true),
-      fetchConTimeout(`${API_URL}/api/workflows/estado/resumen?user_id=${user.id}`),
+      fetchConTimeout(`${API_URL}/api/workflows/estado/resumen`),
     ]);
     if (statsRes?.ok) stats = await statsRes.json();
     if (cotRes?.ok) listasRecientes = (await cotRes.json()).slice(0, 5);

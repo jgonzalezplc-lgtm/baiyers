@@ -138,7 +138,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     "¿Quién o quiénes se encargan de cotizar? Indica sus nombres y correos.";
 
   const turnoProceso = async (respuesta: string, slots: unknown[] | null): Promise<TurnoProceso> => {
-    const res = await fetch(`${API_URL}/api/workflows/proceso/turno`, {
+    const res = await authFetch(`${API_URL}/api/workflows/proceso/turno`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -618,7 +618,7 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
     let tieneWorkflow = false;
     if (userIdRef.current) {
       try {
-        const lista = await fetch(`${API_URL}/api/workflows?user_id=${userIdRef.current}`).then(r => r.json());
+        const lista = await authFetch(`${API_URL}/api/workflows`).then(r => r.json());
         tieneWorkflow = Array.isArray(lista) && lista.length > 0;
       } catch { /* si falla el chequeo, se asume que no tiene y se ofrece igual */ }
     }
@@ -668,10 +668,9 @@ export default function OnboardingChat({ floating, onDone, onSkip }: Props) {
       if (error) throw error;
 
       if (data.user?.id) {
-        fetch(`${API_URL}/api/procurement-profile/generar`, {
+        authFetch(`${API_URL}/api/procurement-profile/generar`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            user_id: data.user.id,
             empresa: draft.empresa?.valor ?? null,
             dominio: investigacion?.sitio_web ? investigacion.sitio_web.replace(/^https?:\/\//, "").replace(/^www\./, "") : null,
             industria: investigacion?.industria ?? null,

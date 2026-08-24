@@ -318,11 +318,10 @@ export default function ResultadosPage() {
       // de la búsqueda real. Para cuando llegue "done" del stream (varios
       // segundos después) ya debería estar creada.
       if (uid && id !== "demo") {
-        fetch(`${API_URL}/api/buscar/sesiones`, {
+        authFetch(`${API_URL}/api/buscar/sesiones`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            user_id: uid,
             cotizacion_id: id,
             lista_proyecto_id: listaId || null,
             item_nombre: nombre_item,
@@ -339,14 +338,13 @@ export default function ResultadosPage() {
         }).catch(() => {});
       }
 
-      const res = await fetch(`${API_URL}/api/buscar/stream`, {
+      const res = await authFetch(`${API_URL}/api/buscar/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cotizacion_id: id, terminos_es, terminos_en, nombre_item,
           categoria: categorias[0] ?? categoria,
           categorias: categorias.length ? categorias : (categoria ? [categoria] : null),
-          user_id: uid,
           busqueda_expandida: busquedaExpandida,
         }),
       });
@@ -372,10 +370,10 @@ export default function ResultadosPage() {
             if (msg.done) {
               setLoading(false);
               if (currentSessionId && uid) {
-                fetch(`${API_URL}/api/buscar/sesiones/${currentSessionId}/cerrar`, {
+                authFetch(`${API_URL}/api/buscar/sesiones/${currentSessionId}/cerrar`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ user_id: uid, n_resultados: msg.total ?? 0 }),
+                  body: JSON.stringify({ n_resultados: msg.total ?? 0 }),
                 }).catch(() => {});
               }
             } else if (msg.result) {
@@ -390,10 +388,10 @@ export default function ResultadosPage() {
               // Evaluar precio histórico
               if (r.precio != null) {
                 if (uid && nombre_item) {
-                  fetch(`${API_URL}/api/historico/evaluar`, {
+                  authFetch(`${API_URL}/api/historico/evaluar`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ precio: r.precio, item_nombre: nombre_item, user_id: uid }),
+                    body: JSON.stringify({ precio: r.precio, item_nombre: nombre_item }),
                   }).then(res => res.json()).then(ev => {
                     setEvaluaciones(prev => ({ ...prev, [r._uid!]: ev }));
                   }).catch(() => {});
@@ -415,7 +413,7 @@ export default function ResultadosPage() {
     if (!contextoRefinar.trim()) return;
     setRefinando(true);
     try {
-      const res = await fetch(`${API_URL}/api/refinar-busqueda`, {
+      const res = await authFetch(`${API_URL}/api/refinar-busqueda`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -450,11 +448,10 @@ export default function ResultadosPage() {
       // Feedback explícito: el usuario dijo que la búsqueda original no sirvió
       // y dio contexto para ampliarla — señal fuerte para el perfil/evidencia.
       if (sessionId && userId) {
-        fetch(`${API_URL}/api/buscar/sesiones/${sessionId}/feedback`, {
+        authFetch(`${API_URL}/api/buscar/sesiones/${sessionId}/feedback`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            user_id: userId,
             tipo: "expand_search",
             categoria_predicha: searchParams.get("cats")?.split(",")[0] ?? null,
             categoria_corregida: r.categoria ?? null,
@@ -629,7 +626,7 @@ export default function ResultadosPage() {
       ].filter(Boolean);
       const specs = specsPartes.length ? specsPartes.join(". ") : undefined;
 
-      const res = await fetch(`${API_URL}/api/gmail/generar-correo`, {
+      const res = await authFetch(`${API_URL}/api/gmail/generar-correo`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nombre_item: nombreItem, specs, proveedor_nombre: r0.proveedor || r0.titulo, cantidad: "1" }),
@@ -710,10 +707,10 @@ export default function ResultadosPage() {
     let errMsg = "";
     for (const dest of pendientes) {
       try {
-        const res = await fetch(`${API_URL}/api/gmail/enviar`, {
+        const res = await authFetch(`${API_URL}/api/gmail/enviar`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cotizacion_id: id, resultado_id: dest.resultado_id, to_email: dest.email, subject: emailSubject, body: emailBody, user_id: userId, proveedor_nombre: dest.nombre }),
+          body: JSON.stringify({ cotizacion_id: id, resultado_id: dest.resultado_id, to_email: dest.email, subject: emailSubject, body: emailBody, proveedor_nombre: dest.nombre }),
         });
         if (!res.ok) {
           const d = await res.json().catch(() => ({}));

@@ -7,6 +7,7 @@
  * - Zoom in/out
  */
 import { useEffect, useMemo, useState } from "react";
+import { authFetch } from "@/lib/authFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -54,7 +55,7 @@ export default function GanttChart({ proyectoId, userId }: { proyectoId: string;
   const [zoom, setZoom] = useState(1); // px por día base 14
 
   useEffect(() => {
-    fetch(`${API_URL}/api/proyectos/${proyectoId}/gantt/escenarios?user_id=${userId}`)
+    authFetch(`${API_URL}/api/proyectos/${proyectoId}/gantt/escenarios`)
       .then(async (r) => { if (!r.ok) throw new Error("No se pudo cargar el Gantt"); return r.json(); })
       .then(setData)
       .catch((e) => setError(e.message));

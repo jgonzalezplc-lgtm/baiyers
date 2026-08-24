@@ -85,7 +85,7 @@ export default function CalendarioPage() {
     if (!llegadaModal || !fechaLlegada) return;
     setGuardando(true);
     try {
-      const res = await fetch(`${API_URL}/api/calendario/llegada-efectiva`, {
+      const res = await authFetch(`${API_URL}/api/calendario/llegada-efectiva`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ oc_id: llegadaModal.datos.oc_id, fecha_llegada: fechaLlegada }),

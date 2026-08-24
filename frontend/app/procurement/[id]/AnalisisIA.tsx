@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { API_URL, fmtPrecio } from "../constants";
+import { authFetch } from "@/lib/authFetch";
 
 interface Opcion {
   proveedor_nombre: string;
@@ -54,10 +55,10 @@ export default function AnalisisIA({ userId, itemNombre, cantidad, opciones }: {
     setLoading(true);
     setError("");
     try {
-      const r = await fetch(`${API_URL}/api/analizar-cotizaciones`, {
+      const r = await authFetch(`${API_URL}/api/analizar-cotizaciones`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, item_nombre: itemNombre, cantidad, opciones }),
+        body: JSON.stringify({ item_nombre: itemNombre, cantidad, opciones }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail ?? "Error en el análisis");

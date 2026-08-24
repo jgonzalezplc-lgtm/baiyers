@@ -77,7 +77,7 @@ export default function ProveedoresPage() {
     if (!form.nombre.trim() && !form.sitio_web.trim()) return mostrarToast("Ingresa un nombre o sitio web");
     setInvestigando(true);
     try {
-      const res = await fetch(`${API_URL}/api/proveedores/investigar`, {
+      const res = await authFetch(`${API_URL}/api/proveedores/investigar`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nombre: form.nombre, sitio_web: form.sitio_web }),
       });

@@ -140,7 +140,7 @@ export default function CanvasWorkflowPage() {
   }, []);
 
   const cargarWorkflow = async (uid: string) => {
-    const data: Workflow = await fetch(`${API_URL}/api/workflows/${workflowId}?user_id=${uid}`).then(r => r.json());
+    const data: Workflow = await authFetch(`${API_URL}/api/workflows/${workflowId}`).then(r => r.json());
     setWorkflow(data);
     setNodos(prev => {
       const conPosicion = (data.nodos || []).map((n, i) => {
@@ -162,7 +162,7 @@ export default function CanvasWorkflowPage() {
   // alcance a apretar "Guardar".
   const refrescarResponsablesAsignados = async (uid: string) => {
     try {
-      const data: Workflow = await fetch(`${API_URL}/api/workflows/${workflowId}?user_id=${uid}`).then(r => r.json());
+      const data: Workflow = await authFetch(`${API_URL}/api/workflows/${workflowId}`).then(r => r.json());
       setWorkflow(prev => (prev ? { ...prev, responsables: data.responsables } : data));
     } catch {
       // No crítico — el panel puede tardar un refresco en reflejar la asignación.
@@ -180,7 +180,7 @@ export default function CanvasWorkflowPage() {
     (async () => {
       await cargarWorkflow(userId);
       const [org, perfil] = await Promise.all([
-        fetch(`${API_URL}/api/workflows/responsables/listar?user_id=${userId}`).then(r => r.json()).catch(() => []),
+        authFetch(`${API_URL}/api/workflows/responsables/listar`).then(r => r.json()).catch(() => []),
         authFetch(`${API_URL}/api/organizacion/mia`).then(r => r.json()).catch(() => ({})),
         cargarConfiguracion(),
       ]);
@@ -245,13 +245,13 @@ export default function CanvasWorkflowPage() {
         setTimeout(() => setToast(""), 3500);
         return;
       }
-      const creado = await fetch(`${API_URL}/api/workflows/responsables`, {
+      const creado = await authFetch(`${API_URL}/api/workflows/responsables`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, nombre: nuevoNombre.trim(), email: nuevoEmail.trim() }),
+        body: JSON.stringify({ nombre: nuevoNombre.trim(), email: nuevoEmail.trim() }),
       }).then(r => r.json());
-      await fetch(`${API_URL}/api/workflows/responsables/${creado.id}/roles`, {
+      await authFetch(`${API_URL}/api/workflows/responsables/${creado.id}/roles`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, workflow_id: targetId, rol_clave: rol }),
+        body: JSON.stringify({ workflow_id: targetId, rol_clave: rol }),
       });
       const modo = modoAsignacionPorRol[rol] || "individual";
       const existentesRol = asignacionesNodo.filter(a => a.nodo_id === nodoSel.id && a.rol_clave === rol);
@@ -264,9 +264,9 @@ export default function CanvasWorkflowPage() {
       // pero no bloqueamos el flujo del workflow.
       let mensajeInvitacion = "";
       try {
-        const inv = await fetch(`${API_URL}/api/organizacion/invitar`, {
+        const inv = await authFetch(`${API_URL}/api/organizacion/invitar`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: userId, email: nuevoEmail.trim(), responsable_id: creado.id }),
+          body: JSON.stringify({ email: nuevoEmail.trim(), responsable_id: creado.id }),
         });
         const invData = await inv.json();
         if (!inv.ok) {
@@ -282,7 +282,7 @@ export default function CanvasWorkflowPage() {
       setToast(mensajeInvitacion);
       setTimeout(() => setToast(""), 4500);
       if (targetId !== workflowId) { router.push(`/settings/autorizaciones/canvas/${targetId}`); return; }
-      const org: ResponsableInfo[] = await fetch(`${API_URL}/api/workflows/responsables/listar?user_id=${userId}`).then(r => r.json()).catch(() => []);
+      const org: ResponsableInfo[] = await authFetch(`${API_URL}/api/workflows/responsables/listar`).then(r => r.json()).catch(() => []);
       setResponsablesOrg(org || []);
       await cargarWorkflow(userId); await cargarConfiguracion();
       setAsignandoRol(null); setNuevoNombre(""); setNuevoEmail("");
@@ -430,10 +430,10 @@ export default function CanvasWorkflowPage() {
     setGuardando(true);
     setErrores(null);
     try {
-      const res = await fetch(`${API_URL}/api/workflows/${workflowId}`, {
+      const res = await authFetch(`${API_URL}/api/workflows/${workflowId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, nodos, conexiones }),
+        body: JSON.stringify({ nodos, conexiones }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -562,9 +562,9 @@ export default function CanvasWorkflowPage() {
 
     if (!responsableId) {
       try {
-        const creado = await fetch(`${API_URL}/api/workflows/responsables`, {
+        const creado = await authFetch(`${API_URL}/api/workflows/responsables`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: userId, nombre, email }),
+          body: JSON.stringify({ nombre, email }),
         }).then(r => r.json());
         responsableId = creado.id;
       } catch {
@@ -574,9 +574,9 @@ export default function CanvasWorkflowPage() {
     }
 
     try {
-      await fetch(`${API_URL}/api/workflows/responsables/${responsableId}/roles`, {
+      await authFetch(`${API_URL}/api/workflows/responsables/${responsableId}/roles`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, workflow_id: workflowId, rol_clave: rolClave }),
+        body: JSON.stringify({ workflow_id: workflowId, rol_clave: rolClave }),
       });
       const asignacion = await authFetch(`${API_URL}/api/workflows/${workflowId}/asignaciones-nodo`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -590,9 +590,9 @@ export default function CanvasWorkflowPage() {
 
     if (email) {
       try {
-        await fetch(`${API_URL}/api/organizacion/invitar`, {
+        await authFetch(`${API_URL}/api/organizacion/invitar`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: userId, email, responsable_id: responsableId }),
+          body: JSON.stringify({ email, responsable_id: responsableId }),
         });
       } catch {
         // No bloquea — el responsable ya quedó asignado, la invitación se
@@ -600,7 +600,7 @@ export default function CanvasWorkflowPage() {
       }
     }
 
-    const org: ResponsableInfo[] = await fetch(`${API_URL}/api/workflows/responsables/listar?user_id=${userId}`).then(r => r.json()).catch(() => responsablesOrg);
+    const org: ResponsableInfo[] = await authFetch(`${API_URL}/api/workflows/responsables/listar`).then(r => r.json()).catch(() => responsablesOrg);
     setResponsablesOrg(Array.isArray(org) ? org : responsablesOrg);
     await refrescarResponsablesAsignados(userId);
     await cargarConfiguracion();

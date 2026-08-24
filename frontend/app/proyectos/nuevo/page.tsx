@@ -3,6 +3,7 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { authFetch } from "@/lib/authFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -69,7 +70,7 @@ export default function NuevoProyectoPage() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(`${API_URL}/api/proyectos/parsear-cubicacion`, { method: "POST", body: form });
+      const res = await authFetch(`${API_URL}/api/proyectos/parsear-cubicacion`, { method: "POST", body: form });
       if (!res.ok) throw new Error("Error parseando");
       const data = await res.json();
       setItems(data.items);
@@ -85,17 +86,17 @@ export default function NuevoProyectoPage() {
     setGuardando(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/api/proyectos`, {
+      const res = await authFetch(`${API_URL}/api/proyectos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, nombre, cliente: cliente || null, fecha_inicio: fechaInicio, descripcion: descripcion || null }),
+        body: JSON.stringify({ nombre, cliente: cliente || null, fecha_inicio: fechaInicio, descripcion: descripcion || null }),
       });
       if (!res.ok) throw new Error("Error creando proyecto");
       const proy = await res.json();
       setProyectoId(proy.id);
 
       if (items.length > 0) {
-        await fetch(`${API_URL}/api/proyectos/${proy.id}/items?user_id=${userId}`, {
+        await authFetch(`${API_URL}/api/proyectos/${proy.id}/items`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(items.map((it, i) => ({ ...it, orden: i }))),
@@ -113,9 +114,9 @@ export default function NuevoProyectoPage() {
     if (!proyectoId || !userId) return;
     setCotizando(true);
     try {
-      await fetch(`${API_URL}/api/proyectos/${proyectoId}/cotizar?user_id=${userId}`, { method: "POST" });
+      await authFetch(`${API_URL}/api/proyectos/${proyectoId}/cotizar`, { method: "POST" });
       const poll = setInterval(async () => {
-        const res = await fetch(`${API_URL}/api/proyectos/${proyectoId}/cotizar/progreso`);
+        const res = await authFetch(`${API_URL}/api/proyectos/${proyectoId}/cotizar/progreso`);
         const data = await res.json();
         setProgreso(data);
         if (data.terminado) { clearInterval(poll); setCotizando(false); }

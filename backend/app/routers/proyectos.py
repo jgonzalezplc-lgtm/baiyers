@@ -1,8 +1,10 @@
 import asyncio
 from datetime import date, timedelta
 from typing import Optional
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/proyectos", tags=["proyectos"])
 
@@ -10,14 +12,25 @@ router = APIRouter(prefix="/api/proyectos", tags=["proyectos"])
 _progreso: dict[str, dict] = {}
 
 
-def _ids_org(user_id: str) -> list[str]:
-    """Wrapper local para import perezoso (Fase B del multi-usuario)."""
-    from app.services.organizacion import ids_organizacion
-    return ids_organizacion(user_id)
+def _proyecto_de_la_org(sb, proyecto_id: str, ctx: AuthContext, campos: str = "id") -> dict:
+    """Devuelve el proyecto sólo si pertenece a la organización del actor; si
+    no, 404 (no 403: no confirmamos que el id exista en otra empresa).
+
+    Varios endpoints de este router operaban sobre `proyecto_id`/`item_id`
+    sin ningún filtro de propietario — con un id ajeno se leían y escribían
+    ítems, cotizaciones y OCs de otra organización.
+    """
+    from app.services.supabase import ejecutar_maybe_single
+    res = ejecutar_maybe_single(
+        sb.table("proyectos").select(campos).eq("id", proyecto_id)
+        .in_("user_id", ctx.user_ids_organizacion).maybe_single()
+    )
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+    return res.data
 
 
 class ProyectoRequest(BaseModel):
-    user_id: str
     nombre: str
     cliente: Optional[str] = None
     descripcion: Optional[str] = None
@@ -43,21 +56,21 @@ class ProveedorItemRequest(BaseModel):
 # ── LISTAR ────────────────────────────────────────────────────────────────────
 
 @router.get("")
-async def listar_proyectos(user_id: str):
+async def listar_proyectos(ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    res = sb.table("proyectos").select("*").in_("user_id", _ids_org(user_id)).order("created_at", desc=True).execute()
+    res = sb.table("proyectos").select("*").in_("user_id", ctx.user_ids_organizacion).order("created_at", desc=True).execute()
     return res.data
 
 
 # ── CREAR ─────────────────────────────────────────────────────────────────────
 
 @router.post("")
-async def crear_proyecto(req: ProyectoRequest):
+async def crear_proyecto(req: ProyectoRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
     row = {
-        "user_id": req.user_id,
+        "user_id": ctx.actor_user_id,
         "nombre": req.nombre,
         "cliente": req.cliente,
         "descripcion": req.descripcion,
@@ -72,10 +85,10 @@ async def crear_proyecto(req: ProyectoRequest):
 # ── DETALLE ───────────────────────────────────────────────────────────────────
 
 @router.get("/{proyecto_id}")
-async def detalle_proyecto(proyecto_id: str, user_id: str):
+async def detalle_proyecto(proyecto_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    proy = sb.table("proyectos").select("*").eq("id", proyecto_id).in_("user_id", _ids_org(user_id)).single().execute()
+    proy = sb.table("proyectos").select("*").eq("id", proyecto_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
     if not proy.data:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
     items = sb.table("items_proyecto").select("*, proveedores(nombre, email, score, categoria_score)").eq("proyecto_id", proyecto_id).order("orden").execute()
@@ -85,11 +98,13 @@ async def detalle_proyecto(proyecto_id: str, user_id: str):
 # ── AGREGAR ÍTEMS ─────────────────────────────────────────────────────────────
 
 @router.post("/{proyecto_id}/items")
-async def agregar_items(proyecto_id: str, user_id: str, items: list[ItemProyectoIn]):
+async def agregar_items(
+    proyecto_id: str, items: list[ItemProyectoIn], ctx: AuthContext = Depends(get_auth_context),
+):
     from app.services.supabase import get_supabase
     sb = get_supabase()
     # Verificar ownership
-    proy = sb.table("proyectos").select("id").eq("id", proyecto_id).in_("user_id", _ids_org(user_id)).single().execute()
+    proy = sb.table("proyectos").select("id").eq("id", proyecto_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
     if not proy.data:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
@@ -188,11 +203,13 @@ async def _run_cotizacion(proyecto_id: str, user_id: str, items: list[dict]):
 
 
 @router.post("/{proyecto_id}/cotizar")
-async def cotizar_proyecto(proyecto_id: str, user_id: str, background_tasks: BackgroundTasks):
+async def cotizar_proyecto(
+    proyecto_id: str, background_tasks: BackgroundTasks, ctx: AuthContext = Depends(get_auth_context),
+):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    proy = sb.table("proyectos").select("id").eq("id", proyecto_id).in_("user_id", _ids_org(user_id)).single().execute()
+    proy = sb.table("proyectos").select("id").eq("id", proyecto_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
     if not proy.data:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
@@ -200,12 +217,14 @@ async def cotizar_proyecto(proyecto_id: str, user_id: str, background_tasks: Bac
     if not items.data:
         raise HTTPException(status_code=400, detail="El proyecto no tiene ítems")
 
-    background_tasks.add_task(_run_cotizacion, proyecto_id, user_id, items.data)
+    background_tasks.add_task(_run_cotizacion, proyecto_id, ctx.actor_user_id, items.data)
     return {"iniciado": True, "total_items": len(items.data)}
 
 
 @router.get("/{proyecto_id}/cotizar/progreso")
-async def progreso_cotizacion(proyecto_id: str):
+async def progreso_cotizacion(proyecto_id: str, ctx: AuthContext = Depends(get_auth_context)):
+    from app.services.supabase import get_supabase
+    _proyecto_de_la_org(get_supabase(), proyecto_id, ctx)
     prog = _progreso.get(proyecto_id, {"total": 0, "completados": 0, "terminado": False})
     return prog
 
@@ -213,11 +232,18 @@ async def progreso_cotizacion(proyecto_id: str):
 # ── ACTUALIZAR PROVEEDOR DE ÍTEM ──────────────────────────────────────────────
 
 @router.put("/{proyecto_id}/items/{item_id}/proveedor")
-async def actualizar_proveedor_item(proyecto_id: str, item_id: str, user_id: str, req: ProveedorItemRequest):
-    from app.services.supabase import get_supabase
+async def actualizar_proveedor_item(
+    proyecto_id: str, item_id: str, req: ProveedorItemRequest,
+    ctx: AuthContext = Depends(get_auth_context),
+):
+    from app.services.supabase import ejecutar_maybe_single, get_supabase
     sb = get_supabase()
+    _proyecto_de_la_org(sb, proyecto_id, ctx)
 
-    item_res = sb.table("items_proyecto").select("cantidad").eq("id", item_id).single().execute()
+    item_res = ejecutar_maybe_single(
+        sb.table("items_proyecto").select("cantidad").eq("id", item_id)
+        .eq("proyecto_id", proyecto_id).maybe_single()
+    )
     if not item_res.data:
         raise HTTPException(status_code=404, detail="Ítem no encontrado")
 
@@ -243,9 +269,12 @@ async def actualizar_proveedor_item(proyecto_id: str, item_id: str, user_id: str
 # ── COTIZACIONES DE UN ÍTEM ────────────────────────────────────────────────────
 
 @router.get("/{proyecto_id}/items/{item_id}/cotizaciones")
-async def cotizaciones_item(proyecto_id: str, item_id: str):
+async def cotizaciones_item(
+    proyecto_id: str, item_id: str, ctx: AuthContext = Depends(get_auth_context),
+):
     from app.services.supabase import get_supabase
     sb = get_supabase()
+    _proyecto_de_la_org(sb, proyecto_id, ctx)
     res = sb.table("cotizaciones_proyecto").select("*").eq("item_proyecto_id", item_id).order("precio_unitario").execute()
     return res.data
 
@@ -253,11 +282,11 @@ async def cotizaciones_item(proyecto_id: str, item_id: str):
 # ── GANTT ─────────────────────────────────────────────────────────────────────
 
 @router.get("/{proyecto_id}/gantt")
-async def gantt(proyecto_id: str, user_id: str):
+async def gantt(proyecto_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    proy = sb.table("proyectos").select("fecha_inicio, nombre").eq("id", proyecto_id).in_("user_id", _ids_org(user_id)).single().execute()
+    proy = sb.table("proyectos").select("fecha_inicio, nombre").eq("id", proyecto_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
     if not proy.data:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
@@ -298,7 +327,7 @@ DIAS_APROBACION = 1      # configurable por empresa a futuro
 
 
 @router.get("/{proyecto_id}/gantt/escenarios")
-async def gantt_escenarios(proyecto_id: str, user_id: str):
+async def gantt_escenarios(proyecto_id: str, ctx: AuthContext = Depends(get_auth_context)):
     """Calcula 3 escenarios de cronograma según qué cotización se elige por ítem:
     - minimo_costo:   proveedor más barato aunque sea lento
     - entrega_rapida: menor plazo aunque cueste más
@@ -309,7 +338,7 @@ async def gantt_escenarios(proyecto_id: str, user_id: str):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    proy = sb.table("proyectos").select("fecha_inicio, nombre").eq("id", proyecto_id).in_("user_id", _ids_org(user_id)).single().execute()
+    proy = sb.table("proyectos").select("fecha_inicio, nombre").eq("id", proyecto_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
     if not proy.data:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
@@ -393,11 +422,11 @@ async def gantt_escenarios(proyecto_id: str, user_id: str):
 # ── LIQUIDEZ ──────────────────────────────────────────────────────────────────
 
 @router.get("/{proyecto_id}/liquidez")
-async def liquidez(proyecto_id: str, user_id: str):
+async def liquidez(proyecto_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
-    proy = sb.table("proyectos").select("fecha_inicio, monto_total").eq("id", proyecto_id).in_("user_id", _ids_org(user_id)).single().execute()
+    proy = sb.table("proyectos").select("fecha_inicio, monto_total").eq("id", proyecto_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
     if not proy.data:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
@@ -435,9 +464,10 @@ async def liquidez(proyecto_id: str, user_id: str):
 # ── LISTAR ÍTEMS CON COTIZACIONES ─────────────────────────────────────────────
 
 @router.get("/{proyecto_id}/items")
-async def listar_items(proyecto_id: str):
+async def listar_items(proyecto_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
+    _proyecto_de_la_org(sb, proyecto_id, ctx)
     items = sb.table("items_proyecto").select("*").eq("proyecto_id", proyecto_id).order("orden").execute()
     result = []
     for it in items.data:
@@ -453,11 +483,18 @@ class SeleccionarRequest(BaseModel):
 
 
 @router.post("/{proyecto_id}/items/{item_id}/seleccionar")
-async def seleccionar_cotizacion(proyecto_id: str, item_id: str, req: SeleccionarRequest):
-    from app.services.supabase import get_supabase
+async def seleccionar_cotizacion(
+    proyecto_id: str, item_id: str, req: SeleccionarRequest,
+    ctx: AuthContext = Depends(get_auth_context),
+):
+    from app.services.supabase import ejecutar_maybe_single, get_supabase
     sb = get_supabase()
+    _proyecto_de_la_org(sb, proyecto_id, ctx)
 
-    cot = sb.table("cotizaciones_proyecto").select("*").eq("id", req.cotizacion_id).single().execute()
+    cot = ejecutar_maybe_single(
+        sb.table("cotizaciones_proyecto").select("*").eq("id", req.cotizacion_id)
+        .eq("item_proyecto_id", item_id).maybe_single()
+    )
     if not cot.data:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
 
@@ -484,9 +521,10 @@ async def seleccionar_cotizacion(proyecto_id: str, item_id: str, req: Selecciona
 # ── EMITIR OCS ────────────────────────────────────────────────────────────────
 
 @router.post("/{proyecto_id}/emitir-ocs")
-async def emitir_ocs(proyecto_id: str, user_id: str):
+async def emitir_ocs(proyecto_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
+    _proyecto_de_la_org(sb, proyecto_id, ctx)
 
     items = sb.table("items_proyecto").select("*").eq("proyecto_id", proyecto_id).neq("precio_unitario", None).execute()
     if not items.data:
@@ -507,7 +545,7 @@ async def emitir_ocs(proyecto_id: str, user_id: str):
         monto = sum(float(i.get("precio_total") or 0) for i in its)
         descripcion = "; ".join(f"{i['item']} x{i['cantidad']}" for i in its)
         row = {
-            "user_id": user_id,
+            "user_id": ctx.actor_user_id,
             "proveedor_nombre": prov_nombre,
             "descripcion": f"OC Proyecto: {proy_nombre} — {descripcion}",
             "monto_total": monto,
@@ -529,7 +567,9 @@ import io as _io
 
 
 @router.post("/parsear-cubicacion")
-async def parsear_cubicacion(file: UploadFile = File(...)):
+async def parsear_cubicacion(
+    file: UploadFile = File(...), ctx: AuthContext = Depends(get_auth_context),
+):
     """Usa Gemini para parsear un Excel de cubicación y extraer ítems."""
     try:
         import pandas as pd

@@ -10,7 +10,8 @@ registrar_movimiento(), y expone consulta histórica para sugerencias y análisi
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from app.services.auth_context import AuthContext, get_auth_context
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/ledger", tags=["ledger"])
@@ -123,19 +124,19 @@ def registrar_movimiento(
 
 @router.get("/search")
 async def buscar_ledger(
-    user_id: str,
     item: Optional[str] = None,
     proveedor: Optional[str] = None,
     estado: Optional[str] = None,
     categoria: Optional[str] = None,
     desde: Optional[str] = None,
     hasta: Optional[str] = None,
+    ctx: AuthContext = Depends(get_auth_context),
     limit: int = 100,
 ):
     """Búsqueda con filtros sobre el ledger."""
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    q = sb.table("procurement_ledger").select("*").in_("user_id", _ids_org(user_id))
+    q = sb.table("procurement_ledger").select("*").in_("user_id", ctx.user_ids_organizacion)
     if item:
         q = q.ilike("item_name", f"%{item}%")
     if proveedor:
@@ -153,7 +154,7 @@ async def buscar_ledger(
 
 
 @router.get("/sugerencias")
-async def sugerencias_item(user_id: str, item: str):
+async def sugerencias_item(item: str, ctx: AuthContext = Depends(get_auth_context)):
     """Histórico de compras del ítem: para mostrar 'Compraste a X hace N meses'."""
     from app.services.supabase import get_supabase
     sb = get_supabase()
@@ -162,7 +163,7 @@ async def sugerencias_item(user_id: str, item: str):
             "proveedor_nombre, supplier_id, precio_unitario, moneda, estado, "
             "fecha_oc, fecha_entrega_esperada, fecha_entrega_real, created_at"
         )
-        .in_("user_id", _ids_org(user_id)).ilike("item_name", f"%{item}%")
+        .in_("user_id", ctx.user_ids_organizacion).ilike("item_name", f"%{item}%")
         .order("created_at", desc=True).limit(20).execute()
     )
     rows = res.data or []
@@ -184,10 +185,10 @@ async def sugerencias_item(user_id: str, item: str):
 
 
 @router.get("/{ledger_id}")
-async def detalle_ledger(ledger_id: str, user_id: str):
+async def detalle_ledger(ledger_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    res = sb.table("procurement_ledger").select("*").eq("id", ledger_id).in_("user_id", _ids_org(user_id)).single().execute()
+    res = sb.table("procurement_ledger").select("*").eq("id", ledger_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Entrada no encontrada")
     return res.data
@@ -201,10 +202,12 @@ class ActualizarLedgerRequest(BaseModel):
 
 
 @router.patch("/{ledger_id}")
-async def actualizar_ledger(ledger_id: str, user_id: str, req: ActualizarLedgerRequest):
+async def actualizar_ledger(
+    ledger_id: str, req: ActualizarLedgerRequest, ctx: AuthContext = Depends(get_auth_context),
+):
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    row = sb.table("procurement_ledger").select("*").eq("id", ledger_id).in_("user_id", _ids_org(user_id)).single().execute()
+    row = sb.table("procurement_ledger").select("*").eq("id", ledger_id).in_("user_id", ctx.user_ids_organizacion).single().execute()
     if not row.data:
         raise HTTPException(status_code=404, detail="Entrada no encontrada")
     update: dict = {"updated_at": _now()}

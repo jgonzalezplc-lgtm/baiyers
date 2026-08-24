@@ -61,7 +61,9 @@ class InvestigarProveedorRequest(BaseModel):
 
 
 @router.post("/investigar")
-async def investigar_proveedor(req: InvestigarProveedorRequest):
+async def investigar_proveedor(
+    req: InvestigarProveedorRequest, ctx: AuthContext = Depends(get_auth_context),
+):
     """Solo investiga y devuelve sugerencias — no guarda nada. El usuario
     revisa y confirma antes de que algo se persista (POST /{id}/categorias)."""
     from app.config import settings

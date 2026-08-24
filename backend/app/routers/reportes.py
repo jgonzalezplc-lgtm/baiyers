@@ -1,14 +1,15 @@
 import io
 from typing import Optional
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api/reportes", tags=["reportes"])
 
 
 class ReporteDatosRequest(BaseModel):
-    user_id: str
     cotizacion_ids: list[str] = []
     proyecto_id: Optional[str] = None
     titulo: str = "Reporte de Cotización"
@@ -16,15 +17,16 @@ class ReporteDatosRequest(BaseModel):
 
 
 @router.post("/datos")
-async def datos_reporte(req: ReporteDatosRequest):
+async def datos_reporte(
+    req: ReporteDatosRequest, ctx: AuthContext = Depends(get_auth_context),
+):
     """Recopila todos los datos necesarios para generar el reporte."""
-    from app.services.supabase import get_supabase
+    from app.services.supabase import ejecutar_maybe_single, get_supabase
     sb = get_supabase()
 
-    from app.services.organizacion import obtener_perfil_organizacion, resolver_organizacion
+    from app.services.organizacion import obtener_perfil_organizacion
 
-    ctx_org = resolver_organizacion(req.user_id)
-    organizacion = obtener_perfil_organizacion(ctx_org.organizacion_id) if ctx_org else {}
+    organizacion = obtener_perfil_organizacion(ctx.organization_id)
 
     datos: dict = {
         "titulo": req.titulo,
@@ -38,7 +40,8 @@ async def datos_reporte(req: ReporteDatosRequest):
 
     # ── Datos de proyecto ──────────────────────────────────────────────────────
     if req.proyecto_id:
-        proy = sb.table("proyectos").select("*").eq("id", req.proyecto_id).single().execute()
+        proy = ejecutar_maybe_single(sb.table("proyectos").select("*").eq("id", req.proyecto_id)
+            .in_("user_id", ctx.user_ids_organizacion).maybe_single())
         if proy.data:
             datos["proyecto"] = proy.data
             items_proy = sb.table("items_proyecto").select("*, proveedores(*)").eq("proyecto_id", req.proyecto_id).order("orden").execute()
@@ -59,7 +62,8 @@ async def datos_reporte(req: ReporteDatosRequest):
 
     # ── Datos de cotizaciones individuales ────────────────────────────────────
     for cot_id in req.cotizacion_ids:
-        cot = sb.table("cotizaciones").select("*").eq("id", cot_id).single().execute()
+        cot = ejecutar_maybe_single(sb.table("cotizaciones").select("*").eq("id", cot_id)
+            .in_("user_id", ctx.user_ids_organizacion).maybe_single())
         resultados = sb.table("resultados").select("*").eq("cotizacion_id", cot_id).order("precio").execute()
         if cot.data:
             datos["items"].append({
@@ -105,14 +109,13 @@ async def datos_reporte(req: ReporteDatosRequest):
 
 
 class ExcelRequest(BaseModel):
-    user_id: str
     cotizacion_ids: list[str] = []
     proyecto_id: Optional[str] = None
     titulo: str = "Reporte de Cotización"
 
 
 @router.post("/exportar-excel")
-async def exportar_excel(req: ExcelRequest):
+async def exportar_excel(req: ExcelRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Genera Excel del reporte."""
     try:
         import openpyxl
@@ -123,11 +126,10 @@ async def exportar_excel(req: ExcelRequest):
 
     # Reusa la lógica de datos
     datos = await datos_reporte(ReporteDatosRequest(
-        user_id=req.user_id,
         cotizacion_ids=req.cotizacion_ids,
         proyecto_id=req.proyecto_id,
         titulo=req.titulo,
-    ))
+    ), ctx)
 
     wb = openpyxl.Workbook()
     header_font = Font(bold=True, color="FFFFFF")

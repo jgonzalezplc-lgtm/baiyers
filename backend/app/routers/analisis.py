@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.services.llm_rate_limit import limitar_por_ip
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api", tags=["analisis"])
 
@@ -45,7 +46,6 @@ class OpcionCotizacion(BaseModel):
 
 
 class AnalizarRequest(BaseModel):
-    user_id: str = Field(max_length=100)
     item_nombre: str = Field(max_length=500)
     cantidad: int = Field(default=1, ge=1, le=1_000_000)
     opciones: list[OpcionCotizacion] = Field(max_length=MAX_OPCIONES)
@@ -148,7 +148,7 @@ def _historial_confianza(sb, user_id: str, proveedores: list[str]) -> dict[str, 
 
 
 @router.post("/analizar-cotizaciones", dependencies=[Depends(_limite_analizar)])
-async def analizar_cotizaciones(req: AnalizarRequest):
+async def analizar_cotizaciones(req: AnalizarRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.config import settings
 
     if not settings.anthropic_api_key:
@@ -159,7 +159,7 @@ async def analizar_cotizaciones(req: AnalizarRequest):
     # Historial de compras para score de confianza
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    historial = _historial_confianza(sb, req.user_id, [o.proveedor_nombre for o in req.opciones])
+    historial = _historial_confianza(sb, ctx.actor_user_id, [o.proveedor_nombre for o in req.opciones])
 
     opciones_data = []
     for o in req.opciones:

@@ -37,7 +37,7 @@ export default function BusquedaComplementariaPage() {
     let padre = "";
     try {
       const comentario = alternativa ? "Buscar más alternativas para un ítem ya cubierto" : "Faltan proveedores de confianza; iniciar búsqueda complementaria";
-      const res = await fetch(`${API_URL}/api/buscar/sesiones/complementaria/preparar`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id: userId, cotizacion_id: item.cotizacion_id, lista_proyecto_id: id, comentario }) });
+      const res = await authFetch(`${API_URL}/api/buscar/sesiones/complementaria/preparar`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cotizacion_id: item.cotizacion_id, lista_proyecto_id: id, comentario }) });
       if (res.ok) padre = (await res.json()).session_padre_id || "";
     } catch { /* la búsqueda puede continuar aunque falle la telemetría */ }
     const qs = new URLSearchParams({ lista: id, modo: "expanded", origen: alternativa ? "alternativa" : "sin_cobertura" });

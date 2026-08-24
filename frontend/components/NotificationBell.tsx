@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, CheckCheck, Mail, ThumbsUp } from "lucide-react";
+import { authFetch } from "@/lib/authFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const POLL_MS = 30_000;
@@ -48,7 +49,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
   const cargado = useRef(false);
 
   const cargar = useCallback(() => {
-    fetch(`${API_URL}/api/notificaciones?user_id=${userId}`)
+    authFetch(`${API_URL}/api/notificaciones`)
       .then(r => (r.ok ? r.json() : null))
       .then(body => {
         if (!body) return;
@@ -67,7 +68,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
 
   const marcarLeida = (n: Notificacion) => {
     if (!n.leido) {
-      fetch(`${API_URL}/api/notificaciones/${n.id}/leer?user_id=${userId}`, { method: "POST" }).catch(() => {});
+      authFetch(`${API_URL}/api/notificaciones/${n.id}/leer`, { method: "POST" }).catch(() => {});
       setItems(prev => prev.map(x => (x.id === n.id ? { ...x, leido: true } : x)));
       setNoLeidas(c => Math.max(0, c - 1));
     }
@@ -77,7 +78,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
   };
 
   const marcarTodasLeidas = () => {
-    fetch(`${API_URL}/api/notificaciones/leer-todas?user_id=${userId}`, { method: "POST" }).catch(() => {});
+    authFetch(`${API_URL}/api/notificaciones/leer-todas`, { method: "POST" }).catch(() => {});
     setItems(prev => prev.map(x => ({ ...x, leido: true })));
     setNoLeidas(0);
   };

@@ -184,18 +184,17 @@ class EnviarRequest(BaseModel):
     to_email: str
     subject: str
     body: str
-    user_id: str
     proveedor_nombre: str = ""
 
 
 @router.post("/enviar")
-async def enviar_correo(req: EnviarRequest):
+async def enviar_correo(req: EnviarRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services import outlook_service
     from app.services.supabase import get_supabase
 
     sb = get_supabase()
 
-    res = sb.table("user_integrations").select("*").eq("user_id", req.user_id).eq("provider", "outlook").single().execute()
+    res = sb.table("user_integrations").select("*").eq("user_id", ctx.actor_user_id).eq("provider", "outlook").single().execute()
     if not res.data:
         raise HTTPException(status_code=400, detail="Outlook no conectado. Ve al dashboard para conectar tu cuenta.")
 
@@ -203,7 +202,7 @@ async def enviar_correo(req: EnviarRequest):
 
     try:
         access_token = outlook_service.get_valid_access_token(
-            integration["access_token"], integration["refresh_token"], req.user_id, sb,
+            integration["access_token"], integration["refresh_token"], ctx.actor_user_id, sb,
         )
 
         body_final = req.body.replace("{proveedor_nombre}", req.proveedor_nombre)
@@ -229,18 +228,18 @@ async def enviar_correo(req: EnviarRequest):
 
     try:
         from app.services.supplier_intelligence import registrar_solicitud
-        registrar_solicitud(req.user_id, req.proveedor_nombre, req.to_email)
+        registrar_solicitud(ctx.actor_user_id, req.proveedor_nombre, req.to_email)
     except Exception as e:
         print(f"[Outlook] SI error: {e}")
 
     thread_id = msg.get("conversationId")
     try:
         from app.services.proveedores_matching import resolver_o_crear_proveedor, resolver_o_crear_contacto
-        proveedor_id = resolver_o_crear_proveedor(sb, req.user_id, req.proveedor_nombre or req.to_email, req.to_email)
-        contacto_id = resolver_o_crear_contacto(sb, req.user_id, proveedor_id, req.to_email, origen="outlook_agent")
+        proveedor_id = resolver_o_crear_proveedor(sb, ctx.actor_user_id, req.proveedor_nombre or req.to_email, req.to_email)
+        contacto_id = resolver_o_crear_contacto(sb, ctx.actor_user_id, proveedor_id, req.to_email, origen="outlook_agent")
 
         conv = sb.table("outlook_conversations").upsert({
-            "user_id": req.user_id,
+            "user_id": ctx.actor_user_id,
             "graph_thread_id": thread_id,
             "proveedor_id": proveedor_id,
             "contacto_id": contacto_id,

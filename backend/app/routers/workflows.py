@@ -103,7 +103,7 @@ async def cambiar_estado_rollout(req: RolloutRequest, ctx: AuthContext = Depends
 
 
 @router.post("/interpretar", dependencies=[Depends(_limite_interpretar)])
-async def interpretar_workflow(req: InterpretarRequest):
+async def interpretar_workflow(req: InterpretarRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Solo interpreta y propone — no guarda nada. El frontend confirma con
     el usuario y recién ahí llama a POST /api/workflows con el resultado."""
     import asyncio
@@ -120,7 +120,7 @@ async def interpretar_workflow(req: InterpretarRequest):
 
 
 @router.post("/proceso/turno", dependencies=[Depends(_limite_turno)])
-async def turno_proceso(req: ProcesoTurnoRequest):
+async def turno_proceso(req: ProcesoTurnoRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Entrevista guiada del proceso de compras: el avance lo decide el
     backend de forma determinística (primer slot pendiente, con tope de
     intentos) y el LLM sólo interpreta la respuesta. Al completarse devuelve
@@ -220,17 +220,17 @@ async def crear_workflow(req: CrearWorkflowRequest, ctx: AuthContext = Depends(g
 
 
 @router.get("")
-async def listar_workflows(user_id: str):
+async def listar_workflows(ctx: AuthContext = Depends(get_auth_context)):
     from app.services.workflow_service import listar_workflows
-    return listar_workflows(user_id)
+    return listar_workflows(ctx.actor_user_id)
 
 
 @router.get("/estado/resumen")
-async def estado_workflow(user_id: str):
+async def estado_workflow(ctx: AuthContext = Depends(get_auth_context)):
     """Estado operativo del ciclo nuevo (o legado) para superficies como el
     dashboard. Distingue borrador validado de ausencia de configuración."""
     from app.services.workflow_service import obtener_estado_workflow
-    return obtener_estado_workflow(user_id)
+    return obtener_estado_workflow(ctx.actor_user_id)
 
 
 @router.get("/autorizadores-sugeridos")
@@ -327,9 +327,9 @@ async def decidir_homologacion(caso_id: str, req: DecisionHomologacionRequest,
 
 
 @router.get("/{workflow_id}")
-async def obtener_workflow(workflow_id: str, user_id: str):
+async def obtener_workflow(workflow_id: str, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.workflow_service import obtener_workflow
-    workflow = obtener_workflow(user_id, workflow_id)
+    workflow = obtener_workflow(ctx.actor_user_id, workflow_id)
     if not workflow:
         raise HTTPException(status_code=404, detail="Workflow no encontrado")
     return workflow
@@ -347,7 +347,6 @@ async def eliminar_workflow_endpoint(workflow_id: str, ctx: AuthContext = Depend
 
 
 class ActualizarWorkflowRequest(BaseModel):
-    user_id: str
     nodos: list[dict]
     conexiones: list[dict]
     nombre: Optional[str] = None
@@ -373,10 +372,12 @@ async def crear_version_workflow(workflow_id: str, req: CrearVersionRequest,
 
 
 @router.put("/{workflow_id}")
-async def actualizar_workflow(workflow_id: str, req: ActualizarWorkflowRequest):
+async def actualizar_workflow(
+    workflow_id: str, req: ActualizarWorkflowRequest, ctx: AuthContext = Depends(get_auth_context),
+):
     from app.services.workflow_service import actualizar_borrador
     try:
-        return actualizar_borrador(req.user_id, workflow_id, req.nodos, req.conexiones, req.nombre)
+        return actualizar_borrador(ctx.actor_user_id, workflow_id, req.nodos, req.conexiones, req.nombre)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -421,7 +422,6 @@ async def activar_workflow(workflow_id: str, ctx: AuthContext = Depends(get_auth
 # ─── Responsables ───────────────────────────────────────────────────────────
 
 class CrearResponsableRequest(BaseModel):
-    user_id: str
     nombre: str
     cargo: Optional[str] = None
     email: Optional[str] = None
@@ -430,21 +430,20 @@ class CrearResponsableRequest(BaseModel):
 
 
 @router.post("/responsables")
-async def crear_responsable(req: CrearResponsableRequest):
+async def crear_responsable(req: CrearResponsableRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.workflow_service import crear_responsable
     if not req.nombre.strip():
         raise HTTPException(status_code=400, detail="El nombre es requerido")
-    return crear_responsable(req.user_id, req.nombre.strip(), req.cargo, req.email, req.telefono, req.suplente_id)
+    return crear_responsable(ctx.actor_user_id, req.nombre.strip(), req.cargo, req.email, req.telefono, req.suplente_id)
 
 
 @router.get("/responsables/listar")
-async def listar_responsables(user_id: str, incluir_inactivos: bool = False):
+async def listar_responsables(incluir_inactivos: bool = False, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.workflow_service import listar_responsables
-    return listar_responsables(user_id, incluir_inactivos)
+    return listar_responsables(ctx.actor_user_id, incluir_inactivos)
 
 
 class EditarResponsableRequest(BaseModel):
-    user_id: str
     nombre: Optional[str] = None
     cargo: Optional[str] = None
     email: Optional[str] = None
@@ -454,35 +453,38 @@ class EditarResponsableRequest(BaseModel):
 
 
 @router.patch("/responsables/{responsable_id}")
-async def editar_responsable(responsable_id: str, req: EditarResponsableRequest):
+async def editar_responsable(
+    responsable_id: str, req: EditarResponsableRequest, ctx: AuthContext = Depends(get_auth_context),
+):
     from app.services.workflow_service import actualizar_responsable
     try:
-        return actualizar_responsable(req.user_id, responsable_id, req.model_dump(exclude={"user_id"}))
+        return actualizar_responsable(ctx.actor_user_id, responsable_id, req.model_dump())
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 
 class AsignarRolRequest(BaseModel):
-    user_id: str
     workflow_id: str
     rol_clave: str
     orden_autorizacion: Optional[int] = None
 
 
 @router.post("/responsables/{responsable_id}/roles")
-async def asignar_rol(responsable_id: str, req: AsignarRolRequest):
+async def asignar_rol(responsable_id: str, req: AsignarRolRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.workflow_service import asignar_rol
     try:
-        return asignar_rol(req.user_id, responsable_id, req.workflow_id, req.rol_clave, req.orden_autorizacion)
+        return asignar_rol(ctx.actor_user_id, responsable_id, req.workflow_id, req.rol_clave, req.orden_autorizacion)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.delete("/responsables/{responsable_id}/roles/{workflow_id}/{rol_clave}")
-async def quitar_rol(responsable_id: str, workflow_id: str, rol_clave: str, user_id: str):
+async def quitar_rol(
+    responsable_id: str, workflow_id: str, rol_clave: str, ctx: AuthContext = Depends(get_auth_context),
+):
     from app.services.workflow_service import quitar_rol
     try:
-        quitar_rol(user_id, responsable_id, workflow_id, rol_clave)
+        quitar_rol(ctx.actor_user_id, responsable_id, workflow_id, rol_clave)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return {"success": True}

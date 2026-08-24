@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer } from "recharts";
+import { authFetch } from "@/lib/authFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -41,7 +42,7 @@ export default function HistorialPrecioModal({ itemNombre, precioActual, userId,
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/historico/item?item_nombre=${encodeURIComponent(itemNombre)}&user_id=${userId}`)
+    authFetch(`${API_URL}/api/historico/item?item_nombre=${encodeURIComponent(itemNombre)}`)
       .then(r => r.json())
       .then(d => setData(d))
       .catch(() => setData({ sin_historial: true }))

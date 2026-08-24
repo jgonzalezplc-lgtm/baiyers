@@ -217,7 +217,7 @@ def _quitar_markdown(texto: str) -> str:
 
 
 @router.post("/generar-correo")
-async def generar_correo(req: GenerarCorreoRequest):
+async def generar_correo(req: GenerarCorreoRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.config import settings
     import google.generativeai as genai
 
@@ -267,12 +267,11 @@ class EnviarRequest(BaseModel):
     to_email: str
     subject: str
     body: str
-    user_id: str
     proveedor_nombre: str = ""
 
 
 @router.post("/enviar")
-async def enviar_correo(req: EnviarRequest):
+async def enviar_correo(req: EnviarRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.config import settings
     from app.services.gmail_service import get_gmail_service, send_email, get_refreshed_tokens
     from app.services.supabase import get_supabase
@@ -280,7 +279,7 @@ async def enviar_correo(req: EnviarRequest):
     sb = get_supabase()
 
     # Obtener tokens
-    res = sb.table("user_integrations").select("*").eq("user_id", req.user_id).eq("provider", "gmail").single().execute()
+    res = sb.table("user_integrations").select("*").eq("user_id", ctx.actor_user_id).eq("provider", "gmail").single().execute()
     if not res.data:
         raise HTTPException(status_code=400, detail="Gmail no conectado. Ve al dashboard para conectar tu cuenta.")
 
@@ -297,7 +296,7 @@ async def enviar_correo(req: EnviarRequest):
             sb.table("user_integrations").update({
                 "access_token": creds.token,
                 "token_expiry": creds.expiry.isoformat() if creds.expiry else None,
-            }).eq("user_id", req.user_id).eq("provider", "gmail").execute()
+            }).eq("user_id", ctx.actor_user_id).eq("provider", "gmail").execute()
 
         # Personalizar cuerpo con nombre del proveedor
         body_final = req.body.replace("{proveedor_nombre}", req.proveedor_nombre)
@@ -327,7 +326,7 @@ async def enviar_correo(req: EnviarRequest):
     # Supplier Intelligence — registrar solicitud enviada
     try:
         from app.services.supplier_intelligence import registrar_solicitud
-        registrar_solicitud(req.user_id, req.proveedor_nombre, req.to_email)
+        registrar_solicitud(ctx.actor_user_id, req.proveedor_nombre, req.to_email)
     except Exception as e:
         print(f"[Gmail] SI error: {e}")
 
@@ -338,11 +337,11 @@ async def enviar_correo(req: EnviarRequest):
     thread_id = msg.get("threadId")
     try:
         from app.services.proveedores_matching import resolver_o_crear_proveedor, resolver_o_crear_contacto
-        proveedor_id = resolver_o_crear_proveedor(sb, req.user_id, req.proveedor_nombre or req.to_email, req.to_email)
-        contacto_id = resolver_o_crear_contacto(sb, req.user_id, proveedor_id, req.to_email, origen="gmail_agent")
+        proveedor_id = resolver_o_crear_proveedor(sb, ctx.actor_user_id, req.proveedor_nombre or req.to_email, req.to_email)
+        contacto_id = resolver_o_crear_contacto(sb, ctx.actor_user_id, proveedor_id, req.to_email, origen="gmail_agent")
 
         conv = sb.table("gmail_conversations").upsert({
-            "user_id": req.user_id,
+            "user_id": ctx.actor_user_id,
             "gmail_thread_id": thread_id,
             "proveedor_id": proveedor_id,
             "contacto_id": contacto_id,

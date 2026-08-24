@@ -7,10 +7,16 @@ from app.mcp import discovery as mcp_discovery
 from app.api_publica.router import router as api_v1_router, register_error_handlers
 from app.api_publica.error_handler import ClariaAPIError
 
+from fastapi import Depends
+from app.services.tenant_guard import exigir_sesion
+
 app = FastAPI(
     title="Cotizador Inteligente API",
     version="0.1.0",
-    description="API para automatizacion de cotizaciones de procurement"
+    description="API para automatizacion de cotizaciones de procurement",
+    # Deny-by-default: toda ruta /api exige sesión verificada salvo las
+    # listadas explícitamente en tenant_guard. Un endpoint nuevo nace cerrado.
+    dependencies=[Depends(exigir_sesion)],
 )
 
 # Orígenes permitidos: localhost + los definidos en CORS_ORIGINS (coma-separados),

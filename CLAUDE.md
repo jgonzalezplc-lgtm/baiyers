@@ -280,6 +280,49 @@ organización (`obtener_perfil_organizacion()` en `services/organizacion.py`, re
 `POST /api/oc/crear` y `POST /api/reportes/datos`): logo (imagen si existe, texto si no), nombre, RUT y
 dirección, con fallback genérico "Baiyer" solo si la organización todavía no tiene perfil configurado.
 
+## Aislamiento entre organizaciones — deny-by-default en el borde HTTP (2026-08-24)
+Contexto: arrancan pilotos con clientes empresa reales, y una filtración entre organizaciones es
+inaceptable. **El backend usa la service key, así que bypassea RLS** — las políticas de la 031 NO son
+una segunda capa para el camino del backend. No requirió migración.
+- **Agujero crítico encontrado y cerrado:** `POST /api/organizacion/invitar` recibía el `user_id` del
+  invitador **en el body y sin autenticar**. Con el UUID de un admin de otra empresa, cualquiera se
+  invitaba a sí mismo como `rol: "admin"` a esa organización. Ese campo ya no existe en el modelo.
+- **`services/tenant_guard.py` — dependencia global `exigir_sesion`** (declarada en
+  `FastAPI(dependencies=[...])`, ver `main.py`): toda ruta `/api` exige token de Supabase verificado
+  salvo que esté en una de tres listas explícitas: `RUTAS_PUBLICAS` (magic links, callbacks OAuth,
+  health, catálogos estáticos — cada una con el motivo escrito), `PREFIJOS_CON_GUARDIA_PROPIO`
+  (`/api/admin-control-plane`, `/api/mcp`, `/api/v1`, que tienen otro mecanismo verificado) y
+  `DEUDA_SIN_AUTENTICAR`. **Un endpoint nuevo nace cerrado.**
+  Es dependencia global y **no** middleware ASGI a propósito: las dependencias corren después del
+  ruteo, así que se lee `request.scope["route"].path` (la plantilla real, `/api/proyectos/{id}`) y el
+  match es exacto, sin prefijos ni regex a mano.
+- **`tests/test_tenant_guard.py` es el mecanismo real, más que el guardia**: un endpoint nuevo sin
+  `Depends(get_auth_context)` y sin declarar hace fallar el test; también falla si quedan entradas
+  muertas en las listas, y hay un tope numérico para que la deuda sólo pueda achicarse.
+- El guardia deja el actor verificado en `request.state.actor_user_id` y `get_auth_context` lo reusa:
+  **una sola verificación contra Supabase por request**, no dos.
+- **56 endpoints migrados a `Depends(get_auth_context)`** (`proyectos` 15, `workflows` 11,
+  `procurement-profile`/`ledger` 9, `notificaciones`/`buscar/sesiones` 7, LLM 6, correo 3, resto 5).
+  En el frontend, ~20 archivos pasaron de `fetch` a `authFetch` y **`user_id` salió de las query
+  strings y de los bodies** (viajaba a logs de Railway/Cloudflare, historial y `Referer`).
+- **Cinco endpoints no tenían NINGÚN filtro de propietario** (no es que confiaran en un `user_id`
+  adivinable: no preguntaban nada): `chat/conversaciones/{id}/mensajes`, `calendario/llegada-efectiva`
+  (escribía fecha de entrega y alteraba el score del proveedor en la OC de otra empresa),
+  `reportes/datos` y dos de `proyectos`. Ahora verifican pertenencia y devuelven **404, no 403** — un
+  403 confirmaría que el id existe en otra organización. En `proyectos.py` eso está centralizado en
+  `_proyecto_de_la_org()`.
+- **Quedan 16 rutas abiertas, a propósito:** 14 son `procurement.py` (código muerto sobre tablas
+  inexistentes — corresponde borrarlo, no asegurarlo) y **`POST /api/buscar` + `POST /api/identificar`,
+  que NO se pueden cerrar sin romper el servidor MCP (`mcp/tools/cotizar.py`) y la API pública
+  (`api_publica/endpoints/cotizar.py`): ambos les pegan por HTTP a `localhost:8000` sin JWT.** El
+  arreglo correcto NO es una exención por IP (falsificable), sino que esos dos caminos llamen a la capa
+  de servicios en proceso. Exposición residual: con un UUID ajeno acertado,
+  `incluir_proveedores_custom` inyecta los proveedores propios de esa organización en los resultados.
+- **Pendiente real:** el test de aislamiento con dos organizaciones reales (recorrer todas las rutas
+  con el token de A y afirmar que ninguna devuelve datos de B) y la Fase 1 de
+  `PLAN_DATA_FOUNDATION.md` — el borde HTTP está cerrado, pero **con service key un `.eq()` olvidado
+  dentro de un servicio todavía cruza organizaciones**.
+
 ## Gotchas importantes
 - **Migraciones = manuales.** El service key de Supabase NO hace DDL, y no hay `DATABASE_URL` para conexión directa — Claude Code prepara el `.sql` y lo copia al portapapeles (`pbcopy`), pero el usuario lo pega y ejecuta en el SQL Editor de Supabase. Aplicadas y **confirmadas contra la DB real**: 019–021 agente Gmail, 022 notificaciones, 023 seguimiento de OC por correo, 024 Supplier Capability Intelligence, 025 ficha de proveedores, 026 `rfq_batches`, 027 Workflow Builder, 029 workflow↔aprobación real, 030 organizaciones, 031 RLS organizacional, **034 perfil organizacional + `onboarding_sessions`, 035 `direccion`, 036 plantillas de correo** (estas 3 confirmadas en esta sesión). Estado de 028 (capo control plane, de otra sesión), 032 (mcp oauth state) y 033 (supplier_ratings) no reverificado en esta sesión — no asumir sin chequear.
 - **Bug real de `postgrest-py` 2.x encontrado en producción — ya corregido en todo el backend (commit `43fd9c4`).** `.maybe_single().execute()` devuelve `None` directamente (no un objeto con `.data = None`) cuando la consulta no matchea ninguna fila — cualquier `.execute().data` sin chequear `None` antes crashea con `AttributeError`. Se encontró primero en `resolver_organizacion()` (rompía dashboard/listas/gmail/workflows enteros para cualquier usuario sin fila en `membresias_organizacion`) y se terminó de auditar el resto del backend: **57 ocurrencias en 12 archivos** corregidas con `ejecutar_maybe_single()` (`services/supabase.py`) — envuelve el query y siempre devuelve un objeto con `.data` accesible, sin tener que reescribir la lógica de cada sitio. Para queries nuevas: usar `ejecutar_maybe_single(query.maybe_single())` en vez de `query.maybe_single().execute()`. **Ojo:** había un chip de tarea en background para esto mismo que el usuario alcanzó a iniciar por separado — si existe un worktree/sesión paralela tocando los mismos archivos, revisar por conflictos antes de mergear.

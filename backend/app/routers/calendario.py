@@ -112,12 +112,20 @@ class LlegadaEfectivaRequest(BaseModel):
 
 
 @router.post("/llegada-efectiva")
-async def marcar_llegada_efectiva(req: LlegadaEfectivaRequest):
-    from app.services.supabase import get_supabase
+async def marcar_llegada_efectiva(
+    req: LlegadaEfectivaRequest, ctx: AuthContext = Depends(get_auth_context),
+):
+    from app.services.supabase import ejecutar_maybe_single, get_supabase
     from app.services.supplier_intelligence import calcular_score, _get_or_create_proveedor
 
     sb = get_supabase()
-    oc_res = sb.table("ordenes_compra").select("*").eq("id", req.oc_id).single().execute()
+    # La OC tiene que ser de la organización del actor. Antes se aceptaba
+    # cualquier `oc_id` sin filtro: se podía escribir la fecha de entrega —
+    # y alterar el score del proveedor — sobre la OC de otra empresa.
+    oc_res = ejecutar_maybe_single(
+        sb.table("ordenes_compra").select("*").eq("id", req.oc_id)
+        .in_("user_id", ctx.user_ids_organizacion).maybe_single()
+    )
     if not oc_res.data:
         raise HTTPException(status_code=404, detail="OC no encontrada")
 

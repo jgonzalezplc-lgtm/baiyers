@@ -65,7 +65,7 @@ export default function ChatPage() {
   };
 
   const cargarMensajes = async (convId: string) => {
-    const res = await fetch(`${API_URL}/api/chat/conversaciones/${convId}/mensajes`);
+    const res = await authFetch(`${API_URL}/api/chat/conversaciones/${convId}/mensajes`);
     if (res.ok) {
       const data = await res.json();
       setMensajes(data.map((m: Record<string, unknown>) => ({

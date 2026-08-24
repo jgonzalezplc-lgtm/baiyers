@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { authFetch } from "@/lib/authFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -40,7 +41,7 @@ export default function ProyectosPage() {
   const cargar = async (uid: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/proyectos?user_id=${uid}`);
+      const res = await authFetch(`${API_URL}/api/proyectos`);
       if (res.ok) setProyectos(await res.json());
     } catch { /* silent */ } finally { setLoading(false); }
   };

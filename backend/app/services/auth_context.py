@@ -22,7 +22,7 @@ igual que antes (sin cambios) hasta que se migran uno por uno.
 from dataclasses import dataclass
 from typing import Optional
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request
 
 
 @dataclass(frozen=True)
@@ -59,7 +59,10 @@ def verificar_token(authorization: Optional[str]) -> str:
     return resp.user.id
 
 
-async def get_auth_context(authorization: Optional[str] = Header(default=None)) -> AuthContext:
+async def get_auth_context(
+    request: Request = None,          # lo inyecta FastAPI; opcional para poder
+    authorization: Optional[str] = Header(default=None),   # llamarla directo en tests
+) -> AuthContext:
     """Dependencia FastAPI: `ctx: AuthContext = Depends(get_auth_context)`.
 
     Verifica el token, resuelve la organización real del usuario (mismo
@@ -68,7 +71,10 @@ async def get_auth_context(authorization: Optional[str] = Header(default=None)) 
     """
     from app.services.organizacion import obtener_organizacion, resolver_organizacion
 
-    actor_user_id = verificar_token(authorization)
+    # `tenant_guard.exigir_sesion` ya verificó el token de este request contra
+    # Supabase; reusar su resultado evita un segundo roundtrip por request.
+    ya_verificado = getattr(getattr(request, "state", None), "actor_user_id", None)
+    actor_user_id = ya_verificado or verificar_token(authorization)
     ctx = resolver_organizacion(actor_user_id)
     if not ctx:
         # Red de seguridad: un usuario sin fila en membresias_organizacion

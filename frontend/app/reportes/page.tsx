@@ -3,6 +3,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import dynamic from "next/dynamic";
+import { authFetch } from "@/lib/authFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -72,10 +73,10 @@ function ReportesPageInner() {
     setGenerando(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/api/reportes/datos`, {
+      const res = await authFetch(`${API_URL}/api/reportes/datos`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, proyecto_id: proyectoId || null, titulo, secciones }),
+        body: JSON.stringify({ proyecto_id: proyectoId || null, titulo, secciones }),
       });
       if (!res.ok) throw new Error(await res.text());
       setDatos(await res.json());
@@ -91,10 +92,10 @@ function ReportesPageInner() {
     if (!userId) return;
     setExportandoExcel(true);
     try {
-      const res = await fetch(`${API_URL}/api/reportes/exportar-excel`, {
+      const res = await authFetch(`${API_URL}/api/reportes/exportar-excel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, proyecto_id: proyectoId || null, titulo }),
+        body: JSON.stringify({ proyecto_id: proyectoId || null, titulo }),
       });
       if (!res.ok) throw new Error("Error exportando Excel");
       const blob = await res.blob();

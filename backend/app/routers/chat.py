@@ -193,8 +193,17 @@ async def eliminar_conversacion(conv_id: str, ctx: AuthContext = Depends(get_aut
 
 
 @router.get("/conversaciones/{conv_id}/mensajes")
-async def mensajes_conversacion(conv_id: str):
-    from app.services.supabase import get_supabase
+async def mensajes_conversacion(conv_id: str, ctx: AuthContext = Depends(get_auth_context)):
+    from app.services.supabase import ejecutar_maybe_single, get_supabase
     sb = get_supabase()
+    # La conversación tiene que ser del actor. Antes esto devolvía los mensajes
+    # de cualquier `conv_id` sin ningún filtro de propietario: con un id ajeno
+    # se leía el chat de otra organización.
+    duena = ejecutar_maybe_single(
+        sb.table("chat_conversaciones").select("id").eq("id", conv_id)
+        .eq("user_id", ctx.actor_user_id).maybe_single()
+    )
+    if not duena.data:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
     res = sb.table("chat_mensajes").select("*").eq("conversacion_id", conv_id).order("created_at").execute()
     return res.data or []

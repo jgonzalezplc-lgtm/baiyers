@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.services.llm_rate_limit import limitar_por_ip
+from app.services.auth_context import AuthContext, get_auth_context
 
 router = APIRouter(prefix="/api", tags=["buscar"])
 
@@ -554,7 +555,7 @@ class PrefetchRequest(BaseModel):
 
 
 @router.post("/buscar/prefetch", dependencies=[Depends(_limite_prefetch)])
-async def prefetch_busquedas(req: PrefetchRequest):
+async def prefetch_busquedas(req: PrefetchRequest, ctx: AuthContext = Depends(get_auth_context)):
     """Encola búsquedas en background para varias cotizaciones. Responde al tiro;
     los resultados quedan guardados en la tabla `resultados` al terminar cada una."""
     from app.services.supabase import get_supabase
@@ -575,7 +576,7 @@ async def prefetch_busquedas(req: PrefetchRequest):
                     terminos_en=d.get("terminos_busqueda_en") or [],
                     nombre_item=d.get("nombre_identificado") or d.get("descripcion") or "",
                     categoria=d.get("categoria"),
-                    user_id=req.user_id,
+                    user_id=ctx.actor_user_id,
                 )
                 todos = await _buscar_fuentes(breq)
                 if todos:
@@ -601,7 +602,7 @@ def _sse(data: dict) -> str:
 
 
 @router.post("/buscar/stream", dependencies=[Depends(_limite_buscar)])
-async def buscar_stream(req: BuscarRequest):
+async def buscar_stream(req: BuscarRequest, ctx: AuthContext = Depends(get_auth_context)):
     """
     Misma búsqueda pero con Server-Sent Events: cada fuente envía sus resultados
     en cuanto termina, sin esperar a las demás. Max 50 resultados totales.
@@ -680,9 +681,12 @@ async def buscar_stream(req: BuscarRequest):
                 else:
                     coro.close()  # liberar la corrutina no usada
 
-            if req.incluir_proveedores_custom and req.user_id:
+            if req.incluir_proveedores_custom:
                 cat_principal = (req.categorias[0] if req.categorias else None) or req.categoria
-                sources.append(("Mis proveedores", proveedores_custom_para(req.user_id, cat_principal, req.nombre_item)))
+                sources.append((
+                    "Mis proveedores",
+                    proveedores_custom_para(ctx.actor_user_id, cat_principal, req.nombre_item),
+                ))
 
             n_sources = len(sources)
             tasks = [asyncio.create_task(run_source(name, coro)) for name, coro in sources]
