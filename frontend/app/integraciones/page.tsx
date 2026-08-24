@@ -10,7 +10,7 @@
  * cliente y la autenticación la negocia el cliente solo, en el navegador.
  */
 import { useState, useEffect } from "react";
-import { Check, Copy, Link2, Plug, Terminal } from "lucide-react";
+import { Check, Copy, Link2, MessageSquare, Plug, Terminal } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
 import {
@@ -36,29 +36,57 @@ interface AuditEntry {
   called_at: string;
 }
 
-/** Instalación global: se configura una vez y queda en todos los proyectos. */
-const CLIENTES = [
+/**
+ * Un cliente por tarjeta. `comando` es opcional: las apps de escritorio y web
+ * se configuran desde su propia interfaz, sin terminal.
+ *
+ * Cada producto guarda su propia conexión. Instalar en Claude Code NO habilita
+ * Claude Desktop ni claude.ai: es el mismo servidor y la misma cuenta, pero el
+ * alta va una vez por producto. La duda es real y aparece siempre, así que
+ * está dicha en la pantalla y no sólo acá.
+ */
+const CLIENTES: {
+  id: string;
+  nombre: string;
+  detalle: string;
+  alcance: string;
+  comando?: (url: string) => string;
+  pasos: string[];
+}[] = [
   {
     id: "claude-code",
     nombre: "Claude Code",
-    detalle: "Disponible globalmente en todos tus proyectos de Claude Code",
+    detalle: "CLI de Anthropic en la terminal",
+    alcance: "Todos tus proyectos",
     comando: (url: string) => `claude mcp add --scope user --transport http baiyer ${url}`,
     pasos: [
       "Pega y ejecuta el comando una sola vez.",
       "En Claude Code escribe /mcp, elige «baiyer» y autentica.",
-      "En Baiyer continúa con Google/Gmail, Outlook/Microsoft o tu correo y contraseña.",
+      "Continúa con Google/Gmail, Outlook/Microsoft o tu correo y contraseña.",
     ],
   },
   {
     id: "codex",
     nombre: "Codex",
-    detalle: "Disponible globalmente en Codex app, CLI y extensión IDE",
+    detalle: "CLI de OpenAI, app y extensión del IDE",
+    alcance: "Todo Codex",
     comando: (url: string) =>
       `codex mcp add baiyer --url ${url}\ncodex mcp login baiyer`,
     pasos: [
       "Pega las dos líneas en tu terminal; no necesitas editar config.toml.",
       "Codex abrirá Baiyer en el navegador para autenticar la conexión.",
       "Continúa con Google/Gmail, Outlook/Microsoft o tu correo y contraseña.",
+    ],
+  },
+  {
+    id: "claude-desktop",
+    nombre: "Claude Desktop y claude.ai",
+    detalle: "El chat de Claude, en escritorio y navegador",
+    alcance: "Tu cuenta de Claude",
+    pasos: [
+      "Abre Configuración → Conectores → Agregar conector personalizado.",
+      "Pega la dirección de arriba. No hace falta comando ni token.",
+      "Autoriza en la ventana que se abre y continúa con tu cuenta de Baiyer.",
     ],
   },
 ];
@@ -144,7 +172,7 @@ export default function IntegracionesPage() {
       <PageHeader
         eyebrow="Integraciones"
         title="Model Context Protocol"
-        subtitle="Conecta Baiyer una sola vez y úsalo desde cualquier proyecto de Claude Code o Codex para cotizar, comparar proveedores y consultar órdenes de compra."
+        subtitle="Conecta Baiyer a Claude Code, Codex o el chat de Claude para cotizar, comparar proveedores y consultar órdenes de compra sin salir de tu asistente."
       />
 
       <div style={{ display: "flex", gap: 4 }}>
@@ -182,11 +210,20 @@ export default function IntegracionesPage() {
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)", marginBottom: 4 }}>
-                Una instalación global, sin tokens manuales
+                Una sola dirección, sin tokens manuales
               </div>
+              <p style={{ fontSize: 13.5, color: "var(--n-600)", lineHeight: 1.6, margin: "0 0 10px" }}>
+                Esta es la dirección del servidor. Es la misma para todos los clientes: la pegas
+                donde corresponda y autorizas en el navegador con la cuenta que usas para entrar
+                a Baiyer (Google/Gmail, Outlook/Microsoft o correo y contraseña).
+              </p>
               <p style={{ fontSize: 13.5, color: "var(--n-600)", lineHeight: 1.6, margin: "0 0 14px" }}>
-                Elige tu cliente, copia su comando y autoriza en el navegador con la misma cuenta
-                que usas para entrar a Baiyer: Google/Gmail, Outlook/Microsoft o correo y contraseña.
+                <strong style={{ color: "var(--n-900)", fontWeight: 600 }}>
+                  Cada aplicación se conecta por separado.
+                </strong>{" "}
+                Instalarlo en Claude Code no lo habilita en Claude Desktop ni en claude.ai: es el
+                mismo servidor y la misma cuenta, pero das de alta la conexión una vez por
+                aplicación.
               </p>
               {bloqueCodigo(MCP_URL, "url")}
             </div>
@@ -200,15 +237,30 @@ export default function IntegracionesPage() {
                   background: "var(--n-100)", color: "var(--n-600)",
                   display: "inline-flex", alignItems: "center", justifyContent: "center",
                 }}>
-                  <Terminal size={20} strokeWidth={1.75} />
+                  {cliente.comando
+                    ? <Terminal size={20} strokeWidth={1.75} />
+                    : <MessageSquare size={20} strokeWidth={1.75} />}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)" }}>{cliente.nombre}</div>
                   <div style={{ fontSize: 13, color: "var(--n-600)", marginTop: 2 }}>{cliente.detalle}</div>
                 </div>
+                <span style={{
+                  flexShrink: 0, padding: "3px 10px", borderRadius: "var(--r-pill)",
+                  background: "var(--n-100)", color: "var(--n-600)",
+                  fontSize: 12.5, fontWeight: 500, whiteSpace: "nowrap",
+                }}>
+                  {cliente.alcance}
+                </span>
               </div>
 
-              {bloqueCodigo(cliente.comando(MCP_URL), cliente.id)}
+              {cliente.comando
+                ? bloqueCodigo(cliente.comando(MCP_URL), cliente.id)
+                : (
+                  <p style={{ fontSize: 13.5, color: "var(--n-600)", lineHeight: 1.6, margin: 0 }}>
+                    No se configura por terminal: se agrega desde la propia aplicación.
+                  </p>
+                )}
 
               {/* `listStyle` explícito: el preflight de Tailwind lo pone en
                   `none`, así que los pasos quedaban sin numerar. */}
