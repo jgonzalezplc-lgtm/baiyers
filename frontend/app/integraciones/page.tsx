@@ -10,8 +10,12 @@
  * cliente y la autenticación la negocia el cliente solo, en el navegador.
  */
 import { useState, useEffect } from "react";
+import { Check, Copy, Link2, Plug, Terminal } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
+import {
+  BtnSecondary, Card, EmptyState, PageHeader, SkeletonBox,
+} from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const MCP_URL = `${API_URL}/api/mcp`;
@@ -59,10 +63,18 @@ const CLIENTES = [
   },
 ];
 
+const TABS = [
+  { key: "conectar", label: "Conectar" },
+  { key: "conexiones", label: "Conexiones" },
+  { key: "audit", label: "Actividad" },
+] as const;
+
+type TabKey = (typeof TABS)[number]["key"];
+
 export default function IntegracionesPage() {
   const [conexiones, setConexiones] = useState<MCPConnection[]>([]);
   const [actividad, setActividad] = useState<AuditEntry[]>([]);
-  const [tab, setTab] = useState<"conectar" | "conexiones" | "audit">("conectar");
+  const [tab, setTab] = useState<TabKey>("conectar");
   const [revocando, setRevocando] = useState<string | null>(null);
   const [copiado, setCopiado] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -107,144 +119,202 @@ export default function IntegracionesPage() {
     }
   };
 
-  const tabBtn = (activo: boolean): React.CSSProperties => ({
-    padding: "8px 16px", fontSize: 11, fontWeight: activo ? 700 : 400,
-    color: activo ? "var(--accent)" : "var(--text-muted)", background: "none", border: "none",
-    borderBottom: activo ? "2px solid var(--accent)" : "2px solid transparent",
-    cursor: "pointer", fontFamily: "var(--font-mono)", letterSpacing: "0.04em",
-  });
-
-  const bloqueSt: React.CSSProperties = {
-    background: "var(--bg-base)", border: "1px solid var(--border-default)",
-    padding: "12px 14px", fontSize: 10, color: "var(--text-secondary)",
-    fontFamily: "var(--font-mono)", overflowX: "auto", margin: 0, whiteSpace: "pre",
-  };
+  /** Bloque de comando. Mono sólo acá, que es donde el monoespaciado sirve. */
+  const bloqueCodigo = (texto: string, clave: string) => (
+    <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+      {/* `pre-wrap` + `break-word`: es un comando para copiar, verlo entero
+          importa más que respetar el ancho. Con scroll horizontal la URL
+          quedaba cortada y no se sabía si el comando estaba completo. */}
+      <pre style={{
+        flex: 1, minWidth: 0, margin: 0, padding: "12px 14px",
+        background: "var(--surface-2)", border: "1px solid var(--n-200)",
+        borderRadius: "var(--r-md)",
+        fontFamily: "var(--font-mono)", fontSize: 13, lineHeight: 1.7,
+        color: "var(--n-900)", whiteSpace: "pre-wrap", overflowWrap: "anywhere",
+      }}>{texto}</pre>
+      <BtnSecondary onClick={() => copiar(texto, clave)} style={{ flexShrink: 0 }}>
+        {copiado === clave ? <Check size={15} /> : <Copy size={15} />}
+        {copiado === clave ? "Copiado" : "Copiar"}
+      </BtnSecondary>
+    </div>
+  );
 
   return (
-    <>
-      <div style={{ marginBottom: 28 }}>
-        <div className="section-rule" style={{ marginBottom: 16 }} />
-        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", display: "block", marginBottom: 6 }}>
-          INTEGRACIONES · MODEL CONTEXT PROTOCOL
-        </span>
-        <h1 style={{ fontSize: 26, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.02em" }}>MCP</h1>
-        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0, maxWidth: 620 }}>
-          Conecta Baiyer una sola vez y úsalo desde cualquier proyecto de Claude Code o Codex para
-          cotizar, comparar proveedores y consultar órdenes de compra.
-        </p>
-      </div>
+    <div style={{ maxWidth: 780, margin: "0 auto", padding: "0 20px 60px" }}>
+      <PageHeader
+        eyebrow="Integraciones"
+        title="Model Context Protocol"
+        subtitle="Conecta Baiyer una sola vez y úsalo desde cualquier proyecto de Claude Code o Codex para cotizar, comparar proveedores y consultar órdenes de compra."
+      />
 
-      <div style={{ borderBottom: "1px solid var(--border-default)", marginBottom: 24, display: "flex", gap: 4 }}>
-        {(["conectar", "conexiones", "audit"] as const).map(t => (
-          <button key={t} style={tabBtn(tab === t)} onClick={() => setTab(t)}>
-            {t === "conectar" ? "Conectar" : t === "conexiones" ? `Conexiones${conexiones.length ? ` (${conexiones.length})` : ""}` : "Actividad"}
-          </button>
-        ))}
+      <div style={{ display: "flex", gap: 4 }}>
+        {TABS.map(t => {
+          const activa = tab === t.key;
+          const conteo = t.key === "conexiones" && conexiones.length ? ` (${conexiones.length})` : "";
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              style={{
+                padding: "8px 14px", cursor: "pointer", fontFamily: "var(--font-sans)",
+                border: "none", background: "none",
+                fontSize: 14, fontWeight: activa ? 600 : 500,
+                color: activa ? "var(--brand)" : "var(--n-500)",
+                borderBottom: `2px solid ${activa ? "var(--brand)" : "transparent"}`,
+              }}
+            >
+              {t.label}{conteo}
+            </button>
+          );
+        })}
       </div>
+      <div style={{ borderBottom: "1px solid var(--n-200)", marginBottom: 24 }} />
 
       {tab === "conectar" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderLeft: "3px solid var(--accent)", padding: "18px 20px" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
-              Una instalación global. Sin tokens manuales.
-            </div>
-            <p style={{ fontSize: 11, color: "var(--text-secondary)", margin: "0 0 14px", lineHeight: 1.6 }}>
-              Elige tu cliente, copia su comando y autoriza en el navegador con la misma cuenta que
-              usaste para entrar a Baiyer: Google/Gmail, Outlook/Microsoft o correo y contraseña.
-            </p>
-            <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
-              <code style={{ ...bloqueSt, flex: 1, display: "flex", alignItems: "center", color: "var(--text-primary)" }}>{MCP_URL}</code>
-              <button onClick={() => copiar(MCP_URL, "url")} className="btn-swiss-secondary" style={{ fontSize: 10, padding: "6px 14px", whiteSpace: "nowrap" }}>
-                {copiado === "url" ? "Copiado ✓" : "Copiar"}
-              </button>
-            </div>
-          </div>
-
-          {CLIENTES.map(cliente => {
-            const texto = cliente.comando(MCP_URL);
-            return (
-              <div key={cliente.id} style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: "18px 20px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{cliente.nombre}</div>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: "var(--accent)", border: "1px solid var(--accent)", padding: "2px 7px" }}>GLOBAL</span>
-                </div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 14 }}>{cliente.detalle}</div>
-
-                <div style={{ display: "flex", gap: 8, alignItems: "stretch", marginBottom: 14 }}>
-                  <pre style={{ ...bloqueSt, flex: 1 }}>{texto}</pre>
-                  <button onClick={() => copiar(texto, cliente.id)} className="btn-swiss-secondary" style={{ fontSize: 10, padding: "6px 14px", whiteSpace: "nowrap", alignSelf: "flex-start" }}>
-                    {copiado === cliente.id ? "Copiado ✓" : "Copiar instalación"}
-                  </button>
-                </div>
-
-                <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.8 }}>
-                  {cliente.pasos.map((paso, i) => <li key={i}>{paso}</li>)}
-                </ol>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <Card padding={20} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+            <span style={{
+              width: 40, height: 40, flexShrink: 0, borderRadius: "var(--r-md)",
+              background: "var(--brand-50)", color: "var(--brand)",
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <Link2 size={20} strokeWidth={1.75} />
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)", marginBottom: 4 }}>
+                Una instalación global, sin tokens manuales
               </div>
-            );
-          })}
+              <p style={{ fontSize: 13.5, color: "var(--n-600)", lineHeight: 1.6, margin: "0 0 14px" }}>
+                Elige tu cliente, copia su comando y autoriza en el navegador con la misma cuenta
+                que usas para entrar a Baiyer: Google/Gmail, Outlook/Microsoft o correo y contraseña.
+              </p>
+              {bloqueCodigo(MCP_URL, "url")}
+            </div>
+          </Card>
 
-          <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.7 }}>
+          {CLIENTES.map(cliente => (
+            <Card key={cliente.id} padding={20}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
+                <span style={{
+                  width: 40, height: 40, flexShrink: 0, borderRadius: "var(--r-md)",
+                  background: "var(--n-100)", color: "var(--n-600)",
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <Terminal size={20} strokeWidth={1.75} />
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)" }}>{cliente.nombre}</div>
+                  <div style={{ fontSize: 13, color: "var(--n-600)", marginTop: 2 }}>{cliente.detalle}</div>
+                </div>
+              </div>
+
+              {bloqueCodigo(cliente.comando(MCP_URL), cliente.id)}
+
+              {/* `listStyle` explícito: el preflight de Tailwind lo pone en
+                  `none`, así que los pasos quedaban sin numerar. */}
+              <ol style={{
+                margin: "14px 0 0", paddingLeft: 20, listStyle: "decimal",
+                fontSize: 13.5, color: "var(--n-600)", lineHeight: 1.8,
+              }}>
+                {cliente.pasos.map((paso, i) => <li key={i}>{paso}</li>)}
+              </ol>
+            </Card>
+          ))}
+
+          <p style={{ fontSize: 13, color: "var(--n-500)", lineHeight: 1.6, margin: 0 }}>
             El acceso queda limitado a tu organización y a los permisos que autorices. Cada llamada
-            de una herramienta queda registrada en «Actividad», y podés cortar el acceso de un
+            de una herramienta queda registrada en «Actividad», y puedes cortar el acceso de un
             cliente cuando quieras desde «Conexiones».
-          </div>
+          </p>
         </div>
       )}
 
       {tab === "conexiones" && (
         cargando ? (
-          <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)", fontSize: 12 }}>Cargando…</div>
+          <SkeletonBox height={160} radius="var(--r-lg)" />
         ) : conexiones.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)", fontSize: 12 }}>
-            Todavía no hay clientes conectados. Andá a «Conectar» para agregar el primero.
-          </div>
+          <Card padding={0}>
+            <EmptyState
+              icon={Plug}
+              title="Todavía no hay clientes conectados"
+              description="Ve a «Conectar» y sigue el comando de Claude Code o Codex para agregar el primero."
+            />
+          </Card>
         ) : (
-          <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-surface)" }}>
+          <Card padding={0}>
             {conexiones.map((conn, i) => (
-              <div key={conn.id} style={{ padding: "14px 16px", borderBottom: i < conexiones.length - 1 ? "1px solid var(--border-subtle)" : "none", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
+              <div key={conn.id} style={{
+                padding: "16px 18px", display: "flex", justifyContent: "space-between",
+                alignItems: "center", gap: 16,
+                borderBottom: i < conexiones.length - 1 ? "1px solid var(--n-200)" : "none",
+              }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", marginBottom: 2 }}>{conn.client_name || "Cliente MCP"}</div>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                    Conectado: {new Date(conn.connected_at).toLocaleDateString("es-CL")}
-                    {conn.last_used_at && ` · Último uso: ${new Date(conn.last_used_at).toLocaleDateString("es-CL")}`}
+                  <div style={{ fontSize: 14.5, fontWeight: 600, color: "var(--n-900)" }}>
+                    {conn.client_name || "Cliente MCP"}
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--n-600)", marginTop: 2 }}>
+                    Conectado el {new Date(conn.connected_at).toLocaleDateString("es-CL")}
+                    {conn.last_used_at && ` · último uso ${new Date(conn.last_used_at).toLocaleDateString("es-CL")}`}
                     {conn.scopes?.length ? ` · ${conn.scopes.length} permisos` : ""}
                   </div>
-                  <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 3, fontFamily: "var(--font-mono)" }}>{conn.client_id}</div>
+                  <div className="mono" style={{ fontSize: 12, color: "var(--n-500)", marginTop: 4 }}>
+                    {conn.client_id}
+                  </div>
                 </div>
-                <button onClick={() => desconectar(conn.client_id)} disabled={revocando === conn.client_id}
-                  style={{ fontSize: 10, color: "var(--text-error)", background: "none", border: "1px solid var(--text-error)", padding: "5px 10px", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+                <BtnSecondary
+                  onClick={() => desconectar(conn.client_id)}
+                  disabled={revocando === conn.client_id}
+                  style={{ flexShrink: 0, color: "var(--danger)", borderColor: "var(--n-300)" }}
+                >
                   {revocando === conn.client_id ? "Desconectando…" : "Desconectar"}
-                </button>
+                </BtnSecondary>
               </div>
             ))}
-          </div>
+          </Card>
         )
       )}
 
       {tab === "audit" && (
-        actividad.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)", fontSize: 12 }}>Sin actividad MCP reciente</div>
+        cargando ? (
+          <SkeletonBox height={160} radius="var(--r-lg)" />
+        ) : actividad.length === 0 ? (
+          <Card padding={0}>
+            <EmptyState
+              icon={Terminal}
+              title="Sin actividad reciente"
+              description="Acá aparece cada herramienta que un cliente MCP ejecuta con tu cuenta."
+            />
+          </Card>
         ) : (
-          <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-surface)" }}>
+          <Card padding={0}>
             {actividad.map((entry, i) => (
-              <div key={entry.id} style={{ padding: "12px 16px", borderBottom: i < actividad.length - 1 ? "1px solid var(--border-subtle)" : "none" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", fontFamily: "var(--font-mono)" }}>{entry.tool_name}</span>
-                  <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-                    {new Date(entry.called_at).toLocaleString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+              <div key={entry.id} style={{
+                padding: "14px 18px",
+                borderBottom: i < actividad.length - 1 ? "1px solid var(--n-200)" : "none",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
+                  <span className="mono" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--brand)" }}>
+                    {entry.tool_name}
+                  </span>
+                  <span style={{ fontSize: 12.5, color: "var(--n-500)", whiteSpace: "nowrap" }}>
+                    {new Date(entry.called_at).toLocaleString("es-CL", {
+                      day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+                    })}
                   </span>
                 </div>
                 {entry.result_preview && (
-                  <div style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 4, fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <div className="mono" style={{
+                    fontSize: 12.5, color: "var(--n-600)", marginTop: 4,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
                     {entry.result_preview}
                   </div>
                 )}
               </div>
             ))}
-          </div>
+          </Card>
         )
       )}
-    </>
+    </div>
   );
 }
