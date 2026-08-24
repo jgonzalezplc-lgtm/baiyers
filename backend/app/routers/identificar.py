@@ -309,7 +309,15 @@ def _es_error_modelo_no_disponible(exc: Exception) -> bool:
 
 
 @router.post("/identificar", dependencies=[Depends(_limite_identificar)])
-async def identificar_item(req: IdentificarRequest):
+async def identificar_item(
+    req: IdentificarRequest, ctx: Optional[AuthContext] = Depends(get_auth_context),
+):
+    # La identidad sale del token, nunca del body. `ctx` es None sólo cuando lo
+    # llama `services/cotizacion_pipeline.py` en proceso, que ya resolvió al
+    # actor por su cuenta y lo pasa en `req.user_id`.
+    if ctx is not None:
+        req.user_id = ctx.actor_user_id
+
     # Las recetas conocidas no dependen del LLM: cálculo, unidades y redondeos son
     # reproducibles. Esto también permite continuar sin reenviar una imagen.
     if req.modo_cubicacion_conversacional and req.descripcion and not req.archivo_base64:

@@ -46,7 +46,7 @@ def test_las_listas_no_tienen_entradas_muertas():
 def test_la_deuda_solo_puede_achicarse():
     """Candado contra el modo más probable de que esto se pudra: que alguien
     'arregle' un 401 agregando la ruta a la deuda en vez de autenticarla."""
-    assert len(DEUDA_SIN_AUTENTICAR) <= 2, (
+    assert len(DEUDA_SIN_AUTENTICAR) <= 0, (
         "La deuda de endpoints sin autenticar creció. Un endpoint nuevo se "
         "escribe con Depends(get_auth_context); esta lista sólo se achica."
     )

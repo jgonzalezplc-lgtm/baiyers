@@ -521,8 +521,16 @@ def _marcar_relevancia(resultados: list[dict], nombre_item: str, categoria: str 
 
 
 @router.post("/buscar", dependencies=[Depends(_limite_buscar)])
-async def buscar_proveedores(req: BuscarRequest):
+async def buscar_proveedores(
+    req: BuscarRequest, ctx: Optional[AuthContext] = Depends(get_auth_context),
+):
     from app.config import settings
+
+    # Igual que en /identificar: la identidad manda desde el token. Importa
+    # porque `incluir_proveedores_custom` inyecta los proveedores privados de
+    # esa organización en los resultados.
+    if ctx is not None:
+        req.user_id = ctx.actor_user_id
 
     todos = await _buscar_fuentes(req)
     if not todos:

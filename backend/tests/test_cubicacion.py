@@ -101,7 +101,17 @@ class CubicacionTest(unittest.TestCase):
 class CubicacionHttpTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        from app.services.auth_context import AuthContext, get_auth_context
+
         app = FastAPI(); app.include_router(router)
+        # `/api/identificar` exige sesión desde que se cerró el borde HTTP.
+        # Acá se prueba la cubicación, no la autenticación: se inyecta un actor
+        # fijo en vez de aflojar el endpoint.
+        app.dependency_overrides[get_auth_context] = lambda: AuthContext(
+            actor_user_id="test-user", organization_id="test-org",
+            organization_nombre="Test", user_ids_organizacion=["test-user"],
+            es_admin=True,
+        )
         cls.client = TestClient(app)
 
     def test_endpoint_conserva_estado_estructurado(self):

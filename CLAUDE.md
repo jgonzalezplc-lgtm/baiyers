@@ -312,17 +312,35 @@ una segunda capa para el camino del backend. No requirió migración.
   `reportes/datos` y dos de `proyectos`. Ahora verifican pertenencia y devuelven **404, no 403** — un
   403 confirmaría que el id existe en otra organización. En `proyectos.py` eso está centralizado en
   `_proyecto_de_la_org()`.
-- **Quedan 2 rutas abiertas, a propósito** (la deuda arrancó en 72): **`POST /api/buscar` y
-  `POST /api/identificar`,
-  que NO se pueden cerrar sin romper el servidor MCP (`mcp/tools/cotizar.py`) y la API pública
-  (`api_publica/endpoints/cotizar.py`): ambos les pegan por HTTP a `localhost:8000` sin JWT.** El
-  arreglo correcto NO es una exención por IP (falsificable), sino que esos dos caminos llamen a la capa
-  de servicios en proceso. Exposición residual: con un UUID ajeno acertado,
-  `incluir_proveedores_custom` inyecta los proveedores propios de esa organización en los resultados.
+- **`DEUDA_SIN_AUTENTICAR` está en CERO** (arrancó en 72). Las últimas dos, `POST /api/buscar` y
+  `POST /api/identificar`, se cerraron el 2026-08-24 con `services/cotizacion_pipeline.py` — ver la
+  sección siguiente.
 - **Pendiente real:** el test de aislamiento con dos organizaciones reales (recorrer todas las rutas
   con el token de A y afirmar que ninguna devuelve datos de B) y la Fase 1 de
   `PLAN_DATA_FOUNDATION.md` — el borde HTTP está cerrado, pero **con service key un `.eq()` olvidado
   dentro de un servicio todavía cruza organizaciones**.
+
+## Pipeline de cotización en proceso (`services/cotizacion_pipeline.py`, 2026-08-24)
+`cotizar_descripcion()` hace identificar → crear la fila en `cotizaciones` → buscar, **todo en
+proceso**, reusando `identificar_item()` y `BuscarRequest`/`_buscar_fuentes`/`_filtrar_gemini`/
+`_guardar_supabase` (mismo patrón que ya usaba `web_quote_service._run()`).
+- **Para qué:** el servidor MCP legado (`mcp/tools/cotizar.py`) y la API pública
+  (`api_publica/endpoints/cotizar.py`) le pegaban por HTTP a `http://localhost:8000/api/identificar`
+  y `/api/buscar`. Eso obligaba a dejar esos dos endpoints sin autenticación. Ya no: **ambos usan el
+  pipeline y los dos endpoints exigen sesión**.
+- **Los dos llamadores estaban rotos y nadie lo había notado** (verificado con llamadas reales, no
+  leyendo el código): mandaban `{"item_id","cantidad","user_id"}` a `/api/buscar`, cuerpo que no
+  corresponde a `BuscarRequest` → **422**; y leían `id`/`item_id` de la respuesta de `/api/identificar`,
+  que **nunca devolvió ninguno de los dos** (identificar no crea la fila en `cotizaciones`, eso lo hace
+  el cliente). O sea `cotizar_item` devolvía siempre "No se pudo identificar el item" y
+  `POST /api/v1/cotizar` siempre `item_not_identified`. Ahora ambos devuelven precios reales
+  (verificado: 40 resultados para "taladro percutor 800w", 20 proveedores para "casco de seguridad").
+- **Identidad:** `identificar_item()` y `buscar_proveedores()` sobrescriben `req.user_id` con
+  `ctx.actor_user_id` cuando hay request HTTP. El pipeline los llama con `ctx=None` y pasa el actor
+  explícito, ya verificado aguas arriba (api_key de la API pública o token MCP). Importa porque
+  `incluir_proveedores_custom` inyecta los proveedores privados de esa organización.
+- Si falla el insert en `cotizaciones`, la búsqueda igual corre y devuelve precios sin persistir:
+  cotizar es lo que el usuario pidió, perder la traza es peor que nada pero mucho menos que fallar.
 
 ## Gotchas importantes
 - **Migraciones = manuales.** El service key de Supabase NO hace DDL, y no hay `DATABASE_URL` para conexión directa — Claude Code prepara el `.sql` y lo copia al portapapeles (`pbcopy`), pero el usuario lo pega y ejecuta en el SQL Editor de Supabase. Aplicadas y **confirmadas contra la DB real**: 019–021 agente Gmail, 022 notificaciones, 023 seguimiento de OC por correo, 024 Supplier Capability Intelligence, 025 ficha de proveedores, 026 `rfq_batches`, 027 Workflow Builder, 029 workflow↔aprobación real, 030 organizaciones, 031 RLS organizacional, **034 perfil organizacional + `onboarding_sessions`, 035 `direccion`, 036 plantillas de correo** (estas 3 confirmadas en esta sesión). Estado de 028 (capo control plane, de otra sesión), 032 (mcp oauth state) y 033 (supplier_ratings) no reverificado en esta sesión — no asumir sin chequear.
@@ -429,17 +447,14 @@ ambos servicios al pushear ahí.
 
 ### Bloqueantes conocidos y no resueltos (actualizado 2026-08-24)
 1. **Checkpoint productivo de Fase G** — correr un ciclo real `unified` antes de retirar legacy.
-2. **`POST /api/buscar` y `POST /api/identificar` siguen sin autenticación** — no por deuda sino
-   porque el servidor MCP y la API pública les pegan por HTTP sin JWT. Se destraba haciendo que esos
-   dos caminos usen la capa de servicios en proceso (ver la sección de aislamiento).
-3. **Aislamiento en profundidad** — el borde HTTP está cerrado, pero el backend usa service key: un
+2. **Aislamiento en profundidad** — el borde HTTP está cerrado, pero el backend usa service key: un
    `.eq()` olvidado dentro de un servicio todavía cruza organizaciones. Falta el test de aislamiento
    con dos organizaciones reales y la Fase 1 de `PLAN_DATA_FOUNDATION.md`.
-4. **Auto-aplicación Gmail no atómica** — `item_field_updates` se marca `aplicado` antes de escribir
+3. **Auto-aplicación Gmail no atómica** — `item_field_updates` se marca `aplicado` antes de escribir
    en `resultados`; si el segundo paso falla, la auditoría dice "Aplicada" sin que el dato exista.
-5. **`registrar_envio()` es sólo auditoría** — no bloquea ni deduplica, un reintento todavía puede
+4. **`registrar_envio()` es sólo auditoría** — no bloquea ni deduplica, un reintento todavía puede
    duplicar un correo real.
-6. **Rotar los secretos** expuestos en capturas durante el desarrollo.
+5. **Rotar los secretos** expuestos en capturas durante el desarrollo.
 
 ## MCP Baiyer — Fases 0 y 1 (2026-08-13)
 - El contrato operativo completo está en `MCP_FASE_0_CONTRATO.md` (tools,

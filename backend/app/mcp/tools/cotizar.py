@@ -1,9 +1,15 @@
-"""MCP tool: cotizar_item — busca precios en multiples fuentes."""
-import asyncio
-import httpx
-from app.config import settings
+"""MCP tool: cotizar_item — busca precios en múltiples fuentes.
 
-API_BASE = f"http://localhost:8000"
+Pertenece al transporte MCP legado (`/api/mcp/sse` + `/api/mcp/rpc`). Los
+clientes nuevos usan Streamable HTTP en `/api/mcp`, cuyo equivalente es
+`start_web_quote`. Se mantiene funcionando mientras el legado siga expuesto.
+
+Antes le pegaba por HTTP a la propia API (`http://localhost:8000/api/identificar`
+y `/api/buscar`) con un cuerpo que no correspondía a `BuscarRequest`, así que
+devolvía siempre "No se pudo identificar el item". Ahora usa el pipeline en
+proceso, que es además lo que permitió cerrar esos dos endpoints con sesión.
+"""
+from app.services.cotizacion_pipeline import cotizar_descripcion
 
 
 async def cotizar_item(
@@ -17,60 +23,43 @@ async def cotizar_item(
     Args:
         descripcion: Descripcion del item o producto a cotizar
         cantidad: Cantidad requerida (default: 1)
-        user_id: ID del usuario Claria
+        user_id: ID del usuario Baiyer
 
     Returns:
         dict con resultados de cotizacion, precio minimo, maximo y promedio
     """
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        # Step 1: Identify item
-        try:
-            id_resp = await client.post(f"{API_BASE}/api/identificar", json={
-                "descripcion": descripcion,
-                "user_id": user_id,
-            })
-            id_data = id_resp.json() if id_resp.status_code == 200 else {}
-        except Exception:
-            id_data = {}
+    try:
+        salida = await cotizar_descripcion(
+            user_id=user_id, descripcion=descripcion, cantidad=cantidad,
+        )
+    except ValueError as exc:
+        return {"error": str(exc), "descripcion": descripcion}
 
-        item_id = id_data.get("id") or id_data.get("item_id")
-
-        if not item_id:
-            return {
-                "error": "No se pudo identificar el item",
-                "descripcion": descripcion,
-            }
-
-        # Step 2: Search prices
-        try:
-            buscar_resp = await client.post(f"{API_BASE}/api/buscar", json={
-                "item_id": item_id,
-                "cantidad": cantidad,
-                "user_id": user_id,
-            })
-            resultados = buscar_resp.json() if buscar_resp.status_code == 200 else []
-        except Exception:
-            resultados = []
-
+    resultados = salida["resultados"]
     if not resultados:
         return {
-            "item_id": item_id,
+            "item_id": salida["cotizacion_id"],
             "descripcion": descripcion,
             "resultados": [],
             "mensaje": "No se encontraron precios disponibles",
         }
 
-    precios = [r.get("precio_clp", 0) for r in resultados if r.get("precio_clp")]
+    # Sólo se agregan precios en CLP: las fuentes internacionales devuelven USD
+    # o EUR y sumarlos como si fueran pesos daba un "precio mínimo" de $0,49.
+    precios = [
+        r["precio"] for r in resultados
+        if r.get("precio") and (r.get("moneda") or "CLP").upper() == "CLP"
+    ]
     return {
-        "item_id": item_id,
+        "item_id": salida["cotizacion_id"],
         "descripcion": descripcion,
+        "nombre_identificado": salida["nombre"],
         "cantidad": cantidad,
         "resultados": [
             {
                 "proveedor": r.get("proveedor", ""),
-                "precio_clp": r.get("precio_clp", 0),
+                "precio_clp": r.get("precio", 0),
                 "moneda_original": r.get("moneda", "CLP"),
-                "precio_original": r.get("precio", 0),
                 "fuente": r.get("fuente", ""),
                 "url": r.get("url", ""),
                 "disponibilidad": r.get("disponibilidad", ""),
@@ -79,6 +68,7 @@ async def cotizar_item(
         ],
         "resumen": {
             "total_fuentes": len(resultados),
+            "con_precio_clp": len(precios),
             "precio_minimo_clp": min(precios) if precios else 0,
             "precio_maximo_clp": max(precios) if precios else 0,
             "precio_promedio_clp": round(sum(precios) / len(precios)) if precios else 0,

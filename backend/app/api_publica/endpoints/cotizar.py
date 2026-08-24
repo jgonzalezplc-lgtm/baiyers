@@ -5,7 +5,6 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-import httpx
 from fastapi import APIRouter, Depends, BackgroundTasks
 from pydantic import BaseModel, Field
 
@@ -18,7 +17,6 @@ from app.api_publica.error_handler import (
 )
 
 router = APIRouter()
-API_INTERNAL = "http://localhost:8000"
 
 
 # ─── Request / Response models ────────────────────────────────────────────────
@@ -48,45 +46,39 @@ class BatchCotizarRequest(BaseModel):
 
 # ─── Core logic ───────────────────────────────────────────────────────────────
 
-async def _cotizar_uno(client: httpx.AsyncClient, req: CotizarRequest, user_id: str, is_test: bool) -> dict:
-    """Llama al pipeline interno: identificar -> buscar."""
+async def _cotizar_uno(req: CotizarRequest, user_id: str, is_test: bool) -> dict:
+    """Identificar -> guardar -> buscar, en proceso.
+
+    Antes esto le pegaba por HTTP a la propia API en localhost:8000. Además de
+    obligar a dejar `/api/identificar` y `/api/buscar` sin autenticación (no
+    había JWT que mandar), estaba roto: el cuerpo que enviaba a `/api/buscar`
+    no correspondía a `BuscarRequest` (422) y leía un `item_id` de la respuesta
+    de identificar que ese endpoint nunca devolvió. Este endpoint fallaba
+    siempre con `item_not_identified`.
+    """
+    from app.services.cotizacion_pipeline import cotizar_descripcion
+
     t0 = time.monotonic()
-
-    # Enrich descripcion with numero_parte and marca if provided
-    descripcion = req.item
-    if req.marca:
-        descripcion = f"{req.marca} {descripcion}"
-    if req.numero_parte:
-        descripcion += f" (P/N: {req.numero_parte})"
-
-    # Step 1: Identify
     try:
-        id_resp = await asyncio.wait_for(
-            client.post(f"{API_INTERNAL}/api/identificar", json={"descripcion": descripcion, "user_id": user_id}),
-            timeout=20.0,
+        salida = await asyncio.wait_for(
+            cotizar_descripcion(
+                user_id=user_id, descripcion=req.item, cantidad=req.cantidad,
+                marca=req.marca, numero_parte=req.numero_parte,
+            ),
+            timeout=60.0,
         )
-        id_data = id_resp.json() if id_resp.status_code == 200 else {}
-    except Exception:
-        id_data = {}
-
-    item_id = id_data.get("id") or id_data.get("item_id")
-    if not item_id:
+    except ValueError:
+        error_item_not_identified(req.item)
+    except asyncio.TimeoutError:
         error_item_not_identified(req.item)
 
-    # Step 2: Search prices
-    try:
-        buscar_resp = await asyncio.wait_for(
-            client.post(f"{API_INTERNAL}/api/buscar", json={
-                "item_id": item_id,
-                "cantidad": req.cantidad,
-                "user_id": user_id,
-            }),
-            timeout=40.0,
-        )
-        resultados = buscar_resp.json() if buscar_resp.status_code == 200 else []
-    except Exception:
-        resultados = []
-
+    resultados = salida["resultados"]
+    id_data = {
+        "nombre_tecnico": salida["nombre"],
+        "marca": req.marca or "",
+        "categoria": salida["categoria"] or "",
+        "confianza": "medio",
+    }
     elapsed_ms = round((time.monotonic() - t0) * 1000)
 
     # Filter by fuentes if specified
@@ -94,18 +86,18 @@ async def _cotizar_uno(client: httpx.AsyncClient, req: CotizarRequest, user_id: 
         resultados = [r for r in resultados if r.get("fuente", "chile") in req.fuentes] or resultados
 
     # Sort by price
-    resultados.sort(key=lambda r: r.get("precio_clp", 999_999_999))
+    resultados.sort(key=lambda r: r.get("precio") or 999_999_999)
 
-    cotizacion_id = f"cot_{uuid.uuid4().hex[:12]}"
+    cotizacion_id = salida["cotizacion_id"] or f"cot_{uuid.uuid4().hex[:12]}"
 
     proveedores_out = [
         {
             "id": f"prov_{r.get('proveedor_id', uuid.uuid4().hex[:8])}",
             "nombre": r.get("proveedor", ""),
-            "precio_unitario": r.get("precio_clp", 0),
-            "precio_total": r.get("precio_clp", 0) * req.cantidad,
-            "moneda": "CLP",
-            "plazo_entrega_dias": r.get("plazo_dias"),
+            "precio_unitario": r.get("precio") or 0,
+            "precio_total": (r.get("precio") or 0) * req.cantidad,
+            "moneda": r.get("moneda") or "CLP",
+            "plazo_entrega_dias": r.get("plazo_entrega_estimado"),
             "disponibilidad": "en_stock" if not req.urgente else r.get("disponibilidad", "consultar"),
             "url": r.get("url", ""),
             "fuente": r.get("fuente", "chile"),
@@ -148,9 +140,7 @@ async def cotizar(
     plan = client_ctx["plan"]
     check_and_increment(user_id, plan, "cotizaciones")
 
-    async with httpx.AsyncClient(timeout=65.0) as client:
-        result = await _cotizar_uno(client, body, user_id, client_ctx["is_test"])
-    return result
+    return await _cotizar_uno(body, user_id, client_ctx["is_test"])
 
 
 @router.post("/cotizar/batch", summary="Cotizar multiples items (Business+)")
@@ -175,17 +165,16 @@ async def cotizar_batch(
     for _ in body.items:
         check_and_increment(user_id, plan, "cotizaciones")
 
-    async with httpx.AsyncClient(timeout=90.0) as http_client:
-        tasks = [
-            _cotizar_uno(
-                http_client,
-                CotizarRequest(item=it.item, cantidad=it.cantidad, unidad=it.unidad, numero_parte=it.numero_parte, marca=it.marca),
-                user_id,
-                is_test,
-            )
-            for it in body.items
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+    tasks = [
+        _cotizar_uno(
+            CotizarRequest(item=it.item, cantidad=it.cantidad, unidad=it.unidad,
+                           numero_parte=it.numero_parte, marca=it.marca),
+            user_id,
+            is_test,
+        )
+        for it in body.items
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
     cotizaciones = []
     for i, res in enumerate(results):

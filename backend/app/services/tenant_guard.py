@@ -57,30 +57,17 @@ PREFIJOS_CON_GUARDIA_PROPIO: tuple[str, ...] = (
     "/api/v1",                    # API pública por api_key
 )
 
-# ── 3. DEUDA — esto tiene que llegar a CERO ─────────────────────────────────
-# Rutas que todavía deducen la identidad de un `user_id` que manda el cliente.
-# Están acá SÓLO para que activar el guardia no rompa la app mientras se
-# migran. Cada línea que se borra de esta lista es un agujero menos: empezó con
-# 72 entradas y hoy quedan 2.
+# ── 3. DEUDA — en cero ───────────────────────────────────────────────────────
+# Rutas que deducían la identidad de un `user_id` mandado por el cliente.
+# Empezó con 72 entradas y hoy está vacía. Las últimas dos (`POST /api/buscar` y
+# `POST /api/identificar`) se cerraron cuando el servidor MCP y la API pública
+# dejaron de pegarle por HTTP a la propia API y pasaron a usar
+# `services/cotizacion_pipeline.py` en proceso.
 #
-# No agregar rutas nuevas acá bajo ninguna circunstancia: una ruta nueva se
-# escribe con `Depends(get_auth_context)` desde el principio. Esta lista sólo
-# puede achicarse.
-DEUDA_SIN_AUTENTICAR: frozenset[str] = frozenset({
-    # Estos dos NO se pueden cerrar todavía sin romper cosas reales: el
-    # servidor MCP (`mcp/tools/cotizar.py`) y la API pública
-    # (`api_publica/endpoints/cotizar.py`) los consumen server-to-server por
-    # HTTP contra localhost:8000, sin un JWT de usuario. El arreglo correcto no
-    # es una exención por IP (falsificable, y ya cargamos con la complejidad de
-    # `es_llamada_interna()` en llm_rate_limit.py) sino que esos dos caminos
-    # llamen a la capa de servicios en proceso en vez de pegarle a su propia
-    # API. Es refactor con alcance propio, no parte de este bloque.
-    # Mientras tanto: rate limit por IP + topes de tamaño, y el único dato de
-    # otra organización alcanzable es la lista de proveedores propios que
-    # inyecta `incluir_proveedores_custom` si se acierta un UUID ajeno.
-    "POST /api/identificar",
-    "POST /api/buscar",
-})
+# No agregar rutas acá bajo ninguna circunstancia: una ruta nueva se escribe con
+# `Depends(get_auth_context)` desde el principio. Si algo realmente no puede
+# exigir sesión, va en RUTAS_PUBLICAS con el motivo escrito.
+DEUDA_SIN_AUTENTICAR: frozenset[str] = frozenset()
 
 
 def _clave(request: Request) -> str:
