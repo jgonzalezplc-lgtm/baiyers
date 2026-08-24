@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, PlusCircle, ListChecks, Building2, BarChart3,
   ScrollText, Receipt, FolderKanban, CalendarDays, Repeat, FileBarChart,
-  MessageSquare, Mail, Plug, Code2, Settings, LogOut, Menu, X,
+  Mail, Plug, Settings, LogOut, Menu, X,
   type LucideIcon,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ui";
@@ -39,9 +39,7 @@ const NAV: { section: string; links: NavLink[] }[] = [
   {
     section: "Sistema",
     links: [
-      { href: "/chat", label: "Chat IA", icon: MessageSquare },
       { href: "/integraciones", label: "MCP", icon: Plug },
-      { href: "/developers", label: "API", icon: Code2 },
       { href: "/settings", label: "Configuración", icon: Settings },
     ],
   },
