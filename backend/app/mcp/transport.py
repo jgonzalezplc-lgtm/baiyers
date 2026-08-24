@@ -228,11 +228,28 @@ async def mcp_rpc(request: Request, body: dict = Body(...)):
 
 # ─── Connections list (UI) ────────────────────────────────────────────────────
 
+def _user_id_para_ui(request: Request) -> str:
+    """Identidad para las pantallas de `/integraciones`.
+
+    Estas rutas las consume el navegador con la sesión de Supabase, no un
+    cliente MCP: exigir un token OAuth MCP las volvía inservibles desde la web
+    (la pantalla pedía "pegá tu token MCP" y no había forma de obtener uno).
+    Se acepta cualquiera de las dos identidades verificadas; nunca un `user_id`
+    del cliente.
+    """
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        payload = verify_mcp_token(auth[7:])
+        if payload:
+            return payload["sub"]
+    from app.services.auth_context import verificar_token
+    return verificar_token(auth or None)
+
+
 @router.get("/connections")
 async def list_connections(request: Request):
     """List active MCP connections for the authenticated user."""
-    payload = _get_token_payload(request)
-    user_id = payload["sub"]
+    user_id = _user_id_para_ui(request)
 
     try:
         resp = SUPABASE.table("mcp_connections").select("*").eq("user_id", user_id).execute()
@@ -243,11 +260,32 @@ async def list_connections(request: Request):
     return {"connections": connections}
 
 
+@router.delete("/connections/{client_id}")
+async def revoke_connection(client_id: str, request: Request):
+    """Desconecta un cliente desde la web: revoca toda su familia de tokens.
+
+    La pantalla llamaba a `DELETE /api/mcp/oauth/revoke?client_id=...`, que no
+    existe — el endpoint OAuth es RFC 7009 (POST con el token en el body, que
+    el navegador no tiene). Acá se revoca por `client_id` del usuario
+    autenticado, que es lo que la UI realmente puede saber.
+    """
+    from app.mcp.token_service import revoke_token_family_por_cliente
+
+    user_id = _user_id_para_ui(request)
+    revocados = revoke_token_family_por_cliente(user_id, client_id)
+    try:
+        SUPABASE.table("mcp_connections").delete().eq(
+            "user_id", user_id
+        ).eq("client_id", client_id).execute()
+    except Exception:
+        pass
+    return {"revocados": revocados}
+
+
 @router.get("/audit")
 async def audit_log(request: Request, limit: int = 50):
     """Get recent MCP tool call audit log."""
-    payload = _get_token_payload(request)
-    user_id = payload["sub"]
+    user_id = _user_id_para_ui(request)
 
     try:
         resp = (

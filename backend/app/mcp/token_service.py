@@ -83,6 +83,24 @@ def revoke_token(raw: str) -> bool:
     return bool(response.data)
 
 
+def revoke_token_family_por_cliente(user_id: str, client_id: str) -> int:
+    """Revoca todos los tokens vivos de ese cliente para ese usuario.
+
+    Lo usa el botón "Desconectar" de `/integraciones`, que sólo conoce el
+    `client_id` — no el token en crudo, que nunca sale del cliente MCP. Marca
+    `revoked_at` en vez de borrar: el historial de qué estuvo conectado y
+    cuándo se cortó es justamente lo auditable.
+    """
+    sb = get_supabase()
+    ahora = _iso(datetime.now(timezone.utc))
+    response = (
+        sb.table("mcp_oauth_tokens").update({"revoked_at": ahora})
+        .eq("user_id", user_id).eq("client_id", client_id)
+        .is_("revoked_at", "null").execute()
+    )
+    return len(response.data or [])
+
+
 class BaiyerTokenVerifier:
     async def verify_token(self, token: str) -> AccessToken | None:
         row = load_token(token, "access")

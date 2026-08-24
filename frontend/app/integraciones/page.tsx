@@ -1,8 +1,20 @@
 "use client";
+/**
+ * Integraciones · MCP.
+ *
+ * Antes esta pantalla documentaba un producto que no existe: pedía pegar a mano
+ * un "token MCP" que no había forma de obtener, y mostraba una config de
+ * Claude Desktop con un paquete npx (`@claria/mcp-server`) que nunca se publicó.
+ * El servidor real es Streamable HTTP con OAuth 2.1 + Dynamic Client
+ * Registration, así que el usuario NO necesita ningún token: pega la URL en su
+ * cliente y la autenticación la negocia el cliente solo, en el navegador.
+ */
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const MCP_URL = `${API_URL}/api/mcp`;
 
 interface MCPConnection {
   id: string;
@@ -15,86 +27,110 @@ interface MCPConnection {
 interface AuditEntry {
   id: string;
   tool_name: string;
-  params: Record<string, unknown>;
   result_preview: string;
   called_at: string;
 }
 
-const KNOWN_CLIENTS: Record<string, { name: string; description: string }> = {
-  "claude-desktop": { name: "Claude Desktop", description: "Anthropic Claude para escritorio" },
-  "claude-ai": { name: "Claude.ai", description: "Claude en el navegador" },
-  "chatgpt": { name: "ChatGPT Plugin", description: "OpenAI ChatGPT via plugin" },
-  "gemini": { name: "Google Gemini", description: "Google Gemini AI" },
-  "cursor": { name: "Cursor IDE", description: "Editor de código con IA" },
-};
-
-const TOOL_LABELS: Record<string, string> = {
-  cotizar_item: "Cotizar Item",
-  buscar_proveedores: "Buscar Proveedores",
-  emitir_oc: "Emitir OC",
-  consultar_gastos: "Consultar Gastos",
-  crear_recurrencia: "Crear Recurrencia",
-  historico_precios: "Historial Precios",
-  crear_proyecto: "Crear Proyecto",
-  generar_reporte: "Generar Reporte",
-};
+/** Instrucciones por cliente. El comando es lo único que el usuario necesita. */
+const CLIENTES = [
+  {
+    id: "claude-code",
+    nombre: "Claude Code",
+    detalle: "CLI de Anthropic en la terminal",
+    lenguaje: "bash",
+    comando: (url: string) => `claude mcp add --transport http baiyer ${url}`,
+    pasos: [
+      "Corré el comando en cualquier carpeta.",
+      "Abrí Claude Code y escribí /mcp.",
+      "Elegí «baiyer» y autenticá: se abre el navegador con tu sesión de Baiyer.",
+    ],
+  },
+  {
+    id: "codex",
+    nombre: "Codex",
+    detalle: "CLI de OpenAI",
+    lenguaje: "toml",
+    comando: (url: string) =>
+      `# ~/.codex/config.toml\n[mcp_servers.baiyer]\nurl = "${url}"`,
+    pasos: [
+      "Agregá ese bloque a ~/.codex/config.toml (o usá los subcomandos codex mcp).",
+      "Al detectar una url en vez de un command, Codex usa transporte HTTP solo.",
+      "En el primer uso te pide autenticar por OAuth en el navegador.",
+    ],
+  },
+  {
+    id: "claude-desktop",
+    nombre: "Claude Desktop / claude.ai",
+    detalle: "Conector remoto, sin instalar nada",
+    lenguaje: "text",
+    comando: (url: string) => url,
+    pasos: [
+      "Configuración → Conectores → Agregar conector personalizado.",
+      "Pegá la URL. No hace falta comando ni token.",
+      "Autorizá en la ventana que se abre.",
+    ],
+  },
+];
 
 export default function IntegracionesPage() {
-  const [userId, setUserId] = useState("");
-  const [mcpToken, setMcpToken] = useState("");
-  const [connections, setConnections] = useState<MCPConnection[]>([]);
-  const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
-  const [tab, setTab] = useState<"conexiones" | "audit" | "docs">("conexiones");
-  const [revoking, setRevoking] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [conexiones, setConexiones] = useState<MCPConnection[]>([]);
+  const [actividad, setActividad] = useState<AuditEntry[]>([]);
+  const [tab, setTab] = useState<"conectar" | "conexiones" | "audit">("conectar");
+  const [revocando, setRevocando] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(true);
+
+  const cargar = async () => {
+    try {
+      const [conn, audit] = await Promise.all([
+        authFetch(`${API_URL}/api/mcp/connections`).then(r => (r.ok ? r.json() : { connections: [] })),
+        authFetch(`${API_URL}/api/mcp/audit?limit=20`).then(r => (r.ok ? r.json() : { logs: [] })),
+      ]);
+      setConexiones(conn.connections || []);
+      setActividad(audit.logs || []);
+    } catch {
+      /* pantalla sigue usable: conectar no depende de esto */
+    } finally {
+      setCargando(false);
+    }
+  };
 
   useEffect(() => {
     createClient().auth.getUser().then(({ data: { user } }) => {
-      if (user) setUserId(user.id);
+      if (user) cargar();
+      else setCargando(false);
     });
   }, []);
 
-  useEffect(() => {
-    if (!mcpToken) return;
-    Promise.all([
-      fetch(`${API_URL}/api/mcp/connections`, { headers: { Authorization: `Bearer ${mcpToken}` } }).then(r => r.json()),
-      fetch(`${API_URL}/api/mcp/audit?limit=20`, { headers: { Authorization: `Bearer ${mcpToken}` } }).then(r => r.json()),
-    ]).then(([conn, audit]) => {
-      setConnections(conn.connections || []);
-      setAuditLog(audit.logs || []);
-    }).catch(() => {});
-  }, [mcpToken]);
+  const copiar = (texto: string, clave: string) => {
+    navigator.clipboard.writeText(texto);
+    setCopiado(clave);
+    setTimeout(() => setCopiado(null), 2000);
+  };
 
-  const handleRevoke = async (clientId: string) => {
-    if (!mcpToken) return;
-    setRevoking(clientId);
+  const desconectar = async (clientId: string) => {
+    setRevocando(clientId);
     try {
-      await fetch(`${API_URL}/api/mcp/oauth/revoke?client_id=${encodeURIComponent(clientId)}`, {
-        method: "DELETE", headers: { Authorization: `Bearer ${mcpToken}` },
+      const r = await authFetch(`${API_URL}/api/mcp/connections/${encodeURIComponent(clientId)}`, {
+        method: "DELETE",
       });
-      setConnections(prev => prev.filter(c => c.client_id !== clientId));
-    } finally { setRevoking(null); }
+      if (r.ok) setConexiones(prev => prev.filter(c => c.client_id !== clientId));
+    } finally {
+      setRevocando(null);
+    }
   };
 
-  const copyConfig = () => {
-    navigator.clipboard.writeText(JSON.stringify({
-      mcpServers: { "claria-cotizador": { command: "npx", args: ["-y", "@claria/mcp-server"], env: { CLARIA_TOKEN: mcpToken || "<tu-token-aqui>", CLARIA_USER_ID: userId } } }
-    }, null, 2));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const tabBtn = (active: boolean): React.CSSProperties => ({
-    padding: "8px 16px", fontSize: 11, fontWeight: active ? 700 : 400,
-    color: active ? "var(--accent)" : "var(--text-muted)", background: "none", border: "none",
-    borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent",
+  const tabBtn = (activo: boolean): React.CSSProperties => ({
+    padding: "8px 16px", fontSize: 11, fontWeight: activo ? 700 : 400,
+    color: activo ? "var(--accent)" : "var(--text-muted)", background: "none", border: "none",
+    borderBottom: activo ? "2px solid var(--accent)" : "2px solid transparent",
     cursor: "pointer", fontFamily: "var(--font-mono)", letterSpacing: "0.04em",
   });
 
-  const inputSt: React.CSSProperties = {
+  const bloqueSt: React.CSSProperties = {
     background: "var(--bg-base)", border: "1px solid var(--border-default)",
-    padding: "8px 12px", color: "var(--text-primary)", fontSize: 11,
-    fontFamily: "var(--font-mono)", outline: "none", width: "100%",
+    padding: "12px 14px", fontSize: 10, color: "var(--text-secondary)",
+    fontFamily: "var(--font-mono)", overflowX: "auto", margin: 0, whiteSpace: "pre",
   };
 
   return (
@@ -105,130 +141,127 @@ export default function IntegracionesPage() {
           INTEGRACIONES · MODEL CONTEXT PROTOCOL
         </span>
         <h1 style={{ fontSize: 26, fontWeight: 700, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.02em" }}>MCP</h1>
-        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0 }}>Conecta Claude, ChatGPT y otros LLMs con tu cuenta Claria.</p>
+        <p style={{ fontSize: 12, color: "var(--text-secondary)", margin: 0, maxWidth: 620 }}>
+          Conectá Claude Code, Codex u otro cliente MCP a tu cuenta Baiyer para cotizar, comparar
+          proveedores y consultar OCs desde tu terminal.
+        </p>
       </div>
 
-      {!mcpToken && (
-        <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderLeft: "3px solid var(--accent)", padding: "20px", marginBottom: 24 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>Conectar con tu cuenta</div>
-          <p style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 14 }}>Genera un token de acceso o pega uno existente.</p>
-          <input type="text" placeholder="Pegar token MCP..." style={inputSt} onChange={e => setMcpToken(e.target.value)} />
-        </div>
-      )}
-
       <div style={{ borderBottom: "1px solid var(--border-default)", marginBottom: 24, display: "flex", gap: 4 }}>
-        {(["conexiones", "audit", "docs"] as const).map(t => (
+        {(["conectar", "conexiones", "audit"] as const).map(t => (
           <button key={t} style={tabBtn(tab === t)} onClick={() => setTab(t)}>
-            {t === "conexiones" ? "Conexiones" : t === "audit" ? "Actividad" : "Configuración"}
+            {t === "conectar" ? "Conectar" : t === "conexiones" ? `Conexiones${conexiones.length ? ` (${conexiones.length})` : ""}` : "Actividad"}
           </button>
         ))}
       </div>
 
-      {tab === "conexiones" && (
-        <div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 14 }}>Clientes disponibles</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 1, border: "1px solid var(--border-default)", marginBottom: 28 }}>
-            {Object.entries(KNOWN_CLIENTS).map(([id, client]) => {
-              const connected = connections.find(c => c.client_id === id);
-              return (
-                <div key={id} style={{ background: "var(--bg-surface)", borderRight: "1px solid var(--border-default)", borderBottom: "1px solid var(--border-default)", padding: "16px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{client.name}</div>
-                    {connected
-                      ? <span style={{ fontSize: 9, fontWeight: 700, color: "var(--text-success)", border: "1px solid var(--text-success)", padding: "2px 7px" }}>Conectado</span>
-                      : <span style={{ fontSize: 9, color: "var(--text-muted)", border: "1px solid var(--border-default)", padding: "2px 7px" }}>No conectado</span>
-                    }
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 14 }}>{client.description}</div>
-                  {connected ? (
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={copyConfig} className="btn-swiss-secondary" style={{ flex: 1, fontSize: 10, padding: "5px 10px" }}>
-                        {copied ? "Copiado ✓" : "Copiar config"}
-                      </button>
-                      <button onClick={() => handleRevoke(id)} disabled={revoking === id} style={{ fontSize: 10, color: "var(--text-error)", background: "none", border: "1px solid var(--text-error)", padding: "5px 10px", cursor: "pointer", fontFamily: "inherit" }}>
-                        {revoking === id ? "..." : "Revocar"}
-                      </button>
-                    </div>
-                  ) : (
-                    <a href={`${API_URL}/api/mcp/oauth/authorize?client_id=${id}&redirect_uri=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin + "/integraciones" : "")}&response_type=code&scope=read+write&state=${id}`}
-                      className="btn-swiss-primary" style={{ display: "block", textAlign: "center", fontSize: 10, textDecoration: "none", padding: "6px 10px" }}>
-                      Conectar
-                    </a>
-                  )}
-                </div>
-              );
-            })}
+      {tab === "conectar" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderLeft: "3px solid var(--accent)", padding: "18px 20px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>
+              No necesitás ningún token
+            </div>
+            <p style={{ fontSize: 11, color: "var(--text-secondary)", margin: "0 0 14px", lineHeight: 1.6 }}>
+              El servidor usa OAuth 2.1 con registro dinámico: tu cliente se registra solo y te pide
+              autorización en el navegador con la sesión que ya tenés abierta. La única cosa que
+              tenés que copiar es esta dirección.
+            </p>
+            <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+              <code style={{ ...bloqueSt, flex: 1, display: "flex", alignItems: "center", color: "var(--text-primary)" }}>{MCP_URL}</code>
+              <button onClick={() => copiar(MCP_URL, "url")} className="btn-swiss-secondary" style={{ fontSize: 10, padding: "6px 14px", whiteSpace: "nowrap" }}>
+                {copiado === "url" ? "Copiado ✓" : "Copiar"}
+              </button>
+            </div>
           </div>
 
-          {connections.length > 0 && (
-            <div>
-              <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.06em", marginBottom: 14 }}>Detalles de conexiones</div>
-              <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-surface)" }}>
-                {connections.map((conn, i) => (
-                  <div key={conn.id} style={{ padding: "14px 16px", borderBottom: i < connections.length - 1 ? "1px solid var(--border-subtle)" : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", marginBottom: 2 }}>
-                        {KNOWN_CLIENTS[conn.client_id]?.name || conn.client_id}
-                      </div>
-                      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                        Scopes: {conn.scopes.join(", ")} · Conectado: {new Date(conn.connected_at).toLocaleDateString("es-CL")}
-                        {conn.last_used_at && ` · Último uso: ${new Date(conn.last_used_at).toLocaleDateString("es-CL")}`}
-                      </div>
-                    </div>
-                    <button onClick={() => handleRevoke(conn.client_id)} disabled={revoking === conn.client_id} style={{ fontSize: 10, color: "var(--text-error)", background: "none", border: "1px solid var(--text-error)", padding: "5px 10px", cursor: "pointer", fontFamily: "inherit" }}>
-                      {revoking === conn.client_id ? "Revocando..." : "Revocar"}
-                    </button>
-                  </div>
-                ))}
+          {CLIENTES.map(cliente => {
+            const conectado = conexiones.some(c => c.client_id.includes(cliente.id));
+            const texto = cliente.comando(MCP_URL);
+            return (
+              <div key={cliente.id} style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: "18px 20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{cliente.nombre}</div>
+                  {conectado && (
+                    <span style={{ fontSize: 9, fontWeight: 700, color: "var(--text-success)", border: "1px solid var(--text-success)", padding: "2px 7px" }}>
+                      Conectado
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 14 }}>{cliente.detalle}</div>
+
+                <div style={{ display: "flex", gap: 8, alignItems: "stretch", marginBottom: 14 }}>
+                  <pre style={{ ...bloqueSt, flex: 1 }}>{texto}</pre>
+                  <button onClick={() => copiar(texto, cliente.id)} className="btn-swiss-secondary" style={{ fontSize: 10, padding: "6px 14px", whiteSpace: "nowrap", alignSelf: "flex-start" }}>
+                    {copiado === cliente.id ? "Copiado ✓" : "Copiar"}
+                  </button>
+                </div>
+
+                <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.8 }}>
+                  {cliente.pasos.map((paso, i) => <li key={i}>{paso}</li>)}
+                </ol>
               </div>
-            </div>
-          )}
-          {connections.length === 0 && mcpToken && (
-            <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)", fontSize: 12 }}>
-              Sin conexiones activas, conecta tu primer cliente arriba
-            </div>
-          )}
+            );
+          })}
+
+          <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.7 }}>
+            El acceso queda limitado a tu organización y a los permisos que autorices. Cada llamada
+            de una herramienta queda registrada en «Actividad», y podés cortar el acceso de un
+            cliente cuando quieras desde «Conexiones».
+          </div>
         </div>
       )}
 
-      {tab === "audit" && (
-        auditLog.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)", fontSize: 12 }}>Sin actividad MCP reciente</div>
+      {tab === "conexiones" && (
+        cargando ? (
+          <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)", fontSize: 12 }}>Cargando…</div>
+        ) : conexiones.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)", fontSize: 12 }}>
+            Todavía no hay clientes conectados. Andá a «Conectar» para agregar el primero.
+          </div>
         ) : (
           <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-surface)" }}>
-            {auditLog.map((entry, i) => (
-              <div key={entry.id} style={{ padding: "12px 16px", borderBottom: i < auditLog.length - 1 ? "1px solid var(--border-subtle)" : "none" }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)" }}>{TOOL_LABELS[entry.tool_name] || entry.tool_name}</span>
-                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{new Date(entry.called_at).toLocaleString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+            {conexiones.map((conn, i) => (
+              <div key={conn.id} style={{ padding: "14px 16px", borderBottom: i < conexiones.length - 1 ? "1px solid var(--border-subtle)" : "none", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", marginBottom: 2 }}>{conn.client_id}</div>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                    Conectado: {new Date(conn.connected_at).toLocaleDateString("es-CL")}
+                    {conn.last_used_at && ` · Último uso: ${new Date(conn.last_used_at).toLocaleDateString("es-CL")}`}
+                    {conn.scopes?.length ? ` · ${conn.scopes.length} permisos` : ""}
+                  </div>
                 </div>
-                {entry.result_preview && (
-                  <div style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 4, fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.result_preview}</div>
-                )}
+                <button onClick={() => desconectar(conn.client_id)} disabled={revocando === conn.client_id}
+                  style={{ fontSize: 10, color: "var(--text-error)", background: "none", border: "1px solid var(--text-error)", padding: "5px 10px", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+                  {revocando === conn.client_id ? "Desconectando…" : "Desconectar"}
+                </button>
               </div>
             ))}
           </div>
         )
       )}
 
-      {tab === "docs" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: "20px" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 12 }}>Claude Desktop (claude_desktop_config.json)</div>
-            <pre style={{ background: "var(--bg-base)", border: "1px solid var(--border-default)", padding: "14px", fontSize: 10, color: "var(--text-secondary)", overflow: "auto", fontFamily: "var(--font-mono)", margin: 0 }}>{`{\n  "mcpServers": {\n    "claria-cotizador": {\n      "command": "npx",\n      "args": ["-y", "@claria/mcp-server"],\n      "env": {\n        "CLARIA_TOKEN": "${mcpToken || "<tu-token-mcp>"}",\n        "CLARIA_USER_ID": "${userId || "<tu-user-id>"}"\n      }\n    }\n  }\n}`}</pre>
-          </div>
-          <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", padding: "20px" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)", marginBottom: 12 }}>Herramientas disponibles ({Object.keys(TOOL_LABELS).length})</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
-              {Object.entries(TOOL_LABELS).map(([key, label]) => (
-                <div key={key} style={{ background: "var(--bg-base)", border: "1px solid var(--border-default)", padding: "8px 12px" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)" }}>{label}</div>
-                  <div style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{key}</div>
+      {tab === "audit" && (
+        actividad.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)", fontSize: 12 }}>Sin actividad MCP reciente</div>
+        ) : (
+          <div style={{ border: "1px solid var(--border-default)", background: "var(--bg-surface)" }}>
+            {actividad.map((entry, i) => (
+              <div key={entry.id} style={{ padding: "12px 16px", borderBottom: i < actividad.length - 1 ? "1px solid var(--border-subtle)" : "none" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", fontFamily: "var(--font-mono)" }}>{entry.tool_name}</span>
+                  <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                    {new Date(entry.called_at).toLocaleString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </span>
                 </div>
-              ))}
-            </div>
+                {entry.result_preview && (
+                  <div style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 4, fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {entry.result_preview}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-        </div>
+        )
       )}
     </>
   );
