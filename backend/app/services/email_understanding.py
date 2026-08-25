@@ -13,7 +13,17 @@ fuera o lo marca para aclaración.
 """
 import asyncio
 import json
+import re
 from typing import Optional
+
+# El extractor corría con timeout=25s y ahí se caía en silencio: un correo real de 6
+# ítems mide ~20.7s (1198 tokens de salida, pero ~3228 de *thinking*, que dominan), o
+# sea que quedaba justo en el borde y fallaba de forma intermitente. `asyncio.TimeoutError`
+# además stringifica a "", así que el log quedaba en `error de extracción: ` sin causa.
+# El SDK 0.8.6 no expone `thinking_config`, así que no se puede apagar el thinking:
+# el margen se gana con timeout más holgado + structured output (menos tokens de salida).
+TIMEOUT_EXTRACCION = 90.0
+INTENTOS_EXTRACCION = 2
 
 # Campos que el agente puede proponer. Cualquier otro valor que devuelva el
 # modelo se descarta (evita que un campo inventado ensucie el audit log).
@@ -51,18 +61,86 @@ Correo del proveedor:
 {cuerpo}
 \"\"\"
 
-Responde SOLO JSON válido, sin markdown, con esta forma exacta:
-{{
-  "propuestas": [
-    {{"entity_id": "string|null", "field": "string", "new_value": "string|number|boolean",
-      "currency": "CLP|USD|EUR|null", "confidence": 0.0, "nota": "breve justificación"}}
-  ],
-  "respondio_todo": true,
-  "requiere_aclaracion": false
-}}
+Normaliza los montos a número puro, sin separador de miles ni símbolo: "150.000" -> 150000,
+"$8.000" -> 8000, "1750" -> 1750. En Chile el punto es separador de miles, NO decimal.
+
+Si el proveedor dice que un ítem no lo tiene ("no tenemos", "sin stock", "no manejamos"),
+reporta disponibilidad="no_disponible" para ese entity_id y NO inventes un precio.
+
+Reglas para los campos de texto: si no puedes determinar entity_id, devuelve "" (string
+vacío). Si un dato no aplica, omite esa propuesta en vez de mandarla con valor vacío.
+
 Si el correo no aporta ningún dato útil (ej: respuesta automática, fuera de oficina,
-error de entrega), responde con "propuestas": [] y explica en "nota" a nivel de la
-primera propuesta— pero como no hay propuestas, deja el arreglo vacío nomás."""
+error de entrega), devuelve "propuestas" como arreglo vacío."""
+
+
+# Structured output (`response_schema`) en vez de pedir JSON por prompt y limpiar los
+# fences ```json a mano. Motivo concreto: el parseo manual de fences era frágil y, sobre
+# todo, la respuesta libre gastaba ~1200 tokens de salida que empujaban la latencia por
+# encima del timeout (ver TIMEOUT_EXTRACCION). Schema plano y sin `null` a propósito —
+# Gemini responde peor con nullables; se usan centinelas "" y se validan en Python.
+ESQUEMA_PROPUESTAS = {
+    "type": "object",
+    "properties": {
+        "propuestas": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "entity_id": {"type": "string"},
+                    "field": {"type": "string"},
+                    "new_value": {"type": "string"},
+                    "currency": {"type": "string"},
+                    "confidence": {"type": "number"},
+                    "nota": {"type": "string"},
+                },
+                "required": ["entity_id", "field", "new_value", "currency", "confidence", "nota"],
+            },
+        },
+        "respondio_todo": {"type": "boolean"},
+        "requiere_aclaracion": {"type": "boolean"},
+    },
+    "required": ["propuestas", "respondio_todo", "requiere_aclaracion"],
+}
+
+
+# Campos que deben terminar como número en `resultados`. El modelo los devuelve como
+# string (el schema es plano a propósito) y la normalización se hace acá, en Python:
+# el LLM no hace aritmética ni decide formato de miles.
+CAMPOS_NUMERICOS = {
+    "precio_unitario", "descuento", "costo_despacho",
+    "porcentaje_anticipo", "cantidad_ofrecida",
+}
+
+_RE_NUMERO = re.compile(r"-?[\d.,]+")
+
+
+def normalizar_monto(valor) -> Optional[float]:
+    """'150.000' -> 150000.0, '$8.000 c/u' -> 8000.0, '1750' -> 1750.0.
+
+    En Chile el punto es separador de miles y la coma es decimal, que es al revés
+    que en `float()`. Devuelve None si no hay ningún número reconocible.
+    """
+    if isinstance(valor, (int, float)) and not isinstance(valor, bool):
+        return float(valor)
+    match = _RE_NUMERO.search(str(valor or ""))
+    if not match:
+        return None
+    crudo = match.group(0).strip(".,")
+    if not crudo:
+        return None
+    if "," in crudo:
+        # La coma manda como decimal; los puntos son separadores de miles.
+        crudo = crudo.replace(".", "").replace(",", ".")
+    elif "." in crudo:
+        # Sin coma, un punto puede ser miles ("150.000") o decimal ("150.5"). Se decide
+        # por el largo del último grupo: exactamente 3 dígitos => separador de miles.
+        if len(crudo.rsplit(".", 1)[1]) == 3:
+            crudo = crudo.replace(".", "")
+    try:
+        return float(crudo)
+    except ValueError:
+        return None
 
 
 def _filtrar_propuesta(p: dict) -> Optional[dict]:
@@ -71,6 +149,11 @@ def _filtrar_propuesta(p: dict) -> Optional[dict]:
         return None
     if p.get("new_value") in (None, ""):
         return None
+    if field in CAMPOS_NUMERICOS:
+        numero = normalizar_monto(p["new_value"])
+        if numero is None:
+            return None  # el modelo mandó texto donde debía ir un monto: se descarta
+        p = {**p, "new_value": numero}
     try:
         confianza = float(p.get("confidence", 0))
     except (TypeError, ValueError):
@@ -103,7 +186,14 @@ async def extraer_actualizaciones(cuerpo: str, items_contexto: list[dict]) -> di
 
     import google.generativeai as genai
     genai.configure(api_key=settings.gemini_api_key)
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    model = genai.GenerativeModel(
+        "gemini-2.5-flash",
+        generation_config={
+            "response_mime_type": "application/json",
+            "response_schema": ESQUEMA_PROPUESTAS,
+            "temperature": 0,
+        },
+    )
 
     prompt = PROMPT_BASE.format(
         campos=", ".join(sorted(CAMPOS_VALIDOS)),
@@ -111,16 +201,22 @@ async def extraer_actualizaciones(cuerpo: str, items_contexto: list[dict]) -> di
         cuerpo=texto[:6000],
     )
 
-    try:
-        resp = await asyncio.wait_for(model.generate_content_async(prompt), timeout=25.0)
-        text = resp.text.strip()
-        if "```" in text:
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-        data = json.loads(text.strip())
-    except Exception as e:
-        print(f"[EmailUnderstanding] error de extracción: {e}")
+    data = None
+    for intento in range(1, INTENTOS_EXTRACCION + 1):
+        try:
+            resp = await asyncio.wait_for(
+                model.generate_content_async(prompt), timeout=TIMEOUT_EXTRACCION
+            )
+            data = json.loads(resp.text)
+            break
+        except Exception as e:
+            # `type(e).__name__` es obligatorio: TimeoutError tiene str() vacío y sin el
+            # tipo el log queda mudo, que fue justo lo que ocultó este bug en producción.
+            print(
+                f"[EmailUnderstanding] error de extracción "
+                f"(intento {intento}/{INTENTOS_EXTRACCION}): {type(e).__name__}: {e}"
+            )
+    if data is None:
         return vacio_seguro
 
     propuestas = [p for p in (_filtrar_propuesta(p) for p in data.get("propuestas", [])) if p]

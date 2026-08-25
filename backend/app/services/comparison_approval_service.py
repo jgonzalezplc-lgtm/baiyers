@@ -58,6 +58,24 @@ def explain_quote_recommendation(sb, actor: ApplicationActorContext, list_id: st
             "warnings": warnings, "alternatives_considered": len(eligible)}
 
 
+def _registrar_precio_manual(sb, result_id: str, precio: float, actor: ApplicationActorContext) -> None:
+    """Persiste un precio ingresado a mano dejando rastro de que NO lo cotizó el proveedor.
+
+    Sin esto el precio aparecería después indistinguible de uno extraído del correo, y
+    quien revise la OC no tendría cómo saber que lo tipeó una persona.
+    """
+    actual = ejecutar_maybe_single(
+        sb.table("resultados").select("notas_respuesta").eq("id", result_id).maybe_single()
+    )
+    previa = (actual.data or {}).get("notas_respuesta") or ""
+    nota = f"precio ingresado manualmente por {actor.actor_user_id}: {precio:.0f} CLP"
+    sb.table("resultados").update({
+        "precio_cotizado": precio,
+        "moneda_cotizada": "CLP",
+        "notas_respuesta": (previa + f"\n{nota}").strip(),
+    }).eq("id", result_id).execute()
+
+
 async def select_final_quote(
     sb, actor: ApplicationActorContext, *, list_id: str, quote_id: str,
     result_id: str, price_clp: Optional[float], confirmed: bool,
@@ -68,12 +86,26 @@ async def select_final_quote(
     if not offer:
         raise HTTPException(status_code=404, detail="Oferta no encontrada para este ítem")
     unit = offer.get("precio_cotizado") if offer.get("precio_cotizado") is not None else offer.get("precio")
-    if unit is None:
-        raise HTTPException(status_code=409, detail="No se puede seleccionar una oferta sin precio")
     currency = offer.get("moneda") or "CLP"
-    if currency != "CLP" and (price_clp is None or price_clp <= 0):
+    # `price_clp` cumple dos roles distintos y ambos son legítimos:
+    #  1. conversión: la oferta está en moneda extranjera y hace falta su equivalente CLP;
+    #  2. override manual: la oferta no tiene precio persistido (ej: el proveedor respondió
+    #     por correo pero la extracción no alcanzó a aplicarse) y el actor lo ingresa a mano.
+    # Antes el 409 de "oferta sin precio" se evaluaba ANTES de mirar price_clp, así que el
+    # caso 2 era inalcanzable y el parámetro quedaba muerto en la ruta CLP.
+    override_manual = unit is None
+    if override_manual:
+        if price_clp is None or price_clp <= 0:
+            raise HTTPException(
+                status_code=409,
+                detail="No se puede seleccionar una oferta sin precio: enviá price_clp para fijarlo manualmente",
+            )
+        unit, currency = float(price_clp), "CLP"
+    elif currency != "CLP" and (price_clp is None or price_clp <= 0):
         raise HTTPException(status_code=422, detail="price_clp es requerido para ofertas en moneda extranjera")
     from app.routers.listas import DefinitivoRequest, elegir_definitivo
+    if override_manual:
+        _registrar_precio_manual(sb, result_id, unit, actor)
     request = DefinitivoRequest(
         cotizacion_id=quote_id, resultado_id=result_id, proveedor=offer.get("proveedor"),
         precio=unit, moneda=currency, url=offer.get("url"), fuente=offer.get("fuente"),
