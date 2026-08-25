@@ -189,8 +189,12 @@ async def gmail_status(ctx: AuthContext = Depends(get_auth_context)):
     # es falso), así que el usuario quedaba encerrado afuera.
     from app.services.gmail_service import verificar_credencial_cacheada
 
-    sirve, motivo = verificar_credencial_cacheada(
-        user_id, integration.get("access_token") or "", integration["refresh_token"]
+    # A un hilo: `creds.refresh()` es I/O bloqueante (requests) y este handler es
+    # async — hacerlo inline congelaría el event loop para todos los requests en
+    # vuelo, no sólo para éste.
+    sirve, motivo = await asyncio.to_thread(
+        verificar_credencial_cacheada,
+        user_id, integration.get("access_token") or "", integration["refresh_token"],
     )
     if not sirve:
         return {
