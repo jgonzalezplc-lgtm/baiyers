@@ -401,7 +401,8 @@ confirmado" el peor de todos, el de `state` de OAuth.
   que cambiarlo por `auth.role()`.
 - **Pendiente de esa auditoría:** limpiar los `user_id` de los schemas de las tools MCP
   (el servidor los ignora, pero sugieren una confianza que no existe); los hints de PostgREST que
-  revelan nombres de tablas (sin fix directo, baja prioridad). Rotar los secretos sigue pendiente.
+  revelan nombres de tablas (sin fix directo, baja prioridad). **Rotar los secretos ya no está en la
+  lista**: se revisó el 2026-08-25 y no hubo exposición real (ver "Gotchas importantes").
 
 ## Pipeline de cotización en proceso (`services/cotizacion_pipeline.py`, 2026-08-24)
 `cotizar_descripcion()` hace identificar → crear la fila en `cotizaciones` → buscar, **todo en
@@ -442,22 +443,27 @@ proceso**, reusando `identificar_item()` y `BuscarRequest`/`_buscar_fuentes`/`_f
 - **credentials.json** (OAuth Gmail) está **gitignored** — en prod se usan env vars `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`.
 - **SMTP:** Resend configurado en Supabase (dominio baiyer.cl verificado). Correos de auth (confirmación/recuperación) salen desde `no-reply@baiyer.cl`.
 - **Serper.dev** integrado (2.500 búsquedas gratis; `SERPER_API_KEY`). Prioriza sobre SerpAPI.
-- **Rotación de secretos (pendiente, con dos trampas).** Los expuestos en capturas durante el
-  desarrollo (Supabase service key, Gemini, SerpAPI, Serper) siguen sin rotar. **La exposición es sólo
-  por las capturas: el repo está limpio** — verificado el 2026-08-25 sobre el historial completo
-  (`git log --all --diff-filter=A` + búsqueda de `eyJhbGciOi…`/`AIza…`/`GOCSPX-`/`sk-ant-`/`sb_secret_`
-  en todos los diffs): cero coincidencias, y los únicos `.env` trackeados son los dos `.env.example`
-  con placeholders. O sea, **no hace falta reescribir el historial**.
-  1. **`SUPABASE_SERVICE_KEY` también firma el `state` de OAuth de correo** (`services/oauth_state.py`
-     la usa como clave HMAC). Al rotarla, los `state` en vuelo dejan de validar y quien esté a mitad
-     del consentimiento de Gmail/Outlook ve "State inválido o expirado". Ventana de 10 min, se
-     resuelve reintentando — pero rotar en horario bajo y saberlo de antemano, no descubrirlo como un
-     bug fantasma.
-  2. El proyecto usa el sistema **nuevo** de API keys de Supabase (el informe muestra un
-     `sb_publishable_...`), así que se pueden tener dos secret keys vivas y borrar la vieja después.
-     **No rotar el JWT Secret legacy**: eso cierra la sesión de todos los usuarios.
-  Orden para las cinco: crear la nueva → cargarla en Railway → verificar → recién ahí borrar la vieja.
-  `ANTHROPIC_API_KEY` está vacía en prod, no hay nada que rotar ahí.
+- **Rotación de secretos: CERRADA, no era un bloqueante (2026-08-25).** Hasta hoy este archivo pedía
+  "rotar los secretos expuestos en capturas" y eso figuraba como bloqueante de seguridad #5. Al
+  revisarlo con el usuario, **no hubo exposición**: las capturas nunca salieron de su máquina (no se
+  compartieron por chat, ni se subieron a un asistente de IA, ni quedaron en un issue, video o carpeta
+  sincronizada). Un secreto que sólo vio su dueño no dejó de ser secreto. **No hay nada que rotar.**
+  - El repo también está limpio — verificado sobre el historial completo (`git log --all
+    --diff-filter=A` + búsqueda de `eyJhbGciOi…`/`AIza…`/`GOCSPX-`/`sk-ant-`/`sb_secret_` en todos los
+    diffs): cero coincidencias, y los únicos `.env` trackeados son los dos `.env.example` con
+    placeholders. **No hace falta reescribir el historial.**
+  - La protección que sí conviene para Gemini no es rotar, es un **límite de gasto en Google Cloud**:
+    la cuenta es pagada, así que un abuso factura sin techo, y un tope cubre cualquier fuga futura
+    mucho mejor que cambiar la clave una vez.
+  - **Si alguna vez SÍ hay que rotar, dos trampas:** (1) `SUPABASE_SERVICE_KEY` también firma el
+    `state` de OAuth de correo (`services/oauth_state.py` la usa como clave HMAC), así que rotarla
+    invalida los consentimientos en vuelo — ventana de 10 min, se resuelve reintentando, pero hay que
+    saberlo para no perseguir un bug fantasma; (2) el proyecto usa el sistema **nuevo** de API keys de
+    Supabase (hay un `sb_publishable_...`), o sea que se pueden tener dos secret keys vivas y borrar la
+    vieja después — **nunca tocar el JWT Secret legacy**, que cierra la sesión de todos los usuarios.
+    Orden siempre: crear la nueva → cargarla en Railway → verificar → recién ahí borrar la vieja.
+  - Criterio para la próxima vez: una clave sólo se rota si se puede nombrar **dónde** se filtró. Rotar
+    "por las dudas" tiene costo (ventana de corte, riesgo de error humano) y beneficio cero.
 - **`mcp_jwt_secret` ya no existe** (borrado el 2026-08-25). Era un default hardcodeado en
   `config.py` (`"claria-mcp-secret-change-me-in-production"`) que **no usaba nadie**: los tokens MCP
   son opacos y se validan contra la DB desde la Fase 8 (`verify_mcp_token` → `token_service.load_token`),
@@ -556,9 +562,9 @@ ambos servicios al pushear ahí.
    en `resultados`; si el segundo paso falla, la auditoría dice "Aplicada" sin que el dato exista.
 4. **`registrar_envio()` es sólo auditoría** — no bloquea ni deduplica, un reintento todavía puede
    duplicar un correo real.
-5. **Rotar los secretos** expuestos en capturas durante el desarrollo — ver la sección "Gotchas
-   importantes" para las dos trampas (la service key firma el `state` de OAuth; no tocar el JWT
-   Secret legacy) y para la verificación de que el historial de git está limpio.
+5. ~~Rotar los secretos expuestos en capturas~~ — **no era un bloqueante**: las capturas nunca
+   salieron de la máquina del usuario y el historial de git está limpio (verificado el 2026-08-25,
+   ver "Gotchas importantes"). No agregar de nuevo este punto sin poder nombrar dónde se filtró algo.
 
 ## MCP Baiyer — Fases 0 y 1 (2026-08-13)
 - El contrato operativo completo está en `MCP_FASE_0_CONTRATO.md` (tools,
