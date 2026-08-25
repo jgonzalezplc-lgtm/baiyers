@@ -19,7 +19,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { DEMO_URL, FAQS, FEATURES, INTEGRACIONES } from "./datos";
+import { DEMO_URL, FAQS, FEATURES, HERO_POSTER, HERO_VIDEO, INTEGRACIONES } from "./datos";
 
 /** Botón/enlace con el lenguaje de la app, en tamaño landing. */
 function CtaPrimary({ href, children, externo }: { href: string; children: React.ReactNode; externo?: boolean }) {
@@ -71,7 +71,12 @@ export default function LandingContent() {
     void el.play().catch(() => {});
   }, []);
 
-  useEffect(() => { prepararVideo(videoHero.current); }, [prepararVideo]);
+  useEffect(() => {
+    const el = videoHero.current;
+    if (!el) return;
+    el.src = HERO_VIDEO;
+    prepararVideo(el);
+  }, [prepararVideo]);
 
   useEffect(() => {
     const el = videoFeature.current;
@@ -224,10 +229,14 @@ export default function LandingContent() {
             width: "100%", maxWidth: 1120, borderRadius: "var(--r-lg)", overflow: "hidden",
             boxShadow: "var(--shadow-modal)", lineHeight: 0,
           }}>
+            {/* `preload="none"` + poster: el mp4 pesa 3 MB y con `metadata`
+                el navegador igual abría la conexión antes de pintar nada. Así
+                lo primero que se ve es el poster (16 KB) y el video se pide
+                recién en el efecto de montaje. */}
             <video
               ref={videoHero}
-              src="/landing/videos/baiyer-mcp-claude-screen-progressive-chat.mp4"
-              autoPlay loop muted playsInline preload="metadata"
+              poster={HERO_POSTER}
+              autoPlay loop muted playsInline preload="none"
               style={{ display: "block", width: "100%", height: "auto" }}
             />
           </div>
@@ -318,7 +327,8 @@ export default function LandingContent() {
                 }}>
                   <video
                     ref={videoFeature}
-                    autoPlay loop muted playsInline preload="metadata"
+                    poster={f.poster}
+                    autoPlay loop muted playsInline preload="none"
                     style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
                   />
                 </div>

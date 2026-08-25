@@ -8,6 +8,9 @@
  */
 
 export const SITIO = "https://www.baiyer.cl";
+export const HERO_VIDEO = "/landing/videos/baiyer-mcp-claude-screen-progressive-chat.mp4";
+export const HERO_POSTER = "/landing/posters/baiyer-mcp-claude-screen-progressive-chat.webp";
+
 export const DEMO_URL = "https://calendar.app.google/LPZDEfVNZU7EM8CR8";
 
 export interface Feature {
@@ -16,6 +19,8 @@ export interface Feature {
   desc: string;
   note: string;
   video: string;
+  /** Frame del video, para pintar algo antes de que llegue el mp4. */
+  poster: string;
 }
 
 export const FEATURES: Feature[] = [
@@ -25,6 +30,7 @@ export const FEATURES: Feature[] = [
     desc: "Escribe con tus palabras, una foto o un archivo lo que necesitas comprar. Baiyer entiende cada ítem y cantidad, comienza la búsqueda y te ayuda a dimensionar la compra.",
     note: "Todo tu proyecto en un prompt",
     video: "/landing/videos/baiyer-describir-desktop.mp4",
+    poster: "/landing/posters/baiyer-describir-desktop.webp",
   },
   {
     name: "Cotizamos por correo",
@@ -32,6 +38,7 @@ export const FEATURES: Feature[] = [
     desc: "Baiyer envía las cotizaciones a tus proveedores desde tu cuenta de correo, lee las respuestas y arma automáticamente el cuadro comparativo para encontrar al mejor proveedor.",
     note: "Para Gmail y Outlook",
     video: "/landing/videos/baiyer-cotizar-por-correo-desktop.mp4",
+    poster: "/landing/posters/baiyer-cotizar-por-correo-desktop.webp",
   },
   {
     name: "Compara precios",
@@ -39,6 +46,7 @@ export const FEATURES: Feature[] = [
     desc: "Compara los precios que tus proveedores de confianza envían por correo con los publicados en tiendas chilenas, MercadoLibre, Google Shopping y proveedores en el extranjero.",
     note: "Informes automáticos con los mejores precios posibles",
     video: "/landing/videos/baiyer-comparar-por-correo-desktop.mp4",
+    poster: "/landing/posters/baiyer-comparar-por-correo-desktop.webp",
   },
   {
     name: "Usa tu data",
@@ -46,6 +54,7 @@ export const FEATURES: Feature[] = [
     desc: "Conecta tu IA favorita y consulta precios, proveedores y cotizaciones al instante, con tus palabras y sin abrir planillas desactualizadas.",
     note: "Toda tu información al alcance de un prompt",
     video: "/landing/videos/baiyer-consultar-con-ia-desktop.mp4",
+    poster: "/landing/posters/baiyer-consultar-con-ia-desktop.webp",
   },
   {
     name: "Aprobaciones y OC",
@@ -53,6 +62,7 @@ export const FEATURES: Feature[] = [
     desc: "Flujo de aprobación con magic link y generación automática de órdenes de compra al aprobar.",
     note: "Nos adaptamos a tu proceso interno y lo automatizamos",
     video: "/landing/videos/baiyer-ordenar-y-aprobar-desktop.mp4",
+    poster: "/landing/posters/baiyer-ordenar-y-aprobar-desktop.webp",
   },
   {
     name: "Integraciones",
@@ -60,6 +70,7 @@ export const FEATURES: Feature[] = [
     desc: "Conecta Baiyer a tu correo (Gmail u Outlook) y a tu IA preferida (Claude, ChatGPT) para automatizar tus procesos de compra sin roce.",
     note: "Automatiza tu proceso de compras completo en menos de lo que tardas en hacerte un café",
     video: "/landing/videos/baiyer-integraciones-mcp-desktop.mp4",
+    poster: "/landing/posters/baiyer-integraciones-mcp-desktop.webp",
   },
 ];
 
