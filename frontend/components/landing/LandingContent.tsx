@@ -56,6 +56,16 @@ export default function LandingContent() {
   const videoFeature = useRef<HTMLVideoElement | null>(null);
   const videoHero = useRef<HTMLVideoElement | null>(null);
 
+  const activarFeature = useCallback((i: number) => {
+    setActive(prev => {
+      if (prev === i) return prev;
+      // Reinicia la transición de entrada del texto.
+      setAnim(false);
+      requestAnimationFrame(() => requestAnimationFrame(() => setAnim(true)));
+      return i;
+    });
+  }, []);
+
   // Los logos del titular alternan; sólo uno existe en el DOM a la vez.
   useEffect(() => {
     const t = setInterval(() => setLogo(l => (l === 0 ? 1 : 0)), 6500);
@@ -102,13 +112,7 @@ export default function LandingContent() {
           FEATURES.length - 1,
           Math.max(0, Math.floor((avanzado / recorrido) * FEATURES.length)),
         );
-        setActive(prev => {
-          if (prev === idx) return prev;
-          // Reinicia la transición de entrada del texto.
-          setAnim(false);
-          requestAnimationFrame(() => requestAnimationFrame(() => setAnim(true)));
-          return idx;
-        });
+        activarFeature(idx);
       });
     };
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -119,9 +123,15 @@ export default function LandingContent() {
       window.removeEventListener("resize", onScroll);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, []);
+  }, [activarFeature]);
 
   const irAIndice = (i: number) => {
+    // En móvil la sección deja de ser sticky para que su contenido no se
+    // recorte dentro del viewport. Los chips cambian la tarjeta directamente.
+    if (window.matchMedia("(max-width: 640px)").matches) {
+      activarFeature(i);
+      return;
+    }
     const el = seccionRef.current;
     if (!el) return;
     const recorrido = el.offsetHeight - window.innerHeight;
@@ -221,7 +231,7 @@ export default function LandingContent() {
               alignItems: "center", marginTop: 28,
             }}>
               <CtaPrimary href={DEMO_URL} externo>Agenda una demo</CtaPrimary>
-              <CtaSecondary href="#features" externo>Ver la plataforma →</CtaSecondary>
+              <CtaSecondary href="/dashboard">Ver la plataforma →</CtaSecondary>
             </div>
           </div>
 
@@ -248,12 +258,9 @@ export default function LandingContent() {
         id="features"
         ref={seccionRef}
         aria-label="Qué hace Baiyer"
-        style={{ position: "relative", height: "480vh" }}
+        className="landing-features"
       >
-        <div style={{
-          position: "sticky", top: 0, height: "100vh", display: "flex", flexDirection: "column",
-          justifyContent: "center", overflow: "hidden", padding: "clamp(24px,5vh,64px) 0",
-        }}>
+        <div className="landing-features__panel">
           <h2 style={{
             fontSize: "clamp(26px,3.2vw,38px)", letterSpacing: "-0.02em", fontWeight: 600,
             margin: "0 auto 12px", maxWidth: "22ch", textAlign: "center", lineHeight: 1.15,
@@ -339,7 +346,12 @@ export default function LandingContent() {
               textAlign: "center", marginTop: "clamp(20px,3vh,34px)", fontSize: 12.5,
               color: "var(--n-500)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             }}>
-              <span aria-hidden="true">↕</span>Desplázate para cambiar de tarjeta
+              <span className="landing-features__desktop-hint">
+                <span aria-hidden="true">↕</span> Desplázate para cambiar de tarjeta
+              </span>
+              <span className="landing-features__mobile-hint">
+                Toca una opción para cambiar de tarjeta
+              </span>
             </div>
           </div>
         </div>

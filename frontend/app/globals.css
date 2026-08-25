@@ -395,6 +395,26 @@ input, textarea, select, button { font-family: inherit; }
   to   { opacity: 1; transform: translateY(0); }
 }
 
+.landing-features {
+  position: relative;
+  height: 480vh;
+}
+
+.landing-features__panel {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  padding: clamp(24px, 5vh, 64px) 0;
+}
+
+.landing-features__mobile-hint {
+  display: none;
+}
+
 .landing-bento {
   display: grid;
   gap: clamp(16px, 1.6vw, 22px);
@@ -419,6 +439,31 @@ input, textarea, select, button { font-family: inherit; }
 }
 
 @media (max-width: 640px) {
+  /* El panel completo es más alto que el viewport de un teléfono. Si se
+     mantiene centrado, sticky y con overflow oculto, Safari recorta el título
+     superior. En móvil usamos un panel normal y los chips cambian la tarjeta. */
+  .landing-features {
+    height: auto;
+  }
+
+  .landing-features__panel {
+    position: relative;
+    top: auto;
+    height: auto;
+    min-height: 0;
+    justify-content: flex-start;
+    overflow: visible;
+    padding: 48px 0 56px;
+  }
+
+  .landing-features__desktop-hint {
+    display: none;
+  }
+
+  .landing-features__mobile-hint {
+    display: inline;
+  }
+
   .landing-bento {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas: "left" "black" "green" "blue";
