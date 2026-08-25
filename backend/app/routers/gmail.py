@@ -150,6 +150,10 @@ async def gmail_callback(code: str, state: str):
         integration,
         on_conflict="user_id,provider",
     ).execute()
+    # Sin esto el dashboard seguiría diciendo "reconexión requerida" hasta 10
+    # minutos después de que el usuario ya reconectó.
+    from app.services.gmail_service import invalidar_cache_validez
+    invalidar_cache_validez(user_id)
 
     separador = "&" if "?" in next_path else "?"
     return RedirectResponse(url=f"{settings.frontend_url}{next_path}{separador}gmail=conectado")
@@ -171,14 +175,33 @@ async def gmail_status(ctx: AuthContext = Depends(get_auth_context)):
 
     sb = get_supabase()
     user_id = ctx.actor_user_id
-    result = sb.table("user_integrations").select("refresh_token, email").eq(
+    result = sb.table("user_integrations").select("access_token, refresh_token, email").eq(
         "user_id", user_id
     ).eq("provider", "gmail").limit(1).execute()
     integration = (result.data or [{}])[0]
-    conectado = bool(integration.get("refresh_token"))
 
-    if not conectado:
+    if not integration.get("refresh_token"):
         return {"connected": False, "estado": "desconectado", "conversaciones_atencion": 0}
+
+    # Que exista el refresh_token no significa que Google lo acepte. Sin esta
+    # verificación una autorización revocada seguía figurando "ok" y el dashboard
+    # ni siquiera ofrecía el botón para reconectar (sólo se muestra si `connected`
+    # es falso), así que el usuario quedaba encerrado afuera.
+    from app.services.gmail_service import verificar_credencial_cacheada
+
+    sirve, motivo = verificar_credencial_cacheada(
+        user_id, integration.get("access_token") or "", integration["refresh_token"]
+    )
+    if not sirve:
+        return {
+            "connected": False,
+            # Distinto de "desconectado": el buzón está configurado y su historial
+            # sigue ahí; lo único que caducó es la autorización.
+            "estado": "reconexion_requerida",
+            "motivo": motivo,
+            "conversaciones_atencion": 0,
+            "email": integration.get("email"),
+        }
 
     atencion = sb.table("gmail_conversations").select("id", count="exact").eq(
         "user_id", user_id

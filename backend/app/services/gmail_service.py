@@ -1,9 +1,12 @@
 import base64
 import json
 import os
+import time
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from typing import Optional
 
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -60,6 +63,79 @@ def get_gmail_service(access_token: str, refresh_token: str):
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
     return build("gmail", "v1", credentials=creds), creds
+
+
+# El dashboard consulta el estado en cada carga; verificar contra Google cada vez
+# sería lento y ruidoso. 10 min es suficiente para enterarse el mismo día sin
+# convertir cada visita en un round-trip a OAuth. En memoria y por proceso: con
+# varias réplicas cada una lleva su caché, lo que sólo significa alguna
+# verificación de más, nunca un estado incorrecto.
+TTL_CACHE_VALIDEZ = 600
+_cache_validez: dict[str, tuple[float, bool, Optional[str]]] = {}
+
+
+def invalidar_cache_validez(user_id: str) -> None:
+    """Tras reconectar hay que olvidar el veredicto viejo: si no, el dashboard
+    seguiría mostrando "reconexión requerida" hasta 10 minutos después de que el
+    usuario ya arregló el problema."""
+    _cache_validez.pop(user_id, None)
+
+
+def verificar_credencial_cacheada(
+    user_id: str, access_token: str, refresh_token: str
+) -> tuple[bool, Optional[str]]:
+    ahora = time.time()
+    guardado = _cache_validez.get(user_id)
+    if guardado and ahora - guardado[0] < TTL_CACHE_VALIDEZ:
+        return guardado[1], guardado[2]
+
+    sirve, motivo = verificar_credencial(access_token, refresh_token)
+    # Un fallo de red no es un veredicto: cachearlo dejaría al usuario 10 minutos
+    # con un estado inventado.
+    if motivo != "verificacion_no_concluyente":
+        _cache_validez[user_id] = (ahora, sirve, motivo)
+    return sirve, motivo
+
+
+def verificar_credencial(access_token: str, refresh_token: str) -> tuple[bool, Optional[str]]:
+    """¿La autorización de Google sigue viva? Devuelve (sirve, motivo).
+
+    Existe porque `bool(refresh_token)` sólo dice que guardamos un string, no que
+    Google lo acepte. Un token revocado se veía como "conectado" en el dashboard y
+    la falla recién aparecía al intentar enviar un correo, a mitad de una tarea.
+
+    El motivo importa para el mensaje al usuario: `invalid_grant` se arregla
+    reconectando el buzón, pero `invalid_client` es una credencial mal configurada
+    del servidor y reconectar no lo soluciona.
+    """
+    if not refresh_token:
+        return False, "sin_refresh_token"
+    try:
+        secrets = _load_client_secrets()
+    except RuntimeError:
+        return False, "servidor_sin_credenciales"
+
+    creds = Credentials(
+        token=access_token,
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=secrets["client_id"],
+        client_secret=secrets["client_secret"],
+        scopes=SCOPES,
+    )
+    try:
+        creds.refresh(Request())
+        return True, None
+    except RefreshError as e:
+        detalle = str(e).lower()
+        if "invalid_client" in detalle:
+            return False, "invalid_client"
+        return False, "invalid_grant"
+    except Exception:
+        # Corte de red o caída de Google: NO es una credencial inválida. Decir
+        # "reconectá" acá mandaría al usuario a rehacer un consentimiento que no
+        # hacía falta, así que se trata como indeterminado y no se cachea.
+        return True, "verificacion_no_concluyente"
 
 
 def send_email_with_attachment(

@@ -6,12 +6,15 @@ import { Card, Badge, EmptyState } from "@/components/ui";
 import { fmtCLP } from "@/components/ui/tokens";
 import ConectarCorreoBoton from "@/components/ConectarCorreoBoton";
 
-type EstadoIndicador = "ok" | "atencion" | "desconectado";
+// "reconexion_requerida" no es lo mismo que "desconectado": el buzón está
+// configurado y su historial sigue ahí, sólo caducó la autorización de Google.
+type EstadoIndicador = "ok" | "atencion" | "desconectado" | "reconexion_requerida";
 
 const ESTADO_INDICADOR_UI: Record<EstadoIndicador, { color: string; bg: string; Icon: typeof CheckCircle2 }> = {
-  ok:            { color: "var(--success)", bg: "var(--st-aprobada-bg)",  Icon: CheckCircle2 },
-  atencion:      { color: "var(--warning)", bg: "var(--st-cotizando-bg)", Icon: AlertTriangle },
-  desconectado:  { color: "var(--danger)",  bg: "var(--st-rechazada-bg)", Icon: XCircle },
+  ok:                   { color: "var(--success)", bg: "var(--st-aprobada-bg)",  Icon: CheckCircle2 },
+  atencion:             { color: "var(--warning)", bg: "var(--st-cotizando-bg)", Icon: AlertTriangle },
+  desconectado:         { color: "var(--danger)",  bg: "var(--st-rechazada-bg)", Icon: XCircle },
+  reconexion_requerida: { color: "var(--danger)",  bg: "var(--st-rechazada-bg)", Icon: AlertTriangle },
 };
 
 const ESTILO_ACCION_INDICADOR = {
@@ -123,6 +126,7 @@ export default async function DashboardPage({
   let listasRecientes: ListaReciente[] = [];
   let gmailConectado = gmailRecienConectado;
   let gmailEstado: EstadoIndicador = gmailRecienConectado ? "ok" : "desconectado";
+  let gmailMotivo: string | null = null;
   let gmailDetalle = gmailRecienConectado ? "Gmail conectado y listo para enviar cotizaciones." : "Conecta Gmail para enviar cotizaciones automáticamente.";
   let autorizacionEstado: EstadoIndicador = "desconectado";
   let autorizacionDetalle = "Sin ciclo de autorización configurado.";
@@ -156,11 +160,20 @@ export default async function DashboardPage({
       const g = await gmailRes.json();
       gmailConectado = Boolean(g.connected);
       gmailEstado = g.estado ?? (gmailConectado ? "ok" : "desconectado");
-      gmailDetalle = !gmailConectado
-        ? "Conecta Gmail para enviar cotizaciones automáticamente."
-        : gmailEstado === "atencion"
-          ? `${g.conversaciones_atencion} conversación(es) necesitan revisión manual.`
-          : "Gmail conectado y sincronizando respuestas automáticamente.";
+      gmailMotivo = g.motivo ?? null;
+      gmailDetalle =
+        gmailEstado === "reconexion_requerida"
+          ? g.motivo === "invalid_client"
+            // Reconectar no arregla una credencial mal configurada del servidor:
+            // mandar al usuario a repetir el consentimiento sería hacerle perder
+            // el tiempo con algo que no está de su lado.
+            ? "La configuración de Google del servidor no es válida. Avísale al equipo: reconectar no lo soluciona."
+            : `La autorización de ${g.email ?? "tu buzón"} caducó o fue revocada. Reconecta para seguir enviando y recibiendo cotizaciones.`
+          : !gmailConectado
+            ? "Conecta Gmail para enviar cotizaciones automáticamente."
+            : gmailEstado === "atencion"
+              ? `${g.conversaciones_atencion} conversación(es) necesitan revisión manual.`
+              : "Gmail conectado y sincronizando respuestas automáticamente.";
     }
     if (workflowsRes?.ok) {
       const workflow: {
@@ -217,8 +230,11 @@ export default async function DashboardPage({
           titulo="Agente de correo"
           estado={gmailEstado}
           detalle={gmailDetalle}
-          accionCliente={!gmailConectado
-            ? <ConectarCorreoBoton proveedor="gmail" label="Conectar Gmail" />
+          accionCliente={!gmailConectado && gmailMotivo !== "invalid_client"
+            ? <ConectarCorreoBoton
+                proveedor="gmail"
+                label={gmailEstado === "reconexion_requerida" ? "Reconectar Gmail" : "Conectar Gmail"}
+              />
             : undefined}
           accion={gmailConectado && gmailEstado === "atencion"
             ? { label: "Revisar conversaciones", href: "/conversaciones" }
