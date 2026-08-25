@@ -21,6 +21,22 @@ def contador_limpio():
     yield
 
 
+@pytest.fixture(autouse=True)
+def sin_salir_a_la_red(monkeypatch):
+    """Cruzar un escalón dispara `alerta_operacional.alertar`, que escribe en
+    `product_events` y manda correo. Sin este mock, correr la suite inserta
+    filas en la base REAL y puede mandar mails — pasó de verdad al escribir
+    estos tests. Los avisos quedan capturados acá para poder afirmarlos."""
+    enviados: list[dict] = []
+    monkeypatch.setattr(
+        gemini_budget, "_alertar",
+        lambda escalon, total, llamadas, modelo: enviados.append({
+            "escalon": escalon, "total": total, "llamadas": llamadas, "modelo": modelo,
+        }),
+    )
+    return enviados
+
+
 def test_acumula_y_no_avisa_por_debajo_del_escalon(capsys):
     gemini_budget.registrar("gemini-2.5-flash", 1_000, 500)
     assert "ALERTA" not in capsys.readouterr().out
@@ -28,16 +44,18 @@ def test_acumula_y_no_avisa_por_debajo_del_escalon(capsys):
     assert gemini_budget.estado()["gasto_estimado_usd"] > 0
 
 
-def test_avisa_una_sola_vez_por_escalon(capsys):
+def test_avisa_una_sola_vez_por_escalon(capsys, sin_salir_a_la_red):
     # A USD 0,30/2,50 por millón, 20M tokens de salida son USD 50: cruza los
     # escalones de 5, 20 y 50 de una.
     gemini_budget.registrar("gemini-2.5-flash", 0, 20_000_000)
     salida = capsys.readouterr().out
     assert salida.count("ALERTA") == 3
+    assert [a["escalon"] for a in sin_salir_a_la_red] == [5.0, 20.0, 50.0]
 
     # Seguir gastando dentro del mismo tramo no vuelve a avisar.
     gemini_budget.registrar("gemini-2.5-flash", 0, 1_000)
     assert "ALERTA" not in capsys.readouterr().out
+    assert len(sin_salir_a_la_red) == 3
 
 
 def test_el_contador_se_reinicia_al_cambiar_el_dia(monkeypatch):
@@ -134,3 +152,59 @@ def test_el_nombre_del_modelo_pierde_el_prefijo():
         model_name = "models/gemini-2.5-flash"
 
     assert gemini_budget._nombre_modelo(M()) == "gemini-2.5-flash"
+
+
+# ─── El canal de alerta ──────────────────────────────────────────────────────
+
+def test_la_alerta_registra_en_el_control_plane_y_manda_correo(monkeypatch):
+    """Los dos canales, sin tocar Supabase ni Gmail."""
+    from app.services import alerta_operacional
+
+    eventos, correos = [], []
+    monkeypatch.setattr(
+        "app.services.control_plane_telemetry.registrar_evento_producto",
+        lambda evento, **kw: eventos.append({"evento": evento, **kw}),
+    )
+    monkeypatch.setattr(alerta_operacional, "_enviar_correo", lambda a, c: correos.append((a, c)))
+    # El envío real va en un thread; acá lo corremos inline para poder afirmarlo.
+    monkeypatch.setattr(
+        alerta_operacional.threading, "Thread",
+        lambda target, args, **kw: type("T", (), {"start": lambda _s: target(*args)})(),
+    )
+
+    alerta_operacional.alertar(
+        evento="gemini_budget_alerta", asunto="asunto", cuerpo="cuerpo",
+        clave_idempotencia="gemini-budget:2026-08-25:20.0", metadata={"escalon_usd": 20.0},
+    )
+
+    assert eventos[0]["evento"] == "gemini_budget_alerta"
+    assert eventos[0]["status"] == "warning"
+    assert eventos[0]["clave_idempotencia"] == "gemini-budget:2026-08-25:20.0"
+    assert correos == [("asunto", "cuerpo")]
+
+
+def test_sin_buzon_del_operador_no_lanza_y_lo_dice(monkeypatch, capsys):
+    """Si ningún admin tiene Gmail conectado, el aviso no puede salir por
+    correo — pero eso no puede romper nada, y tiene que quedar dicho."""
+    from app.services import alerta_operacional
+
+    monkeypatch.setattr(alerta_operacional, "_buzon_del_operador", lambda: None)
+    alerta_operacional._enviar_correo("asunto", "cuerpo")
+    assert "SIN CANAL DE CORREO" in capsys.readouterr().out
+
+
+def test_un_fallo_del_canal_no_propaga(monkeypatch):
+    """`alertar` corre dentro del camino de un request real: si Supabase o
+    Gmail fallan, la llamada del usuario tiene que seguir igual."""
+    from app.services import alerta_operacional
+
+    def explota(*_a, **_k):
+        raise RuntimeError("supabase caído")
+
+    monkeypatch.setattr(
+        "app.services.control_plane_telemetry.registrar_evento_producto", explota,
+    )
+    monkeypatch.setattr(alerta_operacional, "_enviar_correo", explota)
+    alerta_operacional.alertar(
+        evento="x", asunto="a", cuerpo="c", clave_idempotencia="k",
+    )   # no debe lanzar

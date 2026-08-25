@@ -501,6 +501,16 @@ del día cruza 5/20/50/100 USD, escribe un WARNING en el log de Railway y sigue.
 - **No es contable:** estimación con el catálogo de `control_plane_telemetry.DEFAULT_PRICES` (que
   puede quedar viejo y no distingue contexto largo ni caché), **en memoria y por proceso** — con
   varias réplicas cada una lleva su cuenta. El dato real sale de `ai_usage_events`.
+- **A dónde llega la alarma** (`services/alerta_operacional.py`): fila `warning` en `product_events`
+  —que es el feed de actividad de CapoDiTutti— más un correo a `hola@claria.cc`. Un `print` al log de
+  Railway no es una alarma: sólo existe si alguien abre los logs.
+  - El correo sale desde el buzón del **primer admin activo de `admin_users` con Gmail conectado**, no
+    desde el de un cliente: mandar un aviso interno desde la casilla de una empresa cliente usaría su
+    infraestructura y quedaría en SU carpeta de enviados. **Si ningún admin tiene Gmail conectado no
+    hay correo**, sólo log y `product_events` — el aviso lo dice explícito.
+  - El envío va en un thread daemon: el request del usuario no espera a Gmail. Nada de esto lanza.
+  - `clave_idempotencia` = `gemini-budget:<día>:<escalón>` evita la fila duplicada, pero **el correo no
+    está deduplicado entre procesos**: con varias réplicas puede salir uno por réplica.
 - `GET /api/gasto-ia` (autenticado) devuelve el snapshot del día sin entrar a AI Studio.
 - **No reemplaza la cuota de la API en la consola de Google**, que sigue siendo el único corte duro
   del lado del proveedor. Los *presupuestos* de Google Cloud sólo alertan, no cortan.

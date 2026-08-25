@@ -84,7 +84,8 @@ def registrar(modelo: str, input_tokens: int, output_tokens: int) -> None:
                     cruzados.append(escalon)
             llamadas = _llamadas
 
-        # Fuera del lock: escribir en el log no debe serializar las llamadas.
+        # Fuera del lock: ni el log ni el envío del aviso deben serializar las
+        # llamadas a Gemini.
         for escalon in cruzados:
             print(
                 f"[GeminiBudget] ALERTA: el gasto estimado de hoy superó "
@@ -92,8 +93,43 @@ def registrar(modelo: str, input_tokens: int, output_tokens: int) -> None:
                 f"último modelo {modelo}). Es una estimación por proceso; "
                 f"confirmá en AI Studio antes de sacar conclusiones."
             )
+            _alertar(escalon, total, llamadas, modelo)
     except Exception as e:                      # nunca romper una llamada real
         print(f"[GeminiBudget] no se pudo contabilizar la llamada: {e}")
+
+
+def _alertar(escalon: float, total: float, llamadas: int, modelo: str) -> None:
+    """Manda el aviso al control plane y al correo de operación. Nunca lanza:
+    el medidor no puede romper la llamada que lo disparó."""
+    try:
+        from app.services.alerta_operacional import DESTINO_OPERACION, alertar
+
+        dia = _dia or _hoy()
+        alertar(
+            evento="gemini_budget_alerta",
+            clave_idempotencia=f"gemini-budget:{dia}:{escalon}",
+            asunto=f"[Baiyer] Gemini superó USD {escalon:.0f} estimados hoy",
+            cuerpo=(
+                f"El gasto estimado de Gemini del {dia} cruzó el escalón de "
+                f"USD {escalon:.2f}.\n\n"
+                f"  Total estimado hoy : USD {total:.2f}\n"
+                f"  Llamadas           : {llamadas}\n"
+                f"  Último modelo      : {modelo}\n\n"
+                "Ojo con qué es este número: es una ESTIMACIÓN calculada en "
+                "memoria y por proceso, con un catálogo de precios que puede "
+                "estar viejo. No distingue tarifas de contexto largo ni de "
+                "caché, y si hay varias réplicas cada una cuenta por su lado.\n\n"
+                "El dato real está en AI Studio y en la tabla ai_usage_events. "
+                "Confirmá ahí antes de tomar cualquier decisión.\n\n"
+                "Este aviso no cortó ninguna llamada: el medidor sólo avisa.\n"
+            ),
+            metadata={
+                "escalon_usd": escalon, "total_estimado_usd": round(total, 4),
+                "llamadas": llamadas, "modelo": modelo, "destino": DESTINO_OPERACION,
+            },
+        )
+    except Exception as e:
+        print(f"[GeminiBudget] no se pudo emitir la alerta: {e}")
 
 
 def _tokens(respuesta: Any) -> tuple[int, int]:
