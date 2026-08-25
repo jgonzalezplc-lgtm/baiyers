@@ -44,29 +44,19 @@ def _next_seguro(next_path: Optional[str]) -> str:
     return next_path
 
 
-def _encode_state(user_id: str, verifier: str, next_path: str = "/dashboard") -> str:
-    payload = json.dumps({"u": user_id, "v": verifier, "n": _next_seguro(next_path)})
-    return base64.urlsafe_b64encode(payload.encode()).decode()
-
-
-def _decode_state(state: str) -> tuple[str, str, str]:
-    payload = json.loads(base64.urlsafe_b64decode(state + "==").decode())
-    return payload["u"], payload["v"], _next_seguro(payload.get("n"))
-
-
-@router.get("/auth")
-async def outlook_auth(user_id: str, next: str = "/dashboard"):
-    """Redirige al usuario a Microsoft OAuth (Graph) con PKCE. `next` es a dónde
-    volver en el frontend una vez conectado (ej. /onboarding cuando viene
-    encadenado desde el login con Outlook)."""
+@router.post("/conectar")
+async def outlook_conectar(next: str = "/dashboard", ctx: AuthContext = Depends(get_auth_context)):
+    """Gemelo de `gmail_conectar` — mismo agujero, mismo cierre. Ver
+    `services/oauth_state.py`."""
     from app.config import settings
+    from app.services.oauth_state import firmar_state
 
     if not settings.microsoft_client_id:
         raise HTTPException(status_code=500, detail="MICROSOFT_CLIENT_ID no configurado")
 
     verifier = _make_code_verifier()
     challenge = _make_code_challenge(verifier)
-    state = _encode_state(user_id, verifier, next)
+    state = firmar_state(ctx.actor_user_id, verifier, _next_seguro(next))
 
     params = {
         "response_type": "code",
@@ -79,7 +69,7 @@ async def outlook_auth(user_id: str, next: str = "/dashboard"):
         "code_challenge_method": "S256",
     }
     from urllib.parse import urlencode
-    return RedirectResponse(url=f"{AUTHORIZE_URL}?{urlencode(params)}")
+    return {"url": f"{AUTHORIZE_URL}?{urlencode(params)}"}
 
 
 @router.get("/callback")
@@ -89,10 +79,14 @@ async def outlook_callback(code: str, state: str):
     from app.config import settings
     from app.services.supabase import get_supabase
 
-    try:
-        user_id, verifier, next_path = _decode_state(state)
-    except Exception:
-        raise HTTPException(status_code=400, detail="State inválido")
+    from app.services.oauth_state import verificar_state
+
+    # Público de verdad (lo invoca Microsoft): la firma del `state` es lo único
+    # que ata este consentimiento a quien lo inició.
+    datos = verificar_state(state)
+    if not datos:
+        raise HTTPException(status_code=400, detail="State inválido o expirado")
+    user_id, verifier, next_path = datos["u"], datos["v"], _next_seguro(datos.get("n"))
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(

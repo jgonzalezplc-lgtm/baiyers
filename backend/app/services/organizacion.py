@@ -193,6 +193,21 @@ def ids_organizacion(auth_uid: str) -> list[str]:
     return ctx.user_ids_miembros
 
 
+def _linkear_responsable(sb, ctx: ContextoOrganizacion, responsable_id: str, usuario_baiyer_id: str) -> None:
+    """Vincula un responsable del canvas a la cuenta Baiyer recién invitada.
+
+    El filtro por los `user_id` de la organización no es cosmético: el backend
+    usa la service key, así que sin él un admin de la empresa A que conociera un
+    `responsable_id` de la empresa B podía reescribir su `usuario_baiyer_id` y
+    dejar al responsable legítimo desconectado de sus aprobaciones y avisos.
+    """
+    afectadas = sb.table("responsables").update(
+        {"usuario_baiyer_id": usuario_baiyer_id}
+    ).eq("id", responsable_id).in_("user_id", ctx.user_ids_miembros).execute().data
+    if not afectadas:
+        raise ValueError("El responsable no pertenece a tu organización")
+
+
 def invitar_a_organizacion(
     invitador_auth_uid: str, email: str, rol: str = "miembro",
     responsable_id: Optional[str] = None,
@@ -248,9 +263,7 @@ def invitar_a_organizacion(
         ya_miembro = _resp_ya_miembro.data if _resp_ya_miembro else None
         if ya_miembro and ya_miembro["organizacion_id"] == ctx.organizacion_id:
             if responsable_id:
-                sb.table("responsables").update(
-                    {"usuario_baiyer_id": ya_existe.id}
-                ).eq("id", responsable_id).execute()
+                _linkear_responsable(sb, ctx, responsable_id, ya_existe.id)
             return {"user_id": ya_existe.id, "email": email, "estado": "ya_miembro"}
         if ya_miembro:
             raise ValueError("Ese correo ya pertenece a otra organización")
@@ -297,9 +310,7 @@ def invitar_a_organizacion(
 
     if responsable_id:
         try:
-            sb.table("responsables").update(
-                {"usuario_baiyer_id": nuevo_user.id}
-            ).eq("id", responsable_id).execute()
+            _linkear_responsable(sb, ctx, responsable_id, nuevo_user.id)
         except Exception as e:
             print(f"[Organizacion] no se pudo linkear responsable {responsable_id}: {e}")
 

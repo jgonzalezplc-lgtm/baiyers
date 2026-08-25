@@ -98,3 +98,24 @@ def test_la_plantilla_no_se_puede_falsificar_desde_la_url():
     with pytest.raises(HTTPException) as exc:
         asyncio.run(exigir_sesion(_request("GET", "/api/proyectos/health")))
     assert exc.value.status_code == 401
+
+
+def test_prefijo_con_guardia_propio_pasa_sin_token():
+    """`/api/v1/cotizar` se autentica con su api_key, no con sesión web."""
+    asyncio.run(exigir_sesion(_request("POST", "/api/v1/cotizar")))
+
+
+def test_emitir_api_key_exige_sesion_pese_a_estar_bajo_api_v1():
+    """Los tres endpoints de `/api/v1/keys` son los que EMITEN la api_key, así
+    que no pueden autenticarse con ella. La exención por prefijo los dejaba sin
+    ninguna capa: la identidad salía del header `X-Claria-User-Id` sin
+    verificar, y con el UUID de otro usuario se emitía una key contra su
+    organización eligiendo el plan por `X-Claria-User-Plan`."""
+    for metodo, plantilla in (
+        ("POST", "/api/v1/keys"),
+        ("GET", "/api/v1/keys"),
+        ("DELETE", "/api/v1/keys/{key_id}"),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(exigir_sesion(_request(metodo, plantilla)))
+        assert exc.value.status_code == 401, f"{metodo} {plantilla} quedó abierto"

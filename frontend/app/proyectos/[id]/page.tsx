@@ -512,12 +512,6 @@ export default function ProyectoDetallePage() {
               >
                 Exportar Excel
               </button>
-              <Link
-                href={`/reportes?proyecto_id=${id}`}
-                style={{ padding: "10px 20px", fontSize: 11, fontWeight: 700, background: "var(--brand)11", border: "1px solid var(--brand)33", color: "var(--brand)", borderRadius: 6, textDecoration: "none", display: "inline-block" }}
-              >
-                Generar reporte PDF
-              </Link>
             </div>
           </div>
         )}

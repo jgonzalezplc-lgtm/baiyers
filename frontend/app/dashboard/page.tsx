@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FileText, CheckCircle2, AlertTriangle, XCircle, Mail, ShieldCheck } from "lucide-react";
 import { Card, Badge, EmptyState } from "@/components/ui";
 import { fmtCLP } from "@/components/ui/tokens";
+import ConectarCorreoBoton from "@/components/ConectarCorreoBoton";
 
 type EstadoIndicador = "ok" | "atencion" | "desconectado";
 
@@ -13,11 +14,19 @@ const ESTADO_INDICADOR_UI: Record<EstadoIndicador, { color: string; bg: string; 
   desconectado:  { color: "var(--danger)",  bg: "var(--st-rechazada-bg)", Icon: XCircle },
 };
 
+const ESTILO_ACCION_INDICADOR = {
+  fontSize: 12.5, fontWeight: 500, color: "var(--brand)", textDecoration: "none",
+  whiteSpace: "nowrap", flexShrink: 0,
+} as const;
+
 function IndicadorEstado({
-  icono: Icono, titulo, estado, detalle, accion,
+  icono: Icono, titulo, estado, detalle, accion, accionCliente,
 }: {
   icono: typeof Mail; titulo: string; estado: EstadoIndicador; detalle: string;
   accion?: { label: string; href: string };
+  // Para acciones que no son navegación: conectar el correo ahora es un POST
+  // autenticado, no una URL a la que se pueda apuntar un `<Link>`.
+  accionCliente?: React.ReactNode;
 }) {
   const { color, bg, Icon } = ESTADO_INDICADOR_UI[estado];
   return (
@@ -39,11 +48,9 @@ function IndicadorEstado({
         </div>
         <div style={{ fontSize: 12.5, color: "var(--n-600)", marginTop: 1 }}>{detalle}</div>
       </div>
+      {accionCliente}
       {accion && (
-        <Link href={accion.href} style={{
-          fontSize: 12.5, fontWeight: 500, color: "var(--brand)", textDecoration: "none",
-          whiteSpace: "nowrap", flexShrink: 0,
-        }}>
+        <Link href={accion.href} style={ESTILO_ACCION_INDICADOR}>
           {accion.label} →
         </Link>
       )}
@@ -210,11 +217,12 @@ export default async function DashboardPage({
           titulo="Agente de correo"
           estado={gmailEstado}
           detalle={gmailDetalle}
-          accion={!gmailConectado
-            ? { label: "Conectar Gmail", href: `${API_URL}/api/gmail/auth?user_id=${user.id}` }
-            : gmailEstado === "atencion"
-              ? { label: "Revisar conversaciones", href: "/conversaciones" }
-              : undefined}
+          accionCliente={!gmailConectado
+            ? <ConectarCorreoBoton proveedor="gmail" label="Conectar Gmail" />
+            : undefined}
+          accion={gmailConectado && gmailEstado === "atencion"
+            ? { label: "Revisar conversaciones", href: "/conversaciones" }
+            : undefined}
         />
         <IndicadorEstado
           icono={ShieldCheck}

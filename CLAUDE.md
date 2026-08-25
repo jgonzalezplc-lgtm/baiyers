@@ -339,6 +339,47 @@ una segunda capa para el camino del backend. No requirió migración.
   `PLAN_DATA_FOUNDATION.md` — el borde HTTP está cerrado, pero **con service key un `.eq()` olvidado
   dentro de un servicio todavía cruza organizaciones**.
 
+## Auditoría externa y cierre de escalada de privilegios (2026-08-25)
+Un pentest black-box con cuenta propia (informe en `~/Downloads/informe_baiyer_mcp.md`, no versionado)
+confirmó que **no se pueden leer datos de otra organización** — el borde HTTP y RLS aguantan. Lo que
+encontró es escalada de privilegios y toma de control de recursos propios de otra cuenta. Ojo con el
+ranking del informe: su hallazgo "CRÍTICO" (auto-upgrade de `public.users.plan` por RLS floja) es
+**real pero casi inocuo**, porque `public.users` no lo lee NINGÚN gate del backend (`grep table("users")`
+en `app/` da cero); el escalado de plan que buscaba estaba en `api_keys.plan`. Y descartó como "no
+confirmado" el peor de todos, el de `state` de OAuth.
+- **`state` OAuth forjable → toma del buzón (lo más grave, cerrado).** `_encode_state` era
+  `base64(json)` sin firma y `GET /api/gmail/auth?user_id=...` estaba en `RUTAS_PUBLICAS` con el motivo
+  equivocado ("lo llama Google" — a `/auth` lo llama el navegador; sólo `/callback` viene del
+  proveedor). Cualquiera abría ese link con el UUID de la víctima, completaba el consentimiento con
+  **su propia** cuenta de Google, y el callback hacía `upsert` de sus tokens en la fila
+  `user_integrations` de la víctima. No es leer correo ajeno: las RFQ y OC de la víctima salen desde el
+  buzón del atacante y el agente Gmail ingiere correo que él controla como cotizaciones de proveedores
+  (con auto-aplicación a confianza ≥ 0.85). Cierre en dos partes, las dos necesarias:
+  `POST /api/{gmail,outlook}/conectar` (autenticado, devuelve la URL de consentimiento en JSON porque
+  un endpoint con sesión no puede ser destino de una navegación) y `services/oauth_state.py`
+  (`state` firmado con HMAC-SHA256 sobre `SUPABASE_SERVICE_KEY`, vigencia 10 min) para que `/callback`,
+  que sigue siendo público de verdad, pueda confiar en el `user_id` que lee. Sin la firma, el punto 1
+  se saltaría llamando a `/callback` directo. Cobertura: `tests/test_oauth_state.py`.
+- **`/api/v1/keys` — identidad y plan del cliente (cerrado).** Los tres endpoints deducían el usuario de
+  `X-Claria-User-Id` (header plano, sin token) y el plan de `X-Claria-User-Plan`, que se grababa tal
+  cual en `api_keys.plan` — el único plan que el backend sí aplica (`rate_limiter.get_plan_config()`).
+  Ahora usan `Depends(get_auth_context)` y `plan_de_organizacion()` lo resuelve contra
+  `organizations.plan` (lo escribe sólo el control plane). **No sirve derivarlo de `user_metadata`**:
+  el propio usuario lo edita con `supabase.auth.updateUser()` desde `/settings`.
+- **La exención por prefijo de `tenant_guard` era la causa raíz del punto anterior**: `/api/v1` entero
+  estaba eximido asumiendo "todo esto va por api_key", pero los endpoints que EMITEN la api_key no
+  pueden autenticarse con ella. Ahora existe `RUTAS_CON_SESION_DENTRO_DE_PREFIJO` y el test lo fija.
+- **`invitar_a_organizacion` linkeaba responsables sin filtro de organización** (`_linkear_responsable()`
+  ahora filtra por `ctx.user_ids_miembros`). No permitía aprobar nada ajeno — `_authorized_request` y
+  `decidir_caso` chequean organización aguas abajo — pero sí desconectar al responsable legítimo de otra
+  empresa de sus aprobaciones y avisos.
+- **Pendiente de esa auditoría, en orden:** respuestas uniformes en `POST /api/organizacion/invitar`
+  (hoy distingue los tres casos y devuelve el `user_id`, y para un email desconocido **crea la cuenta y
+  manda correo** — es también un generador de mail hacia terceros con la marca Baiyer);
+  `docs_url=None`/`redoc_url=None`/`openapi_url=None` en prod; `.single()` → `ejecutar_maybe_single()`
+  en `GET /api/oc/info/{token}` (500 en vez de 404 con token inválido); policy de UPDATE de
+  `public.users` (higiene). Rotar los secretos sigue pendiente de antes.
+
 ## Pipeline de cotización en proceso (`services/cotizacion_pipeline.py`, 2026-08-24)
 `cotizar_descripcion()` hace identificar → crear la fila en `cotizaciones` → buscar, **todo en
 proceso**, reusando `identificar_item()` y `BuscarRequest`/`_buscar_fuentes`/`_filtrar_gemini`/
@@ -591,6 +632,12 @@ ambos servicios al pushear ahí.
 - Las páginas y rutas se conservan: siguen accesibles por URL directa para no
   romper enlaces ni integraciones existentes; sólo se ocultaron de la
   navegación principal. `MCP` y `Configuración` permanecen visibles.
+- **2026-08-25:** mismo criterio para `Estadísticas`, `Calendario`, `Recurrencias`
+  y `Reportes` (sección «Gestión»), más el botón "Generar reporte PDF" de
+  `/proyectos/[id]`, que era el último enlace de navegación a una de esas
+  secciones. Las entradas siguen en `BREADCRUMB` para que la cabecera funcione
+  al entrar por URL directa. El botón "Exportar Excel" de proyectos se conserva:
+  descarga desde el backend sin navegar a `/reportes`.
 - Cambio desplegado desde `main` en el commit `d827263`; `next build` verificado.
 
 6. Probar Supplier Capability Intelligence (024) con datos reales: completar un onboarding y confirmar que aparece la fila en `procurement_profiles`; hacer una búsqueda y confirmar que se crea `search_sessions`; usar "Rebuscar con contexto" y confirmar que cae en `search_feedback`.

@@ -39,22 +39,20 @@ def _next_seguro(next_path: Optional[str]) -> str:
         return "/dashboard"
     return next_path
 
-def _encode_state(user_id: str, verifier: str, next_path: str = "/dashboard") -> str:
-    payload = json.dumps({"u": user_id, "v": verifier, "n": _next_seguro(next_path)})
-    return base64.urlsafe_b64encode(payload.encode()).decode()
+@router.post("/conectar")
+async def gmail_conectar(next: str = "/dashboard", ctx: AuthContext = Depends(get_auth_context)):
+    """Devuelve la URL de consentimiento de Google para el usuario autenticado.
 
-def _decode_state(state: str) -> tuple[str, str, str]:
-    payload = json.loads(base64.urlsafe_b64decode(state + "==").decode())
-    return payload["u"], payload["v"], _next_seguro(payload.get("n"))
-
-
-@router.get("/auth")
-async def gmail_auth(user_id: str, next: str = "/dashboard"):
-    """Redirige al usuario a Google OAuth con PKCE. `next` es a dónde volver
-    en el frontend una vez conectado (ej. /onboarding cuando viene encadenado
-    desde el login con Google)."""
+    Reemplaza al viejo `GET /api/gmail/auth?user_id=...`, que iniciaba el flujo
+    sin sesión: con el UUID de otra persona se completaba el consentimiento con
+    la cuenta de Google propia y el callback dejaba los tokens del atacante en
+    la fila de la víctima (ver `services/oauth_state.py`). El `user_id` sale de
+    la sesión verificada, y devolvemos JSON en vez de un redirect porque un
+    endpoint autenticado no puede ser el destino de una navegación del browser.
+    """
     from app.config import settings
     from app.services.gmail_service import load_client_secrets
+    from app.services.oauth_state import firmar_state
 
     try:
         client_info = load_client_secrets()
@@ -64,7 +62,7 @@ async def gmail_auth(user_id: str, next: str = "/dashboard"):
 
     verifier = _make_code_verifier()
     challenge = _make_code_challenge(verifier)
-    state = _encode_state(user_id, verifier, next)
+    state = firmar_state(ctx.actor_user_id, verifier, _next_seguro(next))
 
     params = {
         "response_type": "code",
@@ -78,8 +76,7 @@ async def gmail_auth(user_id: str, next: str = "/dashboard"):
         "code_challenge_method": "S256",
     }
     from urllib.parse import urlencode
-    auth_url = "https://accounts.google.com/o/oauth2/auth?" + urlencode(params)
-    return RedirectResponse(url=auth_url)
+    return {"url": "https://accounts.google.com/o/oauth2/auth?" + urlencode(params)}
 
 
 @router.get("/callback")
@@ -89,10 +86,15 @@ async def gmail_callback(code: str, state: str):
     from app.config import settings
     from app.services.supabase import get_supabase
 
-    try:
-        user_id, verifier, next_path = _decode_state(state)
-    except Exception:
-        raise HTTPException(status_code=400, detail="State inválido")
+    from app.services.oauth_state import verificar_state
+
+    # Este endpoint es público de verdad (lo invoca Google, no el navegador con
+    # sesión Baiyer), así que la firma del `state` es lo único que ata este
+    # consentimiento al usuario que realmente lo inició.
+    datos = verificar_state(state)
+    if not datos:
+        raise HTTPException(status_code=400, detail="State inválido o expirado")
+    user_id, verifier, next_path = datos["u"], datos["v"], _next_seguro(datos.get("n"))
 
     from app.services.gmail_service import load_client_secrets
     client_info = load_client_secrets()

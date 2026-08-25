@@ -13,39 +13,33 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 /**
  * Si el login vino con "conectar_gmail=1" (botón de Google en login/registro),
- * encadena el consentimiento de correo real (/api/gmail/auth) cuando el usuario
+ * encadena el consentimiento de correo real (/api/gmail/conectar) cuando el usuario
  * todavía no lo tiene conectado, para no exigir un segundo paso manual desde el
  * dashboard. Si ya está conectado, o el chequeo falla, sigue al destino normal.
  */
-async function resolverDestinoGmail(accessToken: string | undefined, userId: string, next: string): Promise<string> {
+async function resolverDestinoCorreo(
+  proveedor: "gmail" | "outlook", accessToken: string | undefined, next: string,
+): Promise<string> {
   if (!accessToken) return next;
   try {
-    const resp = await fetch(`${API_URL}/api/gmail/status`, {
+    const resp = await fetch(`${API_URL}/api/${proveedor}/status`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (!resp.ok) return next;
     const data = await resp.json();
     if (data.connected) return next;
-  } catch {
-    return next;
-  }
-  return `${API_URL}/api/gmail/auth?user_id=${encodeURIComponent(userId)}&next=${encodeURIComponent(next)}`;
-}
 
-/** Mismo patrón que resolverDestinoGmail, para el login con Outlook. */
-async function resolverDestinoOutlook(accessToken: string | undefined, userId: string, next: string): Promise<string> {
-  if (!accessToken) return next;
-  try {
-    const resp = await fetch(`${API_URL}/api/outlook/status`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!resp.ok) return next;
-    const data = await resp.json();
-    if (data.connected) return next;
+    // El `user_id` ya no viaja en la URL: el backend lo deriva de la sesión y
+    // devuelve la URL de consentimiento con un `state` firmado.
+    const inicio = await fetch(
+      `${API_URL}/api/${proveedor}/conectar?next=${encodeURIComponent(next)}`,
+      { method: "POST", headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!inicio.ok) return next;
+    return (await inicio.json()).url ?? next;
   } catch {
     return next;
   }
-  return `${API_URL}/api/outlook/auth?user_id=${encodeURIComponent(userId)}&next=${encodeURIComponent(next)}`;
 }
 
 function CallbackInner() {
@@ -97,12 +91,12 @@ function CallbackInner() {
           return;
         }
         if (conectarGmail && data.user?.id) {
-          const destino = await resolverDestinoGmail(data.session?.access_token, data.user.id, next);
+          const destino = await resolverDestinoCorreo("gmail", data.session?.access_token, next);
           irA(destino);
           return;
         }
         if (conectarOutlook && data.user?.id) {
-          const destino = await resolverDestinoOutlook(data.session?.access_token, data.user.id, next);
+          const destino = await resolverDestinoCorreo("outlook", data.session?.access_token, next);
           irA(destino);
           return;
         }

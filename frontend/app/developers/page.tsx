@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/authFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -88,16 +89,18 @@ export default function DevelopersPage() {
     createClient().auth.getUser().then(async ({ data: { user: u } }) => {
       if (!u) return;
       setUser({ id: u.id, plan: u.user_metadata?.plan || "free" });
-      const keysResp = await fetch(`${API_URL}/api/v1/keys`, { headers: { "X-Claria-User-Id": u.id } });
+      const keysResp = await authFetch(`${API_URL}/api/v1/keys`);
       if (keysResp.ok) { const d = await keysResp.json(); setKeys(d.keys || []); }
     });
   }, []);
 
   const handleCreateKey = async () => {
     if (!user || !newKeyName.trim()) return;
-    const resp = await fetch(`${API_URL}/api/v1/keys`, {
+    // El plan ya no viaja desde el cliente: lo resuelve el backend contra la
+    // organización real (antes se podía pedir `enterprise` por header).
+    const resp = await authFetch(`${API_URL}/api/v1/keys`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Claria-User-Id": user.id, "X-Claria-User-Plan": user.plan },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ nombre: newKeyName, modo: newKeyModo }),
     });
     if (resp.ok) {
@@ -105,7 +108,7 @@ export default function DevelopersPage() {
       setCreatedKey(data.key);
       setShowCreateKey(false);
       setNewKeyName("");
-      const r = await fetch(`${API_URL}/api/v1/keys`, { headers: { "X-Claria-User-Id": user.id } });
+      const r = await authFetch(`${API_URL}/api/v1/keys`);
       if (r.ok) setKeys((await r.json()).keys || []);
     }
   };
@@ -113,7 +116,7 @@ export default function DevelopersPage() {
   const handleRevoke = async (keyId: string) => {
     if (!user) return;
     setRevoking(keyId);
-    await fetch(`${API_URL}/api/v1/keys/${keyId}`, { method: "DELETE", headers: { "X-Claria-User-Id": user.id } });
+    await authFetch(`${API_URL}/api/v1/keys/${keyId}`, { method: "DELETE" });
     setKeys(prev => prev.filter(k => k.id !== keyId));
     setRevoking(null);
   };

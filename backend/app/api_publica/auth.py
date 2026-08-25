@@ -125,6 +125,35 @@ def generar_api_key(modo: str = "live") -> tuple[str, str, str]:
     return full_key, key_hash, prefix
 
 
+def plan_de_organizacion(organizacion_id: str) -> str:
+    """Plan comercial real de la organización, resuelto SIEMPRE en el servidor.
+
+    Antes el plan llegaba en el header `X-Claria-User-Plan` y quedaba grabado tal
+    cual en `api_keys.plan`, que es lo que después consume `get_plan_config()`:
+    cualquiera se declaraba `enterprise`. Tampoco sirve leerlo de
+    `user_metadata`, porque el propio usuario lo edita desde `/settings` con
+    `supabase.auth.updateUser()`.
+
+    La única fuente que el usuario no controla es `organizations.plan`, que sólo
+    escribe un admin del control plane (`PATCH /api/admin-control-plane/plans/...`).
+    Si no se puede resolver, cae a "free" — nunca a algo más permisivo.
+    """
+    if not organizacion_id:
+        return "free"
+    try:
+        org = SUPABASE.table("organizaciones").select("owner_user_id").eq(
+            "id", organizacion_id
+        ).limit(1).execute().data
+        if not org:
+            return "free"
+        capo = SUPABASE.table("organizations").select("plan").eq(
+            "slug", f"user-{org[0]['owner_user_id']}"
+        ).limit(1).execute().data
+        return (capo[0].get("plan") if capo else None) or "free"
+    except Exception:
+        return "free"
+
+
 async def crear_api_key(user_id: str, nombre: str, plan: str, modo: str = "live") -> dict:
     """Crea una nueva API key en la base de datos. Retorna la key completa UNA SOLA VEZ."""
     full_key, key_hash, prefix = generar_api_key(modo)

@@ -32,10 +32,13 @@ RUTAS_PUBLICAS: frozenset[str] = frozenset({
     "POST /api/aprobaciones/token/{token}/decidir",
     "GET /api/oc/info/{token}",
     "POST /api/oc/confirmar/{token}",
-    # OAuth: los llama Google/Microsoft, no el navegador con sesión Baiyer.
-    "GET /api/gmail/auth",
+    # OAuth: SÓLO los callbacks, que los invoca Google/Microsoft y no pueden
+    # traer sesión Baiyer. Confían en la firma HMAC del `state`, no en el
+    # `user_id` que traen. Iniciar el flujo es `POST /{gmail,outlook}/conectar`,
+    # que exige sesión: hasta el 2026-08-25 existía `GET /api/gmail/auth?user_id=`
+    # sin autenticar, y alcanzaba para dejar el buzón del atacante conectado a la
+    # cuenta de la víctima (ver services/oauth_state.py).
     "GET /api/gmail/callback",
-    "GET /api/outlook/auth",
     "GET /api/outlook/callback",
     "POST /api/gmail/webhook",                      # Pub/Sub de Google
     # Sin datos de ninguna organización.
@@ -56,6 +59,17 @@ PREFIJOS_CON_GUARDIA_PROPIO: tuple[str, ...] = (
     "/api/mcp",                   # tokens OAuth MCP opacos y hashados
     "/api/v1",                    # API pública por api_key
 )
+
+# Excepciones a lo anterior: rutas que caen bajo uno de esos prefijos pero NO
+# tienen el guardia del prefijo, así que necesitan sesión web como cualquier otra.
+# Los tres endpoints de `/api/v1/keys` son los que EMITEN la api_key, de modo que
+# no pueden autenticarse con ella; la exención por prefijo los dejaba sin ninguna
+# capa y su identidad salía del header `X-Claria-User-Id` sin verificar.
+RUTAS_CON_SESION_DENTRO_DE_PREFIJO: frozenset[str] = frozenset({
+    "POST /api/v1/keys",
+    "GET /api/v1/keys",
+    "DELETE /api/v1/keys/{key_id}",
+})
 
 # ── 3. DEUDA — en cero ───────────────────────────────────────────────────────
 # Rutas que deducían la identidad de un `user_id` mandado por el cliente.
@@ -88,9 +102,9 @@ async def exigir_sesion(request: Request) -> None:
     plantilla = getattr(ruta, "path", None) or request.url.path
     if not plantilla.startswith("/api"):
         return
-    if plantilla.startswith(PREFIJOS_CON_GUARDIA_PROPIO):
-        return
     clave = _clave(request)
+    if plantilla.startswith(PREFIJOS_CON_GUARDIA_PROPIO) and clave not in RUTAS_CON_SESION_DENTRO_DE_PREFIJO:
+        return
     if clave in RUTAS_PUBLICAS or clave in DEUDA_SIN_AUTENTICAR:
         return
 

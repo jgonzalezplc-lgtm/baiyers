@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, PlusCircle, ListChecks, Building2, BarChart3,
-  ScrollText, Receipt, FolderKanban, CalendarDays, Repeat, FileBarChart,
+  LayoutDashboard, PlusCircle, ListChecks, Building2,
+  ScrollText, Receipt, FolderKanban,
   Mail, Plug, Settings, LogOut, Menu, X,
   type LucideIcon,
 } from "lucide-react";
@@ -27,13 +27,9 @@ const NAV: { section: string; links: NavLink[] }[] = [
     links: [
       { href: "/proveedores", label: "Proveedores", icon: Building2 },
       { href: "/conversaciones", label: "Conversaciones", icon: Mail },
-      { href: "/estadisticas", label: "Estadísticas", icon: BarChart3 },
       { href: "/oc", label: "Órdenes de compra", icon: ScrollText },
       { href: "/facturas", label: "Facturas", icon: Receipt },
       { href: "/proyectos", label: "Proyectos", icon: FolderKanban },
-      { href: "/calendario", label: "Calendario", icon: CalendarDays },
-      { href: "/recurrencias", label: "Recurrencias", icon: Repeat },
-      { href: "/reportes", label: "Reportes", icon: FileBarChart },
     ],
   },
   {
