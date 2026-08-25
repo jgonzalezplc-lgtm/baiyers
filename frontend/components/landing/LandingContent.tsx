@@ -3,106 +3,23 @@
  * Landing pública — rediseño 2026-08-24.
  *
  * Traducción del handoff `design_handoff_baiyer_landing` (prototipo hecho con
- * un runtime propio, `<x-dc>`/`<sc-for>`) a React. Se conserva la estructura,
- * el copy y las interacciones; el lenguaje visual se adapta a los tokens del
- * design system de la app (Inter + azul petróleo + neutros cálidos) en vez del
- * "Broadsheet" del handoff (Source Serif + papel + cian/magenta), por decisión
- * explícita: landing y producto deben verse como el mismo producto.
+ * un runtime propio, `<x-dc>`/`<sc-for>`) a React: se conservan estructura,
+ * copy e interacciones.
  *
- * Por eso tampoco se porta el tratamiento CMYK de los titulares: es un efecto
- * de registro de imprenta propio de Broadsheet que no tiene lectura en este
- * sistema.
+ * Mezcla deliberada de los dos sistemas: **tipografía Source Serif 4 del
+ * handoff** (es lo que le da el aire editorial) sobre la **paleta de la app**
+ * (azul petróleo y neutros cálidos) en vez del cian/magenta de Broadsheet, para
+ * que landing y producto se reconozcan como lo mismo.
+ *
+ * **Siempre en claro** (`.tema-claro`): el diseño está pensado sobre papel y en
+ * modo oscuro los wordmarks del titular no tenían solución limpia.
+ *
+ * No se porta el tratamiento CMYK de los titulares: es un efecto de registro de
+ * imprenta que sin la paleta de Broadsheet no se lee como tal.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-
-const DEMO_URL = "https://calendar.app.google/LPZDEfVNZU7EM8CR8";
-
-interface Feature {
-  name: string;
-  title: string;
-  desc: string;
-  note: string;
-  video: string;
-}
-
-const FEATURES: Feature[] = [
-  {
-    name: "Describe",
-    title: "Describe qué necesitas comprar",
-    desc: "Escribe con tus palabras, una foto o un archivo lo que necesitas comprar. Baiyer entiende cada ítem y cantidad, comienza la búsqueda y te ayuda a dimensionar la compra.",
-    note: "Todo tu proyecto en un prompt",
-    video: "/landing/videos/baiyer-describir-desktop.mp4",
-  },
-  {
-    name: "Cotizamos por correo",
-    title: "Agentes de correo cotizan por ti",
-    desc: "Baiyer envía las cotizaciones a tus proveedores desde tu cuenta de correo, lee las respuestas y arma automáticamente el cuadro comparativo para encontrar al mejor proveedor.",
-    note: "Para Gmail y Outlook",
-    video: "/landing/videos/baiyer-cotizar-por-correo-desktop.mp4",
-  },
-  {
-    name: "Compara precios",
-    title: "Compara y elige al mejor precio",
-    desc: "Compara los precios que tus proveedores de confianza envían por correo con los publicados en tiendas chilenas, MercadoLibre, Google Shopping y proveedores en el extranjero.",
-    note: "Informes automáticos con los mejores precios posibles",
-    video: "/landing/videos/baiyer-comparar-por-correo-desktop.mp4",
-  },
-  {
-    name: "Usa tu data",
-    title: "Toda tu información en un solo lugar",
-    desc: "Conecta tu IA favorita y consulta precios, proveedores y cotizaciones al instante, con tus palabras y sin abrir planillas desactualizadas.",
-    note: "Toda tu información al alcance de un prompt",
-    video: "/landing/videos/baiyer-consultar-con-ia-desktop.mp4",
-  },
-  {
-    name: "Aprobaciones y OC",
-    title: "Aprueba, genera y envía la orden de compra",
-    desc: "Flujo de aprobación con magic link y generación automática de órdenes de compra al aprobar.",
-    note: "Nos adaptamos a tu proceso interno y lo automatizamos",
-    video: "/landing/videos/baiyer-ordenar-y-aprobar-desktop.mp4",
-  },
-  {
-    name: "Integraciones",
-    title: "Conéctalo a tus sistemas",
-    desc: "Conecta Baiyer a tu correo (Gmail u Outlook) y a tu IA preferida (Claude, ChatGPT) para automatizar tus procesos de compra sin roce.",
-    note: "Automatiza tu proceso de compras completo en menos de lo que tardas en hacerte un café",
-    video: "/landing/videos/baiyer-integraciones-mcp-desktop.mp4",
-  },
-];
-
-const FAQS = [
-  {
-    q: "¿Cómo cotizan los agentes de correo?",
-    a: "Baiyer envía y responde cotizaciones desde el correo tuyo y de tu equipo, con reply-to a ti, y lee las respuestas para llenar precios y plazos automáticamente en el comparador.",
-  },
-  {
-    q: "¿Se adapta a mi proceso de compra?",
-    a: "Sí. El flujo se configura al proceso de cada empresa: categorías, listas multi-ítem, aprobaciones y proveedores propios. Tú no cambias tu forma de trabajar.",
-  },
-  {
-    q: "¿De dónde salen los precios?",
-    a: "De tiendas chilenas, MercadoLibre y Google Shopping, reunidos y filtrados por relevancia para descartar resultados que no corresponden a lo que buscas.",
-  },
-  {
-    q: "¿Puedo conectarlo con mis sistemas?",
-    a: "Sí, vía API pública para tu ERP y tus flujos, y un servidor MCP para que tus agentes de IA consulten y operen tus compras, además de correo (Gmail / Outlook).",
-  },
-  {
-    q: "¿Mis datos están seguros?",
-    a: "Tus cuentas y datos se mantienen bajo tu control. Los correos salen con reply-to a tu equipo y los agentes operan solo con los permisos que tú defines.",
-  },
-];
-
-const INTEGRACIONES = [
-  { nombre: "Claude", src: "/landing/logos/claude.png", bg: "#d97757", padding: 9 },
-  { nombre: "OpenAI", src: "/landing/logos/openai.png", bg: "#fff", padding: 6 },
-  { nombre: "Gmail", src: "/landing/logos/gmail.png", bg: "#fff", padding: 3 },
-  { nombre: "Outlook", src: "/landing/logos/outlook.png", bg: "#fff", padding: 9 },
-  { nombre: "Slack", src: "/landing/logos/slack.png", bg: "#fff", padding: 9 },
-  { nombre: "Teams", src: "/landing/logos/teams.png", bg: "#fff", padding: 9 },
-  { nombre: "Discord", src: "/landing/logos/discord.png", bg: "#5865f2", padding: 9 },
-];
+import { DEMO_URL, FAQS, FEATURES, INTEGRACIONES } from "./datos";
 
 /** Botón/enlace con el lenguaje de la app, en tamaño landing. */
 function CtaPrimary({ href, children, externo }: { href: string; children: React.ReactNode; externo?: boolean }) {
@@ -210,7 +127,15 @@ export default function LandingContent() {
   const f = FEATURES[active];
 
   return (
-    <div style={{ background: "var(--canvas)", color: "var(--n-900)" }}>
+    <div
+      className="tema-claro"
+      style={{
+        background: "var(--canvas)", color: "var(--n-900)",
+        // Source Serif 4 en toda la landing, como el diseño original. La app
+        // por dentro sigue en Inter.
+        fontFamily: "var(--font-serif), Georgia, serif",
+      }}
+    >
 
       {/* ── Barra de anuncio ── */}
       <div style={{
@@ -240,6 +165,7 @@ export default function LandingContent() {
         </span>
       </nav>
 
+      <main>
       <div style={{ maxWidth: 1180, margin: "0 auto", padding: "0 clamp(20px,5vw,64px)" }}>
 
         {/* ── Hero ── */}
@@ -263,24 +189,15 @@ export default function LandingContent() {
                     animation: "landingLogoIn .45s ease-out both",
                   }}
                 >
-                  {/* Los wordmarks vienen con fondo BLANCO OPACO (verificado leyendo
-                      el PNG, no confiando en el canal alfa). El handoff los fundía
-                      con `mix-blend-mode: multiply` sobre el papel claro de
-                      Broadsheet; acá eso rompería en modo oscuro, donde multiply
-                      apaga también la tinta negra del logo y desaparece. Un chip
-                      claro explícito se lee igual de bien en ambos temas. */}
-                  <span style={{
-                    display: "inline-flex", alignItems: "center",
-                    background: "#fff", borderRadius: "var(--r-md)",
-                    padding: "0.14em 0.34em", boxShadow: "var(--shadow-card)",
-                  }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={logo === 0 ? "/landing/logo-claude-wordmark.png" : "/landing/logo-chatgpt-wordmark.png"}
-                      alt={logo === 0 ? "Claude" : "ChatGPT"}
-                      style={{ height: logo === 0 ? "1.05em" : "1.2em", width: "auto", display: "block" }}
-                    />
-                  </span>
+                  {/* Los PNG del handoff traían fondo blanco opaco; se les quitó
+                      con `scripts/limpiar-logos.mjs`, así que van sueltos sobre el
+                      papel, sin chip ni `mix-blend-mode`. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={logo === 0 ? "/landing/logo-claude-wordmark.png" : "/landing/logo-chatgpt-wordmark.png"}
+                    alt={logo === 0 ? "Claude" : "ChatGPT"}
+                    style={{ height: logo === 0 ? "1.2em" : "1.38em", width: "auto", display: "block" }}
+                  />
                 </span>
               </span>
             </h1>
@@ -318,7 +235,12 @@ export default function LandingContent() {
       </div>
 
       {/* ── Features: panel pegado + scroll ── */}
-      <div id="features" ref={seccionRef} style={{ position: "relative", height: "480vh" }}>
+      <section
+        id="features"
+        ref={seccionRef}
+        aria-label="Qué hace Baiyer"
+        style={{ position: "relative", height: "480vh" }}
+      >
         <div style={{
           position: "sticky", top: 0, height: "100vh", display: "flex", flexDirection: "column",
           justifyContent: "center", overflow: "hidden", padding: "clamp(24px,5vh,64px) 0",
@@ -341,7 +263,7 @@ export default function LandingContent() {
                 type="button"
                 onClick={() => irAIndice(i)}
                 style={{
-                  cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: 13.5,
+                  cursor: "pointer", fontFamily: "inherit", fontSize: 13.5,
                   fontWeight: i === active ? 600 : 500, whiteSpace: "nowrap",
                   padding: "8px 16px", borderRadius: "var(--r-pill)",
                   border: `1px solid ${i === active ? "var(--brand)" : "var(--n-200)"}`,
@@ -411,7 +333,7 @@ export default function LandingContent() {
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
       <div style={{ maxWidth: 1180, margin: "0 auto", padding: "0 clamp(20px,5vw,64px)" }}>
 
@@ -610,7 +532,7 @@ export default function LandingContent() {
                     style={{
                       width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
                       gap: 16, background: "none", border: 0, padding: "18px 0", cursor: "pointer",
-                      textAlign: "left", fontFamily: "var(--font-sans)", fontWeight: 600, fontSize: 18,
+                      textAlign: "left", fontFamily: "inherit", fontWeight: 600, fontSize: 18,
                       color: open ? "var(--brand)" : "var(--n-900)",
                     }}
                   >
@@ -634,6 +556,7 @@ export default function LandingContent() {
           </div>
         </section>
       </div>
+      </main>
 
       {/* ── Footer ── */}
       <footer style={{ borderTop: "1px solid var(--n-200)" }}>

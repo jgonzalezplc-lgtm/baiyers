@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, IBM_Plex_Mono, Roboto } from "next/font/google";
+import { Inter, IBM_Plex_Mono, Roboto, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
@@ -13,6 +13,17 @@ const plexMono = IBM_Plex_Mono({
   subsets: ["latin"],
   weight: ["400", "500", "600"],
   variable: "--font-plex-mono",
+  display: "swap",
+});
+
+// La landing pública usa Source Serif 4 en todo (títulos y copy), como el
+// diseño original: es lo que le da el aire editorial. La app por dentro sigue
+// con Inter.
+const sourceSerif = Source_Serif_4({
+  subsets: ["latin"],
+  weight: ["400", "600"],
+  style: ["normal", "italic"],
+  variable: "--font-serif",
   display: "swap",
 });
 
@@ -41,7 +52,7 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" className={`${inter.variable} ${plexMono.variable} ${roboto.variable}`} suppressHydrationWarning>
+    <html lang="es" className={`${inter.variable} ${plexMono.variable} ${roboto.variable} ${sourceSerif.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>

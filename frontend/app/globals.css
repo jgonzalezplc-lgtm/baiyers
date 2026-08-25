@@ -21,7 +21,11 @@
    apuntando a los valores nuevos, para no romper las pantallas existentes.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-:root {
+/* `.tema-claro` repite la paleta clara declarándola sobre el propio elemento,
+   así gana sobre los valores que hereda de `[data-theme="dark"]` en <html>.
+   La usa la landing pública, que es siempre clara: su diseño está pensado
+   sobre papel y el chip de los logos delataba el fondo en modo oscuro. */
+:root, .tema-claro {
   /* ── Marca — azul petróleo profundo (base 600) ── */
   --brand-50:  #eaf4f5;
   --brand-100: #cfe6e8;
