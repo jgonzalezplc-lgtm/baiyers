@@ -42,7 +42,10 @@ async def identify_intake(
         industria_empresa=industry, modo_cubicacion_conversacional=not bool(file_base64),
         respuestas_cubicacion=answers, user_id=actor.actor_user_id,
     )
-    result = await identificar_item(request)
+    # `ctx=None` explícito: acá no hay request HTTP, el actor ya viene verificado
+    # aguas arriba y viaja en `req.user_id`. Sin esto, el parámetro toma el
+    # objeto `Depends` como valor y revienta con AttributeError.
+    result = await identificar_item(request, ctx=None)
     result = dict(result)
     result["lista_items"] = _normalize_items(result)
     result["ready_to_commit"] = (
