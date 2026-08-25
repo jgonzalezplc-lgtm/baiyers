@@ -342,8 +342,16 @@ async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_co
 async def info_oc(token: str):
     from app.services.supabase import get_supabase
 
+    from app.services.supabase import ejecutar_maybe_single
+
     sb = get_supabase()
-    res = sb.table("ordenes_compra").select("*").eq("token_confirmacion", token).single().execute()
+    # `.single()` LANZA cuando no matchea ninguna fila, así que el `if not
+    # res.data` de abajo era inalcanzable y cualquier token inválido devolvía
+    # 500. Este endpoint es público (el proveedor abre el link del correo sin
+    # cuenta), o sea que el token equivocado es el caso esperado, no la excepción.
+    res = ejecutar_maybe_single(
+        sb.table("ordenes_compra").select("*").eq("token_confirmacion", token).maybe_single()
+    )
     if not res.data:
         raise HTTPException(status_code=404, detail="OC no encontrada")
 
@@ -369,8 +377,13 @@ async def confirmar_oc(token: str):
     from app.services.supabase import get_supabase
     from app.services.gmail_service import get_gmail_service, send_email
 
+    from app.services.supabase import ejecutar_maybe_single
+
     sb = get_supabase()
-    res = sb.table("ordenes_compra").select("*").eq("token_confirmacion", token).single().execute()
+    # Mismo caso que `/info/{token}`: token inválido daba 500, no 404.
+    res = ejecutar_maybe_single(
+        sb.table("ordenes_compra").select("*").eq("token_confirmacion", token).maybe_single()
+    )
     if not res.data:
         raise HTTPException(status_code=404, detail="OC no encontrada o token inválido")
 

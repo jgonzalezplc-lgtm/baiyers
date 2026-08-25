@@ -224,10 +224,18 @@ def invitar_a_organizacion(
     el canvas del Workflow Builder) al nuevo `usuario_baiyer_id`, para que
     la Fase 4 pueda dispararle notificaciones directas.
 
-    Levanta ValueError si:
-    - El invitador no es admin.
-    - El email ya pertenece a un usuario de OTRA organización (un usuario =
-      una organización, política del producto).
+    La respuesta es deliberadamente uniforme para todo email que no sea ya
+    miembro de ESTA organización: siempre `{"estado": "invitada"}`, sin
+    `user_id`. Antes distinguía tres casos —invitado nuevo (devolvía el UUID
+    recién creado), "ya pertenece a otra organización" (confirmaba que la cuenta
+    existe) y ya miembro— así que cualquier usuario autenticado podía mapear qué
+    correos tienen cuenta en Baiyer y quedarse con sus UUIDs. Distinguir "ya
+    miembro" no filtra nada: el invitador es admin y ya puede listar su propio
+    roster.
+
+    Levanta ValueError sólo por condiciones del INVITADOR (no es admin, email
+    con formato inválido), nunca por algo que revele el estado de la cuenta
+    ajena.
     """
     from app.config import settings
 
@@ -264,9 +272,15 @@ def invitar_a_organizacion(
         if ya_miembro and ya_miembro["organizacion_id"] == ctx.organizacion_id:
             if responsable_id:
                 _linkear_responsable(sb, ctx, responsable_id, ya_existe.id)
-            return {"user_id": ya_existe.id, "email": email, "estado": "ya_miembro"}
+            return {"email": email, "estado": "ya_miembro"}
         if ya_miembro:
-            raise ValueError("Ese correo ya pertenece a otra organización")
+            # Pertenece a otra organización (1 usuario = 1 org). No se invita ni
+            # se linkea nada, pero la respuesta es la misma que la de un alta
+            # normal: decir la verdad acá es exactamente la fuga de enumeración.
+            # El admin igual ve el efecto real en el roster, donde el
+            # responsable queda "sin vincular".
+            print(f"[Organizacion] invitación no cursada: {email} ya pertenece a otra organización")
+            return {"email": email, "estado": "invitada"}
 
     # Nombre legible del invitador — para que aparezca en el correo template
     # como {{ .Data.invitado_por_nombre }} en vez del UUID crudo.
@@ -292,10 +306,15 @@ def invitar_a_organizacion(
         )
         nuevo_user = resp.user
     except Exception as e:
-        raise ValueError(f"No se pudo enviar la invitación: {e}")
+        # El detalle de Supabase se queda en el log: sus mensajes distinguen
+        # "email ya registrado" de un fallo de envío, que es la misma fuga que
+        # cierra el bloque de arriba.
+        print(f"[Organizacion] invite_user_by_email falló para {email}: {e}")
+        return {"email": email, "estado": "invitada"}
 
     if not nuevo_user:
-        raise ValueError("Supabase no devolvió el usuario invitado")
+        print(f"[Organizacion] Supabase no devolvió usuario al invitar a {email}")
+        return {"email": email, "estado": "invitada"}
 
     # Membresía idempotente (ON CONFLICT en la migración 030 vía UNIQUE(user_id)).
     try:
@@ -316,7 +335,7 @@ def invitar_a_organizacion(
 
     _sincronizar_membresia_capo(sb, ctx.organizacion_id, ctx.owner_user_id, nuevo_user.id, rol)
 
-    return {"user_id": nuevo_user.id, "email": email, "estado": "invitado"}
+    return {"email": email, "estado": "invitada"}
 
 
 def _sincronizar_membresia_capo(sb, organizacion_id: str, owner_user_id: str, invitado_user_id: str, rol: str) -> None:

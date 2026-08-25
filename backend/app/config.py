@@ -45,10 +45,14 @@ class Settings(BaseSettings):
         env_file = ".env"
 
     @property
+    def is_production(self) -> bool:
+        return self.environment.lower() == "production"
+
+    @property
     def should_run_cron(self) -> bool:
         if self.cron_enabled is not None:
             return self.cron_enabled
-        return self.environment.lower() == "production"
+        return self.is_production
 
 
 settings = Settings()

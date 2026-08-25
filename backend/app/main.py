@@ -8,7 +8,18 @@ from app.api_publica.router import router as api_v1_router, register_error_handl
 from app.api_publica.error_handler import ClariaAPIError
 
 from fastapi import Depends
+from app.config import settings
 from app.services.tenant_guard import exigir_sesion
+
+# `/docs`, `/redoc` y `/openapi.json` sólo fuera de producción. En prod servían
+# el mapa completo de ~200 endpoints, incluido todo el plano administrativo
+# (`/api/admin-control-plane/*`: dump de tablas, correos de usuarios,
+# recuperación de contraseña de cualquiera). No es una vulnerabilidad por sí
+# sola —`tenant_guard` cierra las rutas— pero le ahorra a un atacante todo el
+# trabajo de descubrimiento. Local sigue igual de cómodo.
+_docs = {} if not settings.is_production else {
+    "docs_url": None, "redoc_url": None, "openapi_url": None,
+}
 
 app = FastAPI(
     title="Cotizador Inteligente API",
@@ -17,6 +28,7 @@ app = FastAPI(
     # Deny-by-default: toda ruta /api exige sesión verificada salvo las
     # listadas explícitamente en tenant_guard. Un endpoint nuevo nace cerrado.
     dependencies=[Depends(exigir_sesion)],
+    **_docs,
 )
 
 # Orígenes permitidos: localhost + los definidos en CORS_ORIGINS (coma-separados),

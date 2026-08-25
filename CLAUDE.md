@@ -373,12 +373,28 @@ confirmado" el peor de todos, el de `state` de OAuth.
   ahora filtra por `ctx.user_ids_miembros`). No permitía aprobar nada ajeno — `_authorized_request` y
   `decidir_caso` chequean organización aguas abajo — pero sí desconectar al responsable legítimo de otra
   empresa de sus aprobaciones y avisos.
-- **Pendiente de esa auditoría, en orden:** respuestas uniformes en `POST /api/organizacion/invitar`
-  (hoy distingue los tres casos y devuelve el `user_id`, y para un email desconocido **crea la cuenta y
-  manda correo** — es también un generador de mail hacia terceros con la marca Baiyer);
-  `docs_url=None`/`redoc_url=None`/`openapi_url=None` en prod; `.single()` → `ejecutar_maybe_single()`
-  en `GET /api/oc/info/{token}` (500 en vez de 404 con token inválido); policy de UPDATE de
-  `public.users` (higiene). Rotar los secretos sigue pendiente de antes.
+- **`POST /api/organizacion/invitar` — respuesta uniforme (cerrado).** Devolvía el `user_id` recién
+  creado y distinguía tres casos, así que cualquier usuario autenticado mapeaba qué correos tienen
+  cuenta en Baiyer y se quedaba con sus UUIDs. Ahora siempre `{"estado": "invitada"}` sin `user_id`,
+  incluido el caso "pertenece a otra organización" y los fallos de `invite_user_by_email` (cuyos
+  mensajes también distinguen "email ya registrado"). Se conserva `ya_miembro` a propósito: el
+  invitador es admin de esa organización y ya puede listar su propio roster.
+  **Contrapartida real y aceptada:** si el correo pertenece a otra organización, el admin ve
+  "Invitación enviada" y no pasa nada. El efecto sí es visible en el roster de
+  `/settings/autorizaciones`, donde ese responsable queda "sin vincular".
+- **Docs apagadas en prod (cerrado):** `main.py` pasa `docs_url/redoc_url/openapi_url = None` cuando
+  `settings.is_production` (propiedad nueva en `config.py`). Cubierto por `tests/test_docs_produccion.py`.
+- **`.single()` → `ejecutar_maybe_single()` en los dos magic links de OC (cerrado):**
+  `GET /api/oc/info/{token}` y `POST /api/oc/confirmar/{token}` devolvían 500 con un token inválido,
+  porque `.single()` lanza con 0 filas y el `if not res.data` de la línea siguiente era inalcanzable.
+  Son endpoints públicos que abre el proveedor desde el correo: el token equivocado es el caso
+  esperado, no la excepción.
+- **`migrations/046_users_plan_no_editable.sql` — PENDIENTE DE APLICAR** (trigger que impide al
+  cliente cambiarse `plan`/`trial_hasta`/`plan_activo_hasta`/`cotizaciones_mes_actual` en
+  `public.users`; RLS no puede restringir por columna). Es higiene: hoy ningún gate lee esa tabla.
+- **Pendiente de esa auditoría:** aplicar la 046; limpiar los `user_id` de los schemas de las tools MCP
+  (el servidor los ignora, pero sugieren una confianza que no existe); los hints de PostgREST que
+  revelan nombres de tablas (sin fix directo, baja prioridad). Rotar los secretos sigue pendiente.
 
 ## Pipeline de cotización en proceso (`services/cotizacion_pipeline.py`, 2026-08-24)
 `cotizar_descripcion()` hace identificar → crear la fila en `cotizaciones` → buscar, **todo en
