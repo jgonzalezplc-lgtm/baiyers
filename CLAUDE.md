@@ -431,6 +431,15 @@ proceso**, reusando `identificar_item()` y `BuscarRequest`/`_buscar_fuentes`/`_f
 - **Bug real de `postgrest-py` 2.x encontrado en producción — ya corregido en todo el backend (commit `43fd9c4`).** `.maybe_single().execute()` devuelve `None` directamente (no un objeto con `.data = None`) cuando la consulta no matchea ninguna fila — cualquier `.execute().data` sin chequear `None` antes crashea con `AttributeError`. Se encontró primero en `resolver_organizacion()` (rompía dashboard/listas/gmail/workflows enteros para cualquier usuario sin fila en `membresias_organizacion`) y se terminó de auditar el resto del backend: **57 ocurrencias en 12 archivos** corregidas con `ejecutar_maybe_single()` (`services/supabase.py`) — envuelve el query y siempre devuelve un objeto con `.data` accesible, sin tener que reescribir la lógica de cada sitio. Para queries nuevas: usar `ejecutar_maybe_single(query.maybe_single())` en vez de `query.maybe_single().execute()`. **Ojo:** había un chip de tarea en background para esto mismo que el usuario alcanzó a iniciar por separado — si existe un worktree/sesión paralela tocando los mismos archivos, revisar por conflictos antes de mergear.
 - **`get_auth_context` ahora autocrea la organización si falta** (usuarios registrados después del backfill de la 030 no tenían fila en `membresias_organizacion` y quedaban bloqueados con 403 en TODO endpoint protegido) — usa la misma red de seguridad que ya tenía `obtener_organizacion()` para `/api/organizacion/mia`.
 - **Tablas referenciadas en código que NO EXISTEN en producción (confirmado con `sb.table(x).select('*').limit(1)` contra la DB real, no contra los `.sql`):** `supplier_categories` y `procurement_ledger` (de `014_smart_procurement.sql`, migración numerada pero aplicada solo a medias — `approval_workflows`/`approval_requests`/`recurrencia_logs` de ese mismo archivo sí existen), `quote_items`/`quote_suppliers`/`purchase_events` (de `013_procurement_flow.sql`; el código que las usaba se borró el 2026-08-24), `supplier_ratings`/`rating_pendiente` (usadas por `supplier_intelligence.py` y `POST /api/suppliers/rating` — fallan en silencio o 500). Ningún numero de migración garantiza que esté realmente en prod: **antes de asumir que una tabla existe, verificar con una query real**, no solo mirar `backend/migrations/`.
+- **Modelos de Gemini: verificar contra `list_models()`, no de memoria (2026-08-25).** `escanear_boleta`
+  (`listas.py`, `POST /api/listas/{id}/boleta-scan`) pedía **`gemini-1.5-flash`, que está retirado** y
+  no aparece en la lista de la cuenta. La llamada lanzaba siempre, el `except Exception` de ese bloque
+  la convertía en `502 "No se pudo leer la boleta"` y parecía un fallo transitorio del OCR — la función
+  llevaba quién sabe cuánto muerta. Corregido a `gemini-2.5-flash` (verificado en vivo que acepta
+  imagen + prompt). El resto del backend ya usaba `gemini-2.5-flash` (22 sitios) y
+  `gemini-3.5-flash-lite` (2 sitios en `_modelos_identificacion`, con fallback explícito por
+  `_es_error_modelo_no_disponible`); **ambos existen**, comprobado contra la API real. Para chequear:
+  `genai.list_models()` filtrando por `generateContent` — no consume tokens.
 - **`procurement.py` y `ledger.py` ya no existen (borrados 2026-08-24).** Eran código muerto de punta
   a punta sobre tablas que nunca existieron en producción (`quote_items`/`quote_suppliers`/
   `purchase_events`/`procurement_ledger`): ningún link navegaba a `/procurement`, nada los importaba y
@@ -481,6 +490,28 @@ WhatsApp y SII (futuros) sí cuestan.
 **Consecuencia de seguridad de estar en tier pagado:** en free tier la cuota actuaba como techo
 accidental (un abuso se cortaba solo y el daño era caída, no factura). Pagando ese techo no existe:
 cualquier endpoint que llame a Gemini sin autenticación factura sin freno. Ver "Defensas de costo LLM".
+
+### Prepago vs pospago de Google (verificado 2026-08-25)
+La cuenta tiene **dos carriles separados** y hoy sólo se usa el barato:
+- **Prepago (AI Studio)** — lo que paga Gemini. Se cargaron CLP 10.000 el 20-jun-2026 y al 25-ago
+  quedaban ~6.854 (≈1.500/mes de consumo real). **Recarga automática DESACTIVADA**, y ése es el techo
+  real: los créditos se descuentan antes de ejecutar cada llamada. No activarla sin pensarlo.
+- **Pospago (Google Cloud)** — saldo CLP 0, sin transacciones. Ojo: el "límite de pago CLP 30.000"
+  que muestra la consola **no es un tope de gasto**, es el umbral que Google deja acumular antes de
+  pasar la tarjeta. Y los *presupuestos* de Google Cloud sólo mandan alertas, no cortan nada; el único
+  freno duro es bajar la cuota de la API (APIs y servicios → la API → Cuotas).
+- **Nada del código toca hoy el carril pospago** (auditado el 2026-08-25 sobre todo `backend/app/`):
+  Gemini entra por AI Studio (`genai.configure` + `GenerativeModel`, cero rastros de
+  `vertex`/`aiplatform`), el único servicio Google que se construye es `build("gmail")` — que es
+  gratis, de ahí las ~14.000 solicitudes diarias del cron sin costo—, los logos van a Supabase
+  Storage y las búsquedas a Serper/SerpAPI. Sin Pub/Sub, GCS, Maps, Vision ni Document AI.
+- **Las dos únicas vías que activarían el pospago, si alguien las toca:**
+  1. **Activar el webhook Pub/Sub de Gmail.** `POST /api/gmail/webhook` (`gmail.py:410`) hoy es un
+     stub que loguea y devuelve `{"status": "received"}`, y **nadie llama a `users.watch()`**, que es
+     lo que haría que Gmail publique en un topic. Producción usa polling por cron. Pub/Sub **es un
+     servicio pago de GCP**.
+  2. **Migrar Gemini a Vertex AI.** Es el riesgo sutil: mismo modelo, misma respuesta, pero el cobro
+     salta de los créditos prepagos a la cuenta pospaga sin que nada en la app lo indique.
 
 ## Defensas de costo LLM (2026-08-19)
 - `services/llm_rate_limit.py` — rate limiting **por IP** en memoria (distinto del de

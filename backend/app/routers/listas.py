@@ -1205,7 +1205,13 @@ async def escanear_boleta(lista_id: str, req: BoletaScanRequest, ctx: AuthContex
     try:
         import google.generativeai as genai
         genai.configure(api_key=settings.gemini_api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        # `gemini-1.5-flash` está retirado: no aparece en `list_models()` de la
+        # cuenta (verificado el 2026-08-25 contra la API real), así que esta
+        # llamada lanzaba siempre y el `except` de abajo la convertía en un 502
+        # "No se pudo leer la boleta" — parecía un fallo transitorio, pero la
+        # función estaba muerta. `gemini-2.5-flash` es el mismo modelo que ya
+        # usa el resto del backend y también acepta imágenes.
+        model = genai.GenerativeModel("gemini-2.5-flash")
         prompt = (
             "Lee esta boleta/factura chilena y extrae los ítems comprados. "
             "Devuelve SOLO JSON con esta forma: "
