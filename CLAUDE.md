@@ -389,10 +389,17 @@ confirmado" el peor de todos, el de `state` de OAuth.
   porque `.single()` lanza con 0 filas y el `if not res.data` de la línea siguiente era inalcanzable.
   Son endpoints públicos que abre el proveedor desde el correo: el token equivocado es el caso
   esperado, no la excepción.
-- **`migrations/046_users_plan_no_editable.sql` — PENDIENTE DE APLICAR** (trigger que impide al
+- **`migrations/046_users_plan_no_editable.sql` — aplicada el 2026-08-25** (confirmada por el usuario:
+  "Success. No rows returned", que es lo esperado en DDL). Trigger `BEFORE UPDATE` que impide al
   cliente cambiarse `plan`/`trial_hasta`/`plan_activo_hasta`/`cotizaciones_mes_actual` en
-  `public.users`; RLS no puede restringir por columna). Es higiene: hoy ningún gate lee esa tabla.
-- **Pendiente de esa auditoría:** aplicar la 046; limpiar los `user_id` de los schemas de las tools MCP
+  `public.users`; va como trigger y no como policy porque **RLS no puede restringir por columna**. Es
+  higiene: hoy ningún gate del backend lee esa tabla.
+  **Falta verificar el efecto**, no sólo que la migración corriera: repetir el PATCH del informe
+  (`PATCH /rest/v1/users?id=eq.<mi_id>` con `{"plan":"enterprise"}` y el token de sesión propio) y
+  confirmar que ahora devuelve error `42501` en vez de 200. Si igual pasa, el chequeo
+  `current_setting('request.jwt.claim.role')` no es el correcto para esta versión de PostgREST y hay
+  que cambiarlo por `auth.role()`.
+- **Pendiente de esa auditoría:** limpiar los `user_id` de los schemas de las tools MCP
   (el servidor los ignora, pero sugieren una confianza que no existe); los hints de PostgREST que
   revelan nombres de tablas (sin fix directo, baja prioridad). Rotar los secretos sigue pendiente.
 
