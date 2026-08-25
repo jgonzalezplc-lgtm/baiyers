@@ -121,6 +121,12 @@ register_error_handlers(app)
 async def startup_event():
     from app.config import settings
     from app.mcp.streamable import start_streamable_server
+    from app.services.gemini_budget import instrumentar as instrumentar_gemini
+
+    # Mide el gasto de Gemini envolviendo el SDK una sola vez, en vez de tocar
+    # los 20 sitios que crean un GenerativeModel. Sólo avisa por log: nunca
+    # bloquea una llamada.
+    instrumentar_gemini()
 
     await start_streamable_server()
 

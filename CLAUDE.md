@@ -491,6 +491,22 @@ WhatsApp y SII (futuros) sí cuestan.
 accidental (un abuso se cortaba solo y el daño era caída, no factura). Pagando ese techo no existe:
 cualquier endpoint que llame a Gemini sin autenticación factura sin freno. Ver "Defensas de costo LLM".
 
+### Medidor de gasto de Gemini (`services/gemini_budget.py`, 2026-08-25)
+**Avisa, nunca corta** — decisión explícita del usuario: un umbral mal calibrado que corte a un
+usuario legítimo a mitad de una cotización es peor que la factura que evita. Cuando el gasto estimado
+del día cruza 5/20/50/100 USD, escribe un WARNING en el log de Railway y sigue.
+- **Mide envolviendo el SDK una sola vez** (`instrumentar()` desde el `startup` de `main.py`), en vez
+  de instrumentar los 20 sitios que construyen un `GenerativeModel` — cubre también el código que se
+  escriba mañana. Es idempotente (marca la función con `_baiyer_medido`).
+- **No es contable:** estimación con el catálogo de `control_plane_telemetry.DEFAULT_PRICES` (que
+  puede quedar viejo y no distingue contexto largo ni caché), **en memoria y por proceso** — con
+  varias réplicas cada una lleva su cuenta. El dato real sale de `ai_usage_events`.
+- `GET /api/gasto-ia` (autenticado) devuelve el snapshot del día sin entrar a AI Studio.
+- **No reemplaza la cuota de la API en la consola de Google**, que sigue siendo el único corte duro
+  del lado del proveedor. Los *presupuestos* de Google Cloud sólo alertan, no cortan.
+- Cobertura: `tests/test_gemini_budget.py`, incluido que un fallo del medidor no propague a la
+  llamada real.
+
 ### Prepago vs pospago de Google (verificado 2026-08-25)
 La cuenta tiene **dos carriles separados** y hoy sólo se usa el barato:
 - **Prepago (AI Studio)** — lo que paga Gemini. Se cargaron CLP 10.000 el 20-jun-2026 y al 25-ago
