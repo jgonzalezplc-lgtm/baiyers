@@ -442,7 +442,26 @@ proceso**, reusando `identificar_item()` y `BuscarRequest`/`_buscar_fuentes`/`_f
 - **credentials.json** (OAuth Gmail) está **gitignored** — en prod se usan env vars `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`.
 - **SMTP:** Resend configurado en Supabase (dominio baiyer.cl verificado). Correos de auth (confirmación/recuperación) salen desde `no-reply@baiyer.cl`.
 - **Serper.dev** integrado (2.500 búsquedas gratis; `SERPER_API_KEY`). Prioriza sobre SerpAPI.
-- Secretos expuestos en capturas durante el desarrollo (Supabase service key, Gemini, SerpAPI, Serper) — **rotar** por higiene.
+- **Rotación de secretos (pendiente, con dos trampas).** Los expuestos en capturas durante el
+  desarrollo (Supabase service key, Gemini, SerpAPI, Serper) siguen sin rotar. **La exposición es sólo
+  por las capturas: el repo está limpio** — verificado el 2026-08-25 sobre el historial completo
+  (`git log --all --diff-filter=A` + búsqueda de `eyJhbGciOi…`/`AIza…`/`GOCSPX-`/`sk-ant-`/`sb_secret_`
+  en todos los diffs): cero coincidencias, y los únicos `.env` trackeados son los dos `.env.example`
+  con placeholders. O sea, **no hace falta reescribir el historial**.
+  1. **`SUPABASE_SERVICE_KEY` también firma el `state` de OAuth de correo** (`services/oauth_state.py`
+     la usa como clave HMAC). Al rotarla, los `state` en vuelo dejan de validar y quien esté a mitad
+     del consentimiento de Gmail/Outlook ve "State inválido o expirado". Ventana de 10 min, se
+     resuelve reintentando — pero rotar en horario bajo y saberlo de antemano, no descubrirlo como un
+     bug fantasma.
+  2. El proyecto usa el sistema **nuevo** de API keys de Supabase (el informe muestra un
+     `sb_publishable_...`), así que se pueden tener dos secret keys vivas y borrar la vieja después.
+     **No rotar el JWT Secret legacy**: eso cierra la sesión de todos los usuarios.
+  Orden para las cinco: crear la nueva → cargarla en Railway → verificar → recién ahí borrar la vieja.
+  `ANTHROPIC_API_KEY` está vacía en prod, no hay nada que rotar ahí.
+- **`mcp_jwt_secret` ya no existe** (borrado el 2026-08-25). Era un default hardcodeado en
+  `config.py` (`"claria-mcp-secret-change-me-in-production"`) que **no usaba nadie**: los tokens MCP
+  son opacos y se validan contra la DB desde la Fase 8 (`verify_mcp_token` → `token_service.load_token`),
+  no por firma. No era un riesgo vivo; se borró para que nadie lo "reactive" dentro de seis meses.
 
 ## Env vars
 - **Backend (Railway `baiyers`):** SUPABASE_URL, SUPABASE_SERVICE_KEY, GEMINI_API_KEY, SERPER_API_KEY, SERP_API_KEY, ANTHROPIC_API_KEY (vacío), ENVIRONMENT=production, CORS_ORIGINS (incluye baiyer.cl + railway), FRONTEND_URL=https://www.baiyer.cl, GOOGLE_CLIENT_ID/SECRET, GOOGLE_REDIRECT_URI.
@@ -537,7 +556,9 @@ ambos servicios al pushear ahí.
    en `resultados`; si el segundo paso falla, la auditoría dice "Aplicada" sin que el dato exista.
 4. **`registrar_envio()` es sólo auditoría** — no bloquea ni deduplica, un reintento todavía puede
    duplicar un correo real.
-5. **Rotar los secretos** expuestos en capturas durante el desarrollo.
+5. **Rotar los secretos** expuestos en capturas durante el desarrollo — ver la sección "Gotchas
+   importantes" para las dos trampas (la service key firma el `state` de OAuth; no tocar el JWT
+   Secret legacy) y para la verificación de que el historial de git está limpio.
 
 ## MCP Baiyer — Fases 0 y 1 (2026-08-13)
 - El contrato operativo completo está en `MCP_FASE_0_CONTRATO.md` (tools,

@@ -33,7 +33,11 @@ class Settings(BaseSettings):
     outscraper_api_key: str = ""
     hunter_api_key: str = ""
     # Etapa 10 — MCP
-    mcp_jwt_secret: str = "claria-mcp-secret-change-me-in-production"
+    # Acá vivía `mcp_jwt_secret`, con un default hardcodeado en el repo. Quedó
+    # sin uso cuando la Fase 8 pasó los tokens MCP a opacos y hasheados en DB
+    # (`mcp/token_service.py`), así que se borró en vez de dejar un secreto de
+    # ejemplo esperando a que alguien lo "reactive". Si vuelve a hacer falta
+    # firmar algo, no le pongas default: que el arranque falle sin la env var.
     mcp_issuer_url: str = "http://localhost:8000"
     mcp_resource_url: str = "http://localhost:8000/api/mcp"
     mcp_access_token_minutes: int = 60
