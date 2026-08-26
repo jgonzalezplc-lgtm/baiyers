@@ -13,6 +13,8 @@ from pydantic import BaseModel
 from app.routers.listas import _lock_de, _parse_lista
 from app.services.auth_context import AuthContext, get_auth_context
 from app.services.supabase import ejecutar_maybe_single
+from app.services.texto_saliente import bloqueantes, como_dict
+from app.services.texto_saliente import revisar as revisar_texto_saliente
 
 router = APIRouter(prefix="/api/listas", tags=["rfq"])
 
@@ -214,10 +216,49 @@ async def editar_rfq(lista_id: str, batch_id: str, req: EditarRFQRequest, ctx: A
         raise HTTPException(status_code=400, detail="Correo destinatario inválido")
     if not req.subject.strip() or not req.body.strip():
         raise HTTPException(status_code=400, detail="Asunto y cuerpo son obligatorios")
-    return sb.table("rfq_batches").update({
+
+    # El cuerpo lo escribe el cliente (hoy, un modelo vía MCP) y sale tal cual
+    # hacia un tercero. Se revisa acá, al guardar, y no sólo al enviar: quien lo
+    # redactó todavía está en contexto para corregirlo.
+    hallazgos = revisar_texto_saliente(
+        f"{req.subject}\n{req.body}",
+        otros_proveedores=_otros_proveedores_de_la_lista(sb, lista_id, batch_id),
+    )
+    if bloqueantes(hallazgos):
+        raise HTTPException(status_code=422, detail={
+            "error": "texto_no_apto_para_envio",
+            "mensaje": "El cuerpo contiene contenido interno que no debería leer el proveedor.",
+            "hallazgos": como_dict(bloqueantes(hallazgos)),
+        })
+
+    guardado = sb.table("rfq_batches").update({
         "destinatario_email": email, "subject": req.subject.strip(),
         "body": req.body.strip(), "estado": "ready_to_send", "error_detalle": None, "updated_at": _now(),
     }).eq("id", batch_id).execute().data[0]
+    # Las advertencias no frenan —preguntarle a un proveedor por alternativas de
+    # la competencia puede ser deliberado— pero viajan en la respuesta para que
+    # la persona las vea antes de confirmar el envío.
+    return {**guardado, "avisos": como_dict(hallazgos)}
+
+
+def _otros_proveedores_de_la_lista(sb, lista_id: str, batch_id: str) -> tuple[str, ...]:
+    """Nombres de los demás proveedores cotizando esta lista.
+
+    Nombrarlos en el correo le revela al destinatario con quién más estás
+    comparando, y a veces también sus precios. No siempre es un error, pero
+    siempre conviene que alguien lo vea antes de que salga.
+    """
+    try:
+        filas = sb.table("rfq_batches").select("proveedor:proveedores(nombre)").eq(
+            "lista_proyecto_id", lista_id
+        ).neq("id", batch_id).execute().data or []
+        nombres = {(f.get("proveedor") or {}).get("nombre") for f in filas}
+        return tuple(sorted(n for n in nombres if n))
+    except Exception as e:
+        # Un fallo acá no puede impedir guardar un borrador: se pierde una
+        # advertencia, no una garantía (los bloqueantes no dependen de esto).
+        print(f"[RFQ] no se pudieron listar otros proveedores: {e}")
+        return ()
 
 
 class EnviarRFQRequest(BaseModel):
@@ -237,6 +278,20 @@ async def enviar_rfq(lista_id: str, batch_id: str, req: EnviarRFQRequest, ctx: A
         return {"success": True, "already_sent": True, "thread_id": batch.get("gmail_thread_id")}
     if batch["estado"] in ("sending", "delivery_uncertain"):
         raise HTTPException(status_code=409, detail="El estado del envío requiere revisión para evitar duplicados")
+
+    # Última barrera antes de que el texto salga de la empresa. Se revisa de
+    # nuevo aunque ya se haya revisado al guardar: un borrador puede haberse
+    # escrito antes de que existiera esta validación, o haberse modificado por
+    # otra vía. Es el único punto por el que pasan todos los envíos.
+    bloqueos = bloqueantes(revisar_texto_saliente(
+        f"{batch.get('subject') or ''}\n{batch.get('body') or ''}",
+    ))
+    if bloqueos:
+        raise HTTPException(status_code=422, detail={
+            "error": "texto_no_apto_para_envio",
+            "mensaje": "El correo contiene contenido interno. Corregí el borrador antes de enviarlo.",
+            "hallazgos": como_dict(bloqueos),
+        })
 
     # El motor sólo toma propiedad si el ciclo activo tiene reglas RFQ
     # explícitas. En caso contrario, este endpoint conserva exactamente su
