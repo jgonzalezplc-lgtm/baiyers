@@ -41,7 +41,7 @@ def formatear_monto(valor: float, moneda: str) -> str:
     return f"{moneda} {entero}.{decimal}"
 
 
-def _texto(pdf, texto: Optional[str]) -> str:
+def _texto(texto: Optional[str]) -> str:
     """fpdf2 con fuentes core usa latin-1: un carácter fuera de ese rango
     (una comilla tipográfica pegada desde un correo, un emoji) haría fallar la
     generación entera. Un PDF con un carácter sustituido es infinitamente mejor
@@ -164,9 +164,9 @@ def _tabla_item(pdf, ancho: float, oc: dict, moneda: str, subtotal: float) -> No
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 8)
     for texto, w, align in zip(
-        ("DESCRIPCION", "CANT.", "PRECIO UNIT.", "TOTAL"), cols, ("L", "C", "R", "R")
+        ("DESCRIPCIÓN", "CANT.", "PRECIO UNIT.", "TOTAL"), cols, ("L", "C", "R", "R")
     ):
-        pdf.cell(w, 7, texto, align=align, fill=True)
+        pdf.cell(w, 7, _texto(texto), align=align, fill=True)
     pdf.ln(7)
 
     pdf.set_fill_color(*_FONDO_CAJA)
