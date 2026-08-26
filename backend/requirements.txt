@@ -22,3 +22,7 @@ google-auth-oauthlib>=1.4.0
 # no incluía mcp.server.fastmcp. Esta es la distribución oficial verificada.
 mcp==1.28.1
 python-jose[cryptography]>=3.3.0
+# PDF de la Orden de Compra desde el backend, para clientes headless (MCP) que
+# no pueden renderizar `frontend/components/OCPDFTemplate.tsx`. fpdf2 es Python
+# puro: no agrega binarios de sistema al build de Railway.
+fpdf2>=2.7.0
