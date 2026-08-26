@@ -5,6 +5,8 @@ import json
 import os
 import re
 import secrets
+
+from google.auth.exceptions import RefreshError
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -687,7 +689,14 @@ async def _sincronizar_usuario(user_id: str) -> dict:
         "estado", ["sent", "waiting_for_supplier", "supplier_replied", "partially_answered", "clarification_required"]
     ).execute().data or []
 
-    resumen = {"conversaciones_revisadas": len(activas), "mensajes_nuevos": 0, "propuestas_generadas": 0}
+    # `conversaciones_revisadas` cuenta filas de la DB, no respuestas de Gmail: si
+    # las 12 llamadas fallan por credencial vencida, el resumen igual decía
+    # {12, 0, 0} y parecía "no hay nada nuevo". Por eso se cuentan los fallos
+    # aparte y se marca explícitamente si Google rechazó la autorización.
+    resumen = {
+        "conversaciones_revisadas": len(activas), "mensajes_nuevos": 0,
+        "propuestas_generadas": 0, "conversaciones_con_error": 0,
+    }
 
     for conv in activas:
         try:
@@ -697,7 +706,16 @@ async def _sincronizar_usuario(user_id: str) -> dict:
             }
             mensajes = listar_mensajes_thread(service, conv["gmail_thread_id"])
         except Exception as e:
-            print(f"[Gmail sync] thread {conv.get('gmail_thread_id')}: {e}")
+            print(f"[Gmail sync] thread {conv.get('gmail_thread_id')}: {type(e).__name__}: {e}")
+            resumen["conversaciones_con_error"] += 1
+            detalle = str(e).lower()
+            if isinstance(e, RefreshError) or "invalid_grant" in detalle or "invalid_client" in detalle:
+                # No tiene sentido insistir con las 11 restantes: la credencial es
+                # la misma para todas y el usuario necesita saber esto, no un
+                # resumen que diga que todo salió bien.
+                resumen["credencial_invalida"] = True
+                resumen["detalle_error"] = str(e)[:200]
+                break
             continue
 
         for msg in mensajes:
