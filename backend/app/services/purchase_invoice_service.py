@@ -42,10 +42,49 @@ def prepare_purchase_order(sb, actor: ApplicationActorContext, list_id: str, quo
         "precio_unitario": float(unit), "moneda": result.get("moneda_cotizada") or result.get("moneda") or "CLP",
         "condiciones_pago": result.get("condiciones_pago") or "30 días",
         "plazo_entrega": result.get("plazo_entrega") or "",
+        # Informativo para la vista previa, NO es el candado. El estado real se
+        # relee al crear la OC: entre preparar y crear es normal que alguien
+        # apruebe —de hecho ése es el flujo esperado— y antes esta foto vieja
+        # obligaba a regenerar el borrador para que la aprobación "existiera".
         "approval_status": (current.get("aprobacion") or {}).get("estado"),
     }
     draft = create_draft(sb, actor, "purchase_order", payload, source_name=current.get("nombre"))
     return {"draft_id": draft["id"], "expires_at": draft.get("expires_at"), "preview": payload}
+
+
+# Cada estado dice qué hacer, no sólo que no se puede. Un 409 que no nombra el
+# siguiente paso obliga a adivinar —y un cliente MCP adivina mal o abandona.
+_MENSAJE_APROBACION = {
+    "no_solicitada": "Nadie pidió la aprobación todavía. Usá request_approval sobre la lista y esperá la decisión.",
+    "pendiente": "La aprobación está pendiente de decisión. Cuando el responsable apruebe, reintentá esta misma llamada: no hace falta regenerar el borrador.",
+    "aprobado_con_observaciones": "Fue aprobada con observaciones. Resolvelas y pedí una aprobación limpia antes de emitir la OC.",
+    "rechazado": "La aprobación fue rechazada. Corregí la lista y volvé a solicitarla.",
+    "expirado": "La aprobación expiró sin decisión. Volvé a solicitarla con request_approval.",
+}
+
+
+def _estado_aprobacion_actual(sb, actor: ApplicationActorContext, list_id: Optional[str]) -> Optional[str]:
+    """Estado de aprobación LEÍDO AHORA, no el que tenía el borrador.
+
+    El borrador guarda una foto del estado al momento de prepararlo, y entre
+    preparar y crear la OC es normal —y esperado— que el responsable apruebe.
+    Usar la foto obligaba a regenerar el borrador para que la aprobación
+    "contara", que fue justo lo que pasó con la OC-2026-0007.
+
+    Releer también cierra el caso inverso, más peligroso: una lista aprobada al
+    preparar y rechazada después ya no puede colarse con el snapshot viejo.
+    """
+    if not list_id:
+        return None
+    try:
+        return ((get_list(sb, actor, list_id).get("aprobacion") or {}).get("estado"))
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Ante una falla de lectura NO se asume aprobado: emitir una OC sin
+        # autorización confirmada es peor que fallar.
+        print(f"[OC] no se pudo releer la aprobación de {list_id}: {type(e).__name__}: {e}")
+        return None
 
 
 async def create_purchase_order(
@@ -57,8 +96,17 @@ async def create_purchase_order(
         raise HTTPException(status_code=422, detail="El draft no corresponde a una OC")
     payload = draft.get("payload") or {}
     from app.services.workflow_execution import obtener_workflow_activo
-    if obtener_workflow_activo(actor.actor_user_id) and payload.get("approval_status") != "aprobado":
-        raise HTTPException(status_code=409, detail="La lista requiere aprobación limpia antes de crear la OC")
+    if obtener_workflow_activo(actor.actor_user_id):
+        estado = _estado_aprobacion_actual(sb, actor, payload.get("list_id"))
+        if estado != "aprobado":
+            raise HTTPException(status_code=409, detail={
+                "error": "aprobacion_requerida",
+                "estado_actual": estado or "no_solicitada",
+                "mensaje": _MENSAJE_APROBACION.get(
+                    estado or "no_solicitada",
+                    "La lista requiere una aprobación limpia antes de crear la OC.",
+                ),
+            })
     from app.routers.oc import CrearOCRequest, crear_oc
     request = CrearOCRequest(**{key: payload[key] for key in (
         "cotizacion_id", "resultado_id", "nombre_item", "proveedor_nombre",
