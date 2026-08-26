@@ -14,11 +14,20 @@ router = APIRouter(prefix="/api/organizacion", tags=["organizacion"])
 
 @router.get("/mia")
 async def mi_organizacion(ctx_auth: AuthContext = Depends(get_auth_context)):
-    from app.services.organizacion import obtener_organizacion, obtener_perfil_organizacion
+    from app.services.organizacion import (
+        obtener_despacho_organizacion, obtener_organizacion, obtener_perfil_organizacion,
+    )
     ctx = obtener_organizacion(ctx_auth.actor_user_id)
     if not ctx:
         raise HTTPException(status_code=404, detail="Sin organización")
-    return {**ctx, **obtener_perfil_organizacion(ctx_auth.organization_id)}
+    # El despacho va aparte y no dentro del perfil: `obtener_perfil_organizacion`
+    # devuelve {} ante cualquier error, así que sumarle columnas que pueden no
+    # existir todavía (048) borraría también nombre/RUT/logo del documento.
+    return {
+        **ctx,
+        **obtener_perfil_organizacion(ctx_auth.organization_id),
+        **obtener_despacho_organizacion(ctx_auth.organization_id),
+    }
 
 
 class PerfilOrganizacionRequest(BaseModel):
@@ -27,6 +36,17 @@ class PerfilOrganizacionRequest(BaseModel):
     rut: Optional[str] = None
     pais: Optional[str] = None
     sitio_web: Optional[str] = None
+    # Dónde recibe mercadería. NO es `direccion` (la administrativa que scrapea
+    # el onboarding): son datos distintos y no se derivan uno del otro.
+    direccion_despacho: Optional[str] = None
+    despacho_contacto: Optional[str] = None
+    despacho_telefono: Optional[str] = None
+    despacho_notas: Optional[str] = None
+
+
+_CAMPOS_DESPACHO = (
+    "direccion_despacho", "despacho_contacto", "despacho_telefono", "despacho_notas",
+)
 
 
 @router.patch("/mia")
@@ -53,13 +73,33 @@ async def actualizar_mi_organizacion(
         "pais": req.pais.strip() if req.pais else None,
         "sitio_web": req.sitio_web.strip() if req.sitio_web else None,
     }
+
+    # Los campos de despacho sólo se incluyen si el cliente los mandó. Así una
+    # pantalla vieja, que no los conoce, no los borra sin querer al guardar el
+    # resto del perfil.
+    enviados = req.model_dump(exclude_unset=True)
+    despacho = {c: (getattr(req, c) or "").strip() or None
+                for c in _CAMPOS_DESPACHO if c in enviados}
+
     try:
-        fila = get_supabase().table("organizaciones").update(valores).eq(
+        fila = get_supabase().table("organizaciones").update({**valores, **despacho}).eq(
             "id", ctx.organization_id
         ).execute().data[0]
     except Exception as exc:
+        if despacho and _falta_columna_despacho(exc):
+            # Explícito en vez de guardar a medias en silencio: el resto del
+            # perfil no se toca y el usuario sabe qué falta.
+            raise HTTPException(
+                status_code=409,
+                detail="La dirección de despacho requiere aplicar la migración 048 en Supabase.",
+            )
         raise HTTPException(status_code=400, detail=f"No se pudo actualizar la organización: {exc}")
     return fila
+
+
+def _falta_columna_despacho(error: Exception) -> bool:
+    detalle = str(error).lower()
+    return "pgrst204" in detalle or ("could not find" in detalle and "column" in detalle)
 
 
 @router.get("/miembros")
