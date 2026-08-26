@@ -71,6 +71,48 @@ class CrearOCRequest(BaseModel):
     lista_id: Optional[str] = None
 
 
+# Columnas agregadas a `ordenes_compra` por ALTER TABLE manual, fuera de las
+# migraciones numeradas. El insert las intentaba y, ante CUALQUIER excepción,
+# reintentaba sin ellas — descartando en silencio el nombre y el correo del
+# proveedor. Pasó de verdad con OC-2026-0007 (2026-08-26): quedó sin
+# `proveedor_nombre`, `nombre_item` ni `precio_unitario`, y hubo que restaurar
+# el correo a mano antes de poder enviarla.
+_CAMPOS_EXTRA_OC = (
+    "nombre_item", "proveedor_nombre", "proveedor_email",
+    "cantidad", "precio_unitario", "notas", "lista_proyecto_id",
+)
+
+
+def _es_columna_inexistente(error: Exception) -> bool:
+    """¿El insert falló porque falta una columna, o por otra cosa?
+
+    Sólo el primer caso justifica reintentar sin los campos extra. PostgREST usa
+    el código PGRST204 y el mensaje "Could not find the 'x' column".
+    """
+    detalle = str(error).lower()
+    return "pgrst204" in detalle or ("could not find" in detalle and "column" in detalle)
+
+
+def _insertar_oc(sb, row: dict) -> tuple[dict, tuple[str, ...]]:
+    """Inserta la OC y devuelve (fila persistida, campos que se omitieron).
+
+    El fallback existe para tolerar entornos donde el ALTER TABLE no se corrió,
+    pero antes se aplicaba a cualquier error: una falla de tipo o de FK terminaba
+    creando una OC incompleta que parecía correcta. Ahora un error que no sea
+    "falta la columna" se propaga: es mejor no crear la OC que crear una a la que
+    le falten el proveedor y el precio unitario.
+    """
+    try:
+        return sb.table("ordenes_compra").insert(row).execute().data[0], ()
+    except Exception as e:
+        if not _es_columna_inexistente(e):
+            raise
+        omitidos = tuple(c for c in _CAMPOS_EXTRA_OC if c in row)
+        print(f"[OC] columnas extra ausentes ({type(e).__name__}: {e}); se omiten {omitidos}")
+        row_base = {k: v for k, v in row.items() if k not in _CAMPOS_EXTRA_OC}
+        return sb.table("ordenes_compra").insert(row_base).execute().data[0], omitidos
+
+
 class EnviarOCRequest(BaseModel):
     oc_id: str
     pdf_base64: str
@@ -123,14 +165,8 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
         "lista_proyecto_id": req.lista_id,
     }
 
-    try:
-        insert_res = sb.table("ordenes_compra").insert(row).execute()
-        oc_id = insert_res.data[0]["id"]
-    except Exception as e:
-        # Si fallan las columnas extra, reintenta sin ellas
-        row_base = {k: v for k, v in row.items() if k not in ("nombre_item", "proveedor_nombre", "proveedor_email", "cantidad", "precio_unitario", "notas", "lista_proyecto_id")}
-        insert_res = sb.table("ordenes_compra").insert(row_base).execute()
-        oc_id = insert_res.data[0]["id"]
+    fila, campos_omitidos = _insertar_oc(sb, row)
+    oc_id = fila["id"]
 
     if contexto_workflow:
         from app.services.workflow_purchase_order import enlazar_oc
@@ -139,15 +175,22 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
     from app.services.organizacion import obtener_perfil_organizacion
     perfil = obtener_perfil_organizacion(ctx.organization_id)
 
+    # Los campos que viven en la tabla se devuelven DESDE LA FILA, no desde el
+    # request: antes se hacía eco de lo pedido, así que el cliente veía
+    # `proveedor_email` en la respuesta aunque no se hubiera guardado. Eso es lo
+    # que hizo que la OC-2026-0007 pareciera correcta hasta el momento de enviarla.
     return {
         "id": oc_id,
         "numero_oc": numero_oc,
         "token_confirmacion": token,
-        "nombre_item": req.nombre_item,
-        "proveedor_nombre": req.proveedor_nombre,
-        "proveedor_email": req.proveedor_email,
-        "cantidad": req.cantidad,
-        "precio_unitario": req.precio_unitario,
+        "nombre_item": fila.get("nombre_item"),
+        "proveedor_nombre": fila.get("proveedor_nombre"),
+        "proveedor_email": fila.get("proveedor_email"),
+        "cantidad": fila.get("cantidad"),
+        "precio_unitario": fila.get("precio_unitario"),
+        # Presente sólo si algo no se pudo persistir; el cliente puede avisar en
+        # vez de descubrirlo al fallar el envío.
+        **({"campos_no_persistidos": list(campos_omitidos)} if campos_omitidos else {}),
         "moneda": req.moneda,
         "subtotal": subtotal,
         "iva": iva,
