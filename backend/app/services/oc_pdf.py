@@ -104,6 +104,11 @@ def generar_pdf_oc(oc: dict[str, Any]) -> bytes:
     # ── Condiciones ──────────────────────────────────────────────────────────
     _condiciones(pdf, ancho, oc)
 
+    # ── Despacho ─────────────────────────────────────────────────────────────
+    # Sólo si está configurada. Si no, la OC no dice nada de despacho y el
+    # proveedor pregunta — que es lo correcto cuando nadie confirmó un destino.
+    _despacho(pdf, ancho, oc)
+
     # ── Pie ──────────────────────────────────────────────────────────────────
     pdf.set_y(-18)
     pdf.set_draw_color(*_LINEA)
@@ -209,6 +214,32 @@ def _totales(pdf, ancho: float, oc: dict, moneda: str, subtotal: float) -> None:
     pdf.set_text_color(*_INDIGO)
     pdf.cell(w_valor, 6, formatear_monto(float(oc.get("total") or 0), moneda), align="R")
     pdf.ln(12)
+
+
+def _despacho(pdf, ancho: float, oc: dict) -> None:
+    """Bloque "Despachar a". Se omite entero si no hay dirección configurada."""
+    direccion = (oc.get("direccion_despacho") or "").strip()
+    if not direccion:
+        return
+
+    pdf.ln(6)
+    y = pdf.get_y()
+    # Una línea por cada ~90 caracteres; el bloque crece con el contenido.
+    lineas = max(1, (len(direccion) // 90) + 1)
+    alto = 11 + lineas * 4
+    pdf.set_fill_color(*_FONDO_CAJA)
+    pdf.rect(_MARGEN, y, ancho, alto, style="F")
+
+    pdf.set_xy(_MARGEN + 3, y + 3)
+    pdf.set_font("Helvetica", "B", 7)
+    pdf.set_text_color(*_INDIGO)
+    pdf.cell(ancho - 6, 4, "DESPACHAR A")
+
+    pdf.set_xy(_MARGEN + 3, y + 8)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(*_TINTA)
+    pdf.multi_cell(ancho - 6, 4, _texto(direccion))
+    pdf.set_y(y + alto)
 
 
 def _condiciones(pdf, ancho: float, oc: dict) -> None:

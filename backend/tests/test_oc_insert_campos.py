@@ -21,6 +21,7 @@ FILA = {
     "nombre_item": "Ampolleta LED E27 100W", "proveedor_nombre": "Joaquín González",
     "proveedor_email": "joaquin.gonzalez.pl@usach.cl", "cantidad": 1,
     "precio_unitario": 19990.0, "notas": None, "lista_proyecto_id": "lista-1",
+    "direccion_despacho": "Bodega Central, Maipú",
 }
 
 

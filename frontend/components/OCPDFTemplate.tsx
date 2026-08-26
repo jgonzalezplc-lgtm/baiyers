@@ -16,6 +16,11 @@ export interface OCData {
   condiciones_pago: string;
   plazo_entrega: string;
   notas?: string | null;
+  /** Dónde despachar. Distinta de `emisor_direccion`, que es la administrativa
+   * (la scrapea el onboarding y no está verificada). Si falta, el bloque no se
+   * dibuja: mejor que el proveedor pregunte a insinuar un destino sin confirmar.
+   * Espeja `_despacho()` en `backend/app/services/oc_pdf.py` — cambiar los dos. */
+  direccion_despacho?: string | null;
   /** Perfil de marca de la organización emisora — si falta, se usa el
    * fallback genérico "Baiyer" (ej. cuentas legado sin onboarding nuevo). */
   emisor_nombre?: string | null;
@@ -56,6 +61,7 @@ const s = StyleSheet.create({
   condicionBox: { flex: 1 },
   condicionLabel: { fontSize: 8, color: "#6366f1", fontFamily: "Helvetica-Bold", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 },
   condicionVal: { fontSize: 10, color: "#1e293b" },
+  despacho: { marginTop: 12, padding: 14, backgroundColor: "#f8fafc", borderRadius: 4 },
   footer: { position: "absolute", bottom: 24, left: 48, right: 48, flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: "#e2e8f0", paddingTop: 8 },
   footerText: { fontSize: 8, color: "#94a3b8" },
 });
@@ -151,6 +157,14 @@ export default function OCPDFTemplate({ oc }: { oc: OCData }) {
             </View>
           )}
         </View>
+
+        {/* Despacho — sólo si está configurado (ver comentario en OCData) */}
+        {oc.direccion_despacho && (
+          <View style={s.despacho}>
+            <Text style={s.condicionLabel}>Despachar a</Text>
+            <Text style={s.condicionVal}>{oc.direccion_despacho}</Text>
+          </View>
+        )}
 
         {/* Footer */}
         <View style={s.footer} fixed>

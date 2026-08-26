@@ -80,6 +80,7 @@ class CrearOCRequest(BaseModel):
 _CAMPOS_EXTRA_OC = (
     "nombre_item", "proveedor_nombre", "proveedor_email",
     "cantidad", "precio_unitario", "notas", "lista_proyecto_id",
+    "direccion_despacho",
 )
 
 
@@ -111,6 +112,24 @@ def _insertar_oc(sb, row: dict) -> tuple[dict, tuple[str, ...]]:
         print(f"[OC] columnas extra ausentes ({type(e).__name__}: {e}); se omiten {omitidos}")
         row_base = {k: v for k, v in row.items() if k not in _CAMPOS_EXTRA_OC}
         return sb.table("ordenes_compra").insert(row_base).execute().data[0], omitidos
+
+
+def _texto_despacho(despacho: dict) -> str:
+    """Aplana la dirección de entrega a una línea imprimible en la OC.
+
+    Vacío si no está configurada: preferimos que la OC no diga nada de despacho
+    antes que insinuar un destino que nadie confirmó.
+    """
+    if not despacho or not despacho.get("direccion_despacho"):
+        return ""
+    partes = [despacho["direccion_despacho"]]
+    if despacho.get("despacho_contacto"):
+        partes.append(f"Recibe: {despacho['despacho_contacto']}")
+    if despacho.get("despacho_telefono"):
+        partes.append(despacho["despacho_telefono"])
+    if despacho.get("despacho_notas"):
+        partes.append(despacho["despacho_notas"])
+    return " · ".join(p.strip() for p in partes if (p or "").strip())
 
 
 def _numero_oc_disponible(sb, anio: int, codigo: str) -> str:
@@ -165,6 +184,7 @@ def _generar_pdf_desde_fila(fila: dict, ctx: AuthContext) -> bytes:
         "condiciones_pago": fila.get("condiciones_pago"),
         "plazo_entrega": fila.get("plazo_entrega"),
         "notas": fila.get("notas"),
+        "direccion_despacho": fila.get("direccion_despacho"),
         "emisor_nombre": perfil.get("nombre"),
         "emisor_rut": perfil.get("rut"),
         "emisor_direccion": perfil.get("direccion"),
@@ -186,7 +206,7 @@ class EnviarOCRequest(BaseModel):
 
 @router.post("/crear")
 async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_context)):
-    from app.services.organizacion import obtener_codigo_oc
+    from app.services.organizacion import obtener_codigo_oc, obtener_despacho_organizacion
     from app.services.supabase import get_supabase
 
     sb = get_supabase()
@@ -202,6 +222,10 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
     total = subtotal + iva
 
     token = str(uuid.uuid4())
+
+    # Se congela en la orden: si la empresa después cambia de bodega, la OC ya
+    # enviada debe seguir diciendo a dónde se despachaba cuando se emitió.
+    despacho = obtener_despacho_organizacion(ctx.organization_id)
 
     from app.services.workflow_purchase_order import asegurar_contexto_oc
     contexto_workflow = asegurar_contexto_oc(ctx.actor_user_id, req.lista_id)
@@ -224,6 +248,7 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
         "cantidad": req.cantidad,
         "precio_unitario": req.precio_unitario,
         "notas": req.notas,
+        "direccion_despacho": _texto_despacho(despacho) or None,
         "lista_proyecto_id": req.lista_id,
     }
 
@@ -277,6 +302,11 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
         "emisor_rut": perfil.get("rut"),
         "emisor_direccion": perfil.get("direccion"),
         "emisor_logo_url": perfil.get("logo_url"),
+        # Vacío cuando no está configurada, nunca la dirección administrativa.
+        # Que el cliente pueda distinguir "no hay" de "hay" es el punto: con el
+        # dato ausente, el proveedor tiene que preguntar y una persona responde.
+        "direccion_despacho": fila.get("direccion_despacho") or "",
+        "despacho_configurado": bool(fila.get("direccion_despacho")),
     }
 
 

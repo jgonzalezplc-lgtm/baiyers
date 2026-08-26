@@ -23,6 +23,14 @@ def _sb():
     return get_supabase()
 
 
+def _maybe_single(query):
+    """`.maybe_single().execute()` devuelve None (no un objeto con `.data`)
+    cuando no matchea ninguna fila — ver el gotcha de postgrest-py en CLAUDE.md.
+    Se importa perezosamente para no crear un ciclo con `services.supabase`."""
+    from app.services.supabase import ejecutar_maybe_single
+    return ejecutar_maybe_single(query)
+
+
 @dataclass(frozen=True)
 class ContextoOrganizacion:
     """Todo lo que un endpoint necesita saber sobre la organización del que
@@ -115,6 +123,37 @@ def obtener_perfil_organizacion(organizacion_id: str) -> dict:
         return {}
 
 
+def obtener_despacho_organizacion(organizacion_id: str) -> dict:
+    """Dónde recibe mercadería la empresa. Devuelve {} si no está configurada.
+
+    **Nunca cae a `organizaciones.direccion`.** Ese campo es la dirección
+    administrativa que el onboarding scrapea del sitio web: no está verificada y,
+    aun siéndolo, la dirección tributaria de una empresa casi nunca es su bodega.
+    En el caso que originó esto, era una dirección de Buenos Aires que estuvo a
+    punto de enviarse a un proveedor chileno como destino de entrega.
+
+    Devolver {} obliga a quien llama a pedirle el dato a una persona, que es la
+    respuesta correcta cuando no se sabe.
+    """
+    if not organizacion_id:
+        return {}
+    sb = _sb()
+    try:
+        fila = _maybe_single(
+            sb.table("organizaciones").select(
+                "direccion_despacho, despacho_contacto, despacho_telefono, despacho_notas"
+            ).eq("id", organizacion_id).maybe_single()
+        ).data or {}
+    except Exception as e:
+        # Con la 048 sin aplicar las columnas no existen: se comporta como
+        # "sin configurar", que es el estado honesto.
+        print(f"[Despacho] sin columnas de despacho ({e})")
+        return {}
+    if not (fila.get("direccion_despacho") or "").strip():
+        return {}
+    return {k: v for k, v in fila.items() if v}
+
+
 def obtener_codigo_oc(organizacion_id: str) -> str:
     """Código de empresa para numerar OCs (`BVITAL`), asignado una sola vez.
 
@@ -134,7 +173,7 @@ def obtener_codigo_oc(organizacion_id: str) -> str:
 
     sb = _sb()
     try:
-        fila = ejecutar_maybe_single(
+        fila = _maybe_single(
             sb.table("organizaciones").select("nombre, codigo_oc").eq("id", organizacion_id).maybe_single()
         ).data or {}
     except Exception as e:
@@ -143,7 +182,7 @@ def obtener_codigo_oc(organizacion_id: str) -> str:
         # sería "BEMPRESA" para todos, que es justo lo que hay que evitar.
         print(f"[OC] sin columna codigo_oc ({e}); se deriva del nombre")
         try:
-            fila = ejecutar_maybe_single(
+            fila = _maybe_single(
                 sb.table("organizaciones").select("nombre").eq("id", organizacion_id).maybe_single()
             ).data or {}
         except Exception:
