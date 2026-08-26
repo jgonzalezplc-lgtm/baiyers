@@ -607,6 +607,39 @@ _FIELD_MAP_RESULTADOS = {
 }
 
 
+def _mismo_monto(a, b) -> bool:
+    """Compara dos montos tolerando str/float ('19990' vs 19990.0).
+
+    Sin esto, releer el mismo precio desde la columna lo veríamos como un cambio
+    y frenaríamos cotizaciones idénticas por un conflicto que no existe.
+    """
+    from app.services.email_understanding import normalizar_monto
+
+    na, nb = normalizar_monto(a), normalizar_monto(b)
+    if na is None or nb is None:
+        return str(a).strip() == str(b).strip()
+    return abs(na - nb) < 0.01
+
+
+def _campos_en_conflicto(propuestas: list[dict], entity_unico: Optional[str]) -> set[tuple[str, str]]:
+    """(entity_id, field) para los que el correo trae más de un valor distinto.
+
+    Un proveedor que cotiza dos modelos en el mismo mensaje produce dos
+    `precio_unitario` para el mismo ítem. Aplicar ambos deja ganando al último
+    del texto; aplicar el primero es igual de arbitrario. La única respuesta
+    correcta es no elegir ninguno y pedir una decisión humana.
+    """
+    vistos: dict[tuple[str, str], set[str]] = {}
+    for p in propuestas:
+        entity_id = p.get("entity_id") or entity_unico
+        if not entity_id:
+            continue
+        clave = (entity_id, p["field"])
+        valor = json.dumps(p.get("new_value"), default=str, sort_keys=True)
+        vistos.setdefault(clave, set()).add(valor)
+    return {clave for clave, valores in vistos.items() if len(valores) > 1}
+
+
 def _aplicar_campo_resultado(sb, entity_id: str, field: str, valor, cuando_iso: str) -> None:
     """Escribe un valor extraído en `resultados`: a su columna dedicada si
     existe, o acumulado en notas_respuesta si no (ej: disponibilidad, que no
@@ -825,6 +858,17 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                     extraccion = await extraer_actualizaciones(cuerpo, items_ctx)
                     entity_unico = items_ctx[0]["entity_id"] if len(items_ctx) == 1 else None
 
+                    # Un correo puede cotizar VARIOS productos contra un solo ítem
+                    # ("E27 estándar $19.990 / E27-E40 alta potencia $25.000").
+                    # Ambas propuestas caen en el mismo entity_id+field y antes se
+                    # aplicaban una tras otra: ganaba la última por su orden en el
+                    # texto, criterio arbitrario. Pasó de verdad el 2026-08-26 y
+                    # dejó un borrador de OC por $25.000 cuando lo cotizado y
+                    # elegido era $19.990; sólo lo frenó que una persona lo notara.
+                    # Un precio ambiguo tiene que detener el flujo, no resolverse solo.
+                    conflictos = _campos_en_conflicto(extraccion["propuestas"], entity_unico)
+                    requiere_decision_humana = False
+
                     # Campos "core" (precio/disponibilidad/plazo/condiciones) con
                     # confianza alta se aplican solos — son los datos operativos
                     # de la cotización, no datos maestros del proveedor. Todo lo
@@ -844,7 +888,25 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                             r = ejecutar_maybe_single(sb.table("resultados").select(columna).eq("id", entity_id).maybe_single())
                             previo = r.data.get(columna) if r.data else None
 
-                        auto_aplicar = campo_seguimiento in CAMPOS_SEGUIMIENTO and p["confidence"] >= UMBRAL_AUTO_APLICAR
+                        # Dos motivos independientes para NO aplicar solo:
+                        #  - el correo trae valores distintos para este mismo campo;
+                        #  - ya hay un precio guardado y el nuevo no coincide (un
+                        #    cambio de precio sobre una cotización viva se aprueba
+                        #    a mano, no se pisa en silencio).
+                        en_conflicto = (entity_id, p["field"]) in conflictos
+                        pisa_precio = (
+                            p["field"] == "precio_unitario"
+                            and previo is not None
+                            and not _mismo_monto(previo, p["new_value"])
+                        )
+                        auto_aplicar = (
+                            campo_seguimiento in CAMPOS_SEGUIMIENTO
+                            and p["confidence"] >= UMBRAL_AUTO_APLICAR
+                            and not en_conflicto
+                            and not pisa_precio
+                        )
+                        if en_conflicto or pisa_precio:
+                            requiere_decision_humana = True
                         fila_propuesta = {
                             "user_id": user_id,
                             "entity_type": "resultado",
@@ -915,7 +977,25 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                         )
 
                     pendientes = CAMPOS_SEGUIMIENTO - campos_recibidos
-                    if extraccion["requiere_aclaracion"] and not campos_recibidos:
+                    if requiere_decision_humana:
+                        # Precio ambiguo: ni se aplica ni se sigue la conversación
+                        # sola. Mandar un seguimiento acá sería pedirle datos al
+                        # proveedor cuando el problema es que ya mandó dos y hay
+                        # que elegir — eso lo decide una persona, en el comparador.
+                        nuevo_estado = "human_review_required"
+                        item_nombre = items_ctx[0]["nombre"] if items_ctx else "un ítem"
+                        crear_notificacion(
+                            sb, user_id, "email_cotizacion",
+                            "Cotización con precios en conflicto",
+                            f"{conv.get('proveedor_nombre') or 'Un proveedor'} envió más de un precio "
+                            f"para '{item_nombre}'. Ninguno se aplicó: elegí cuál corresponde.",
+                            {
+                                "conversation_id": conv["id"],
+                                "lista_id": conv.get("lista_proyecto_id"),
+                                "requiere_decision": True,
+                            },
+                        )
+                    elif extraccion["requiere_aclaracion"] and not campos_recibidos:
                         nuevo_estado = "clarification_required"
                     elif campos_recibidos:
                         # Hubo al menos un dato core con confianza suficiente para
