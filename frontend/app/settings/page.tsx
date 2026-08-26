@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { AlertCircle, Workflow, Mail, GitBranch } from "lucide-react";
+import { AlertCircle, Workflow, Mail } from "lucide-react";
 import { BtnPrimary, Input, PageHeader, Card, SkeletonBox, CascadeWrapper } from "@/components/ui";
 import { authFetch } from "@/lib/authFetch";
 
@@ -20,6 +20,19 @@ const CAMPOS_PERFIL = [
 
 type CampoKey = typeof CAMPOS_PERFIL[number]["key"];
 
+// Aparte de CAMPOS_PERFIL a propósito: la dirección de despacho es un dato
+// operativo, distinto de la administrativa (`direccion`, que el onboarding
+// scrapea del sitio web y no está verificada). El backend nunca deriva una de
+// la otra — ver `obtener_despacho_organizacion()`.
+const CAMPOS_DESPACHO = [
+  { key: "direccion_despacho", label: "Dirección", placeholder: "Camino a Melipilla 5500, Bodega 3, Maipú, Santiago" },
+  { key: "despacho_contacto", label: "Quién recibe", placeholder: "Paula Soto" },
+  { key: "despacho_telefono", label: "Teléfono de contacto", placeholder: "+56 9 8765 4321" },
+  { key: "despacho_notas", label: "Indicaciones", placeholder: "Horario de recepción 9:00-17:00, entrar por portería" },
+] as const;
+
+type DespachoKey = typeof CAMPOS_DESPACHO[number]["key"];
+
 const CAMPOS_REQUERIDOS: CampoKey[] = ["empresa", "nombre_usuario", "rut", "industria"];
 
 export default function SettingsPage() {
@@ -35,6 +48,10 @@ export default function SettingsPage() {
   const [perfil, setPerfil] = useState<Record<CampoKey, string>>({
     empresa: "", industria: "", rut: "", nombre_usuario: "",
     pais: "", sitio_web: "", autorizador_email: "",
+  });
+
+  const [despacho, setDespacho] = useState<Record<DespachoKey, string>>({
+    direccion_despacho: "", despacho_contacto: "", despacho_telefono: "", despacho_notas: "",
   });
 
   const camposFaltantes = CAMPOS_REQUERIDOS.filter(k => !perfil[k]?.trim());
@@ -60,6 +77,13 @@ export default function SettingsPage() {
         sitio_web: org.sitio_web ?? m.sitio_web ?? "",
         autorizador_email: m.autorizador_email ?? "",
       });
+      // Sin fallback a user_metadata: el despacho sólo vive en la organización.
+      setDespacho({
+        direccion_despacho: org.direccion_despacho ?? "",
+        despacho_contacto: org.despacho_contacto ?? "",
+        despacho_telefono: org.despacho_telefono ?? "",
+        despacho_notas: org.despacho_notas ?? "",
+      });
       setLogoUrl(m.logo_url ?? null);
       setLoading(false);
     })();
@@ -67,6 +91,9 @@ export default function SettingsPage() {
 
   const setField = (key: CampoKey, val: string) =>
     setPerfil(p => ({ ...p, [key]: val }));
+
+  const setDespachoField = (key: DespachoKey, val: string) =>
+    setDespacho(d => ({ ...d, [key]: val }));
 
   const handleGuardar = async () => {
     setGuardando(true);
@@ -79,6 +106,7 @@ export default function SettingsPage() {
         rut: perfil.rut || null,
         pais: perfil.pais || null,
         sitio_web: perfil.sitio_web || null,
+        ...despacho,
       }),
     });
     const { error } = await supabase.auth.updateUser({
@@ -93,8 +121,17 @@ export default function SettingsPage() {
       },
     });
     setGuardando(false);
-    setToast(error || !orgRes.ok ? "Error guardando configuración." : "Datos guardados");
-    setTimeout(() => setToast(""), 3000);
+    // El backend distingue "falta la migración 048" de un error genérico: se
+    // muestra su mensaje en vez de un "Error" que no dice qué hacer.
+    let mensaje = "Datos guardados";
+    if (!orgRes.ok) {
+      const detalle = await orgRes.json().catch(() => null);
+      mensaje = typeof detalle?.detail === "string" ? detalle.detail : "Error guardando configuración.";
+    } else if (error) {
+      mensaje = "Error guardando configuración.";
+    }
+    setToast(mensaje);
+    setTimeout(() => setToast(""), 5000);
   };
 
   const handleEliminar = async () => {
@@ -225,6 +262,36 @@ export default function SettingsPage() {
               </BtnPrimary>
             </Card>
 
+            {/* Dirección de despacho — separada del perfil a propósito: es un
+                dato operativo distinto de la dirección administrativa, y el
+                sistema nunca deriva una de la otra. */}
+            <Card padding={24} style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)" }}>
+                  Dirección de despacho
+                </div>
+                <div style={{ fontSize: 13, color: "var(--n-600)", marginTop: 4 }}>
+                  Dónde reciben la mercadería. Aparece en las órdenes de compra que envías,
+                  así el proveedor no tiene que preguntarla. Si la dejas vacía, la OC no
+                  indica destino: preferimos eso antes que suponer uno.
+                </div>
+              </div>
+
+              {CAMPOS_DESPACHO.map(({ key, label, placeholder }) => (
+                <Input
+                  key={key}
+                  label={label}
+                  value={despacho[key]}
+                  onChange={e => setDespachoField(key, e.target.value)}
+                  placeholder={placeholder}
+                />
+              ))}
+
+              <BtnPrimary onClick={handleGuardar} disabled={guardando} style={{ width: "100%" }}>
+                {guardando ? "Guardando…" : "Guardar dirección de despacho"}
+              </BtnPrimary>
+            </Card>
+
             {/* Ciclo de compras y autorizaciones — evoluciona "Proceso de compra"
                 (texto libre) hacia roles, responsables y reglas reales. */}
             <Card padding={20} style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 16 }}>
@@ -270,28 +337,9 @@ export default function SettingsPage() {
               </Link>
             </Card>
 
-            {/* Operación del rollout (Fase G). Antes sólo se cambiaba por curl,
-                lo que hacía depender el rollback de tener a mano un JWT. */}
-            <Card padding={20} style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 16 }}>
-              <div style={{
-                width: 44, height: 44, flexShrink: 0, borderRadius: "var(--r-md)",
-                background: "var(--brand-50)", color: "var(--brand)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}>
-                <GitBranch size={22} strokeWidth={1.75} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--n-900)" }}>
-                  Rollout del ciclo unificado
-                </div>
-                <div style={{ fontSize: 13, color: "var(--n-600)", marginTop: 2 }}>
-                  Elige qué motor gobierna las compras nuevas, compara métricas de ambos y ejecuta el rollback.
-                </div>
-              </div>
-              <Link href="/settings/rollout" className="btn-swiss-secondary" style={{ textDecoration: "none", whiteSpace: "nowrap" }}>
-                Ver estado →
-              </Link>
-            </Card>
+            {/* El rollout del ciclo unificado (Fase G) ya no vive acá: es una opción
+                del propio ciclo, dentro del canvas del grafo. `/settings/rollout`
+                sigue existiendo por URL directa. */}
           </>
         )}
 
