@@ -607,6 +607,68 @@ _FIELD_MAP_RESULTADOS = {
 }
 
 
+# Tope duro de seguimientos automáticos por conversación. Existe como red de
+# seguridad independiente de la lógica de campos: aunque el cálculo de "qué
+# falta" vuelva a equivocarse algún día, el proveedor nunca recibe más de esto.
+# Mismo criterio que MAX_INTENTOS_POR_SLOT en workflow_proceso_slots.
+MAX_SEGUIMIENTOS_AUTOMATICOS = 2
+
+
+def _seguimientos_ya_enviados(sb, conversation_id: str) -> int:
+    """Cuántos correos automáticos de seguimiento salieron ya en este hilo.
+
+    El primer outbound es la RFQ original, no un seguimiento, por eso el -1.
+    """
+    res = sb.table("gmail_messages").select("id", count="exact").eq(
+        "conversation_id", conversation_id
+    ).eq("direction", "outbound").execute()
+    return max(0, (res.count or 0) - 1)
+
+
+def _campos_pendientes(sb, entity_ids: list[str]) -> set[str]:
+    """Qué campos de seguimiento siguen faltando SEGÚN LA FICHA, no según el
+    último correo.
+
+    Antes esto era `CAMPOS_SEGUIMIENTO - campos_recibidos`, y `campos_recibidos`
+    se armaba dentro del bucle de cada mensaje. O sea que el agente tenía amnesia:
+    cada respuesta del proveedor lo hacía volver a pedir todo lo que no viniera
+    en ese mensaje puntual. Pasó de verdad el 2026-08-26 (hilo 64f2e851): Joaquín
+    mandó el precio a las 15:23, se guardó con confianza 1.0, y a las 15:42 el
+    sistema le pidió "el precio unitario".
+
+    `disponibilidad` no tiene columna en `resultados` (cae en notas_respuesta),
+    así que se resuelve contra el log de auditoría: si alguna vez se aplicó una
+    propuesta de ese campo, está respondido. Sin esto era insatisfacible por
+    construcción y se pedía en todos los correos, para siempre.
+    """
+    from app.services.gmail_conversation_agent import CAMPOS_SEGUIMIENTO
+
+    if not entity_ids:
+        return set()
+
+    pendientes: set[str] = set()
+    columnas = {c: _FIELD_MAP_RESULTADOS[c] for c in CAMPOS_SEGUIMIENTO if c in _FIELD_MAP_RESULTADOS}
+    filas = sb.table("resultados").select(
+        "id," + ",".join(sorted(set(columnas.values())))
+    ).in_("id", entity_ids).execute().data or []
+
+    for campo, columna in columnas.items():
+        # Falta sólo si NINGÚN ítem del hilo lo tiene. Con al menos un dato ya no
+        # se insiste: preferimos no escribirle de más a un proveedor que ya
+        # respondió, aun a costa de algún dato incompleto que se puede pedir a mano.
+        if not any((fila.get(columna) not in (None, "")) for fila in filas):
+            pendientes.add(campo)
+
+    if "disponibilidad" in CAMPOS_SEGUIMIENTO:
+        aplicadas = sb.table("item_field_updates").select("id", count="exact").in_(
+            "entity_id", entity_ids
+        ).in_("field", ["disponibilidad", "stock_disponible"]).eq("estado", "aplicado").execute()
+        if not (aplicadas.count or 0):
+            pendientes.add("disponibilidad")
+
+    return pendientes
+
+
 def _mismo_monto(a, b) -> bool:
     """Compara dos montos tolerando str/float ('19990' vs 19990.0).
 
@@ -976,7 +1038,9 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                             },
                         )
 
-                    pendientes = CAMPOS_SEGUIMIENTO - campos_recibidos
+                    # Contra la ficha persistida, no contra este mensaje: el
+                    # proveedor no debe repetir lo que ya nos dijo en el hilo.
+                    pendientes = _campos_pendientes(sb, [i["entity_id"] for i in items_ctx])
                     if requiere_decision_humana:
                         # Precio ambiguo: ni se aplica ni se sigue la conversación
                         # sola. Mandar un seguimiento acá sería pedirle datos al
@@ -1001,12 +1065,21 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                         # Hubo al menos un dato core con confianza suficiente para
                         # aplicarse solo → el agente sigue la conversación sin
                         # esperar aprobación humana para ESTE paso puntual.
-                        try:
-                            gmail_conversation_agent.seguimiento_automatico(sb, service, conv, mi_email, pendientes)
-                            nuevo_estado = "closed" if not pendientes else "partially_answered"
-                        except Exception as e:
-                            print(f"[Gmail sync] seguimiento automático falló: {e}")
-                            nuevo_estado = "complete" if not pendientes else "partially_answered"
+                        agotado = _seguimientos_ya_enviados(sb, conv["id"]) >= MAX_SEGUIMIENTOS_AUTOMATICOS
+                        if pendientes and agotado:
+                            # No insistir más: lo que falte se pide a mano. Un hilo
+                            # que sigue pidiendo datos hasta que el proveedor deja
+                            # de contestar termina bajándole el score por ruido
+                            # que generamos nosotros.
+                            print(f"[Gmail sync] conv {conv['id']}: seguimientos agotados, faltan {sorted(pendientes)}")
+                            nuevo_estado = "partially_answered"
+                        else:
+                            try:
+                                gmail_conversation_agent.seguimiento_automatico(sb, service, conv, mi_email, pendientes)
+                                nuevo_estado = "closed" if not pendientes else "partially_answered"
+                            except Exception as e:
+                                print(f"[Gmail sync] seguimiento automático falló: {e}")
+                                nuevo_estado = "complete" if not pendientes else "partially_answered"
                     elif extraccion["propuestas"]:
                         nuevo_estado = "partially_answered"
                     rfq_completa = nuevo_estado in ("closed", "complete") or (
