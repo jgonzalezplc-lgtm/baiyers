@@ -115,7 +115,9 @@ async def create_purchase_order(
     )}, notas=notes)
     result = await crear_oc(request, actor.to_auth_context())
     commit_draft(sb, actor, draft_id, entity_type="purchase_order", entity_id=result["id"])
-    return result
+    # `list_id` viaja en la respuesta para que el llamador pueda pedir el estado
+    # del proceso sin volver a abrir el draft, que además ya quedó consumido.
+    return {**result, "list_id": payload.get("list_id")}
 
 
 def list_purchase_orders(sb, actor: ApplicationActorContext, *, status: Optional[str] = None, limit: int = 50) -> dict:

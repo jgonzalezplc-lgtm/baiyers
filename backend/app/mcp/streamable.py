@@ -45,6 +45,22 @@ def _actor(required_scope: str) -> ApplicationActorContext:
     return actor
 
 
+async def _con_proceso(actor, list_id: Optional[str], respuesta: dict) -> dict:
+    """Adjunta el bloque `process` a la respuesta de una tool.
+
+    Va después de la operación, nunca antes: en las tools que escriben
+    (`select_final_quote`, `create_purchase_order`) el proceso tiene que
+    reflejar el estado YA modificado, no el previo.
+
+    `bloque_proceso` nunca lanza; si falla devuelve {} y la respuesta queda como
+    era. Un adorno informativo no puede tumbar una operación que sí funcionó.
+    """
+    from app.services.contexto_compra_service import bloque_proceso
+    from app.services.supabase import get_supabase
+    bloque = await asyncio.to_thread(bloque_proceso, get_supabase(), actor, list_id)
+    return {**respuesta, **bloque}
+
+
 mcp = FastMCP(
     name="Baiyer",
     instructions=(
@@ -104,7 +120,8 @@ async def get_list(list_id: str) -> dict:
     actor = await asyncio.to_thread(_actor, "lists:read")
     from app.services.lista_service import get_list as service
     from app.services.supabase import get_supabase
-    return await asyncio.to_thread(service, get_supabase(), actor, list_id)
+    lista = await asyncio.to_thread(service, get_supabase(), actor, list_id)
+    return await _con_proceso(actor, list_id, lista)
 
 
 @mcp.tool(name="create_list", description="Crea una lista usando cotizaciones existentes de Baiyer.")
@@ -172,13 +189,24 @@ async def remove_list_item(list_id: str, cotizacion_id: str, confirmed: bool = F
 
 @mcp.tool(
     name="start_project_intake",
-    description="Interpreta un proyecto o necesidad escrita y devuelve preguntas o un draft de lista.",
+    description=(
+        "Interpreta una necesidad descrita SÓLO EN TEXTO y devuelve preguntas de dimensionamiento "
+        "o un draft de lista. NO acepta archivos. Si el usuario adjuntó un PDF, Excel o Word "
+        "—aunque sólo lo mencione— usá `preview_document_import`: sin el documento esta tool no "
+        "conoce las cantidades y te va a preguntar los datos para calcularlas desde cero."
+    ),
 )
-async def start_project_intake(description: str, industry: Optional[str] = None) -> dict:
+async def start_project_intake(
+    description: str, industry: Optional[str] = None,
+    sin_archivo_disponible: bool = False,
+) -> dict:
     actor = await asyncio.to_thread(_actor, "projects:write")
     from app.services.project_intake import start_project_intake as service
     from app.services.supabase import get_supabase
-    return await service(get_supabase(), actor, description=description, industry=industry)
+    return await service(
+        get_supabase(), actor, description=description, industry=industry,
+        sin_archivo_disponible=sin_archivo_disponible,
+    )
 
 
 @mcp.tool(name="continue_project_intake", description="Continúa un intake de proyecto con respuestas del usuario.")
@@ -208,7 +236,12 @@ async def commit_project_intake(
 
 @mcp.tool(
     name="preview_document_import",
-    description="Analiza un PDF, DOCX, XLS/XLSX base64 y guarda un draft sin crear datos de compra.",
+    description=(
+        "PUERTA DE ENTRADA cuando hay un archivo adjunto: analiza un PDF, DOCX o XLS/XLSX en base64 "
+        "y guarda un draft sin crear datos de compra. Usala siempre que el usuario adjunte un "
+        "documento con ítems, cantidades o especificaciones, en vez de resumirlo en texto para "
+        "`start_project_intake`: el documento trae las cantidades y evita preguntas innecesarias."
+    ),
 )
 async def preview_document_import(
     file_base64: str, file_name: str, file_mime: str,
@@ -328,6 +361,23 @@ async def get_list_coverage(list_id: str) -> dict:
     return await asyncio.to_thread(service, get_supabase(), actor, list_id)
 
 
+@mcp.tool(
+    name="get_purchase_context",
+    description=(
+        "En qué etapa del proceso está una compra, qué la bloquea y qué acciones corresponden "
+        "ahora. Consultala ANTES de sugerir o ejecutar un paso: evita proponer algo que el "
+        "proceso de la empresa todavía no permite. `origen` indica si la etapa viene del "
+        "workflow real ('grafo') o está inferida del estado observable ('derivado')."
+    ),
+    annotations=ToolAnnotations(readOnlyHint=True),
+)
+async def get_purchase_context(list_id: str) -> dict:
+    actor = await asyncio.to_thread(_actor, "lists:read")
+    from app.services.contexto_compra_service import obtener_contexto_compra
+    from app.services.supabase import get_supabase
+    return await asyncio.to_thread(obtener_contexto_compra, get_supabase(), actor, list_id)
+
+
 @mcp.tool(name="suggest_suppliers", description="Sugiere proveedores explicables para cada ítem de una lista.", annotations=ToolAnnotations(readOnlyHint=True))
 async def suggest_suppliers(list_id: str) -> dict:
     actor = await asyncio.to_thread(_actor, "suppliers:read")
@@ -403,7 +453,7 @@ async def send_rfq(list_id: str, batch_id: str, confirmed: bool = False) -> dict
 async def get_rfq_status(list_id: str) -> dict:
     actor = await asyncio.to_thread(_actor, "rfq:read")
     from app.services.rfq_mcp_service import get_rfq_status as service
-    return await service(actor, list_id)
+    return await _con_proceso(actor, list_id, await service(actor, list_id))
 
 
 @mcp.tool(
@@ -457,7 +507,8 @@ async def compare_list(list_id: str) -> dict:
     actor = await asyncio.to_thread(_actor, "quotes:read")
     from app.services.comparison_approval_service import compare_list as service
     from app.services.supabase import get_supabase
-    return await asyncio.to_thread(service, get_supabase(), actor, list_id)
+    comparacion = await asyncio.to_thread(service, get_supabase(), actor, list_id)
+    return await _con_proceso(actor, list_id, comparacion)
 
 
 @mcp.tool(name="explain_quote_recommendation", description="Explica una recomendación determinística sin cambiar selecciones.", annotations=ToolAnnotations(readOnlyHint=True))
@@ -468,7 +519,7 @@ async def explain_quote_recommendation(list_id: str, cotizacion_id: str) -> dict
     return await asyncio.to_thread(service, get_supabase(), actor, list_id, cotizacion_id)
 
 
-@mcp.tool(name="select_final_quote", description="Selecciona una oferta definitiva persistida; requiere confirmed=true.")
+@mcp.tool(name="select_final_quote", description="Selecciona una oferta definitiva persistida; requiere confirmed=true. price_clp convierte ofertas en moneda extranjera y, si la oferta no tiene precio persistido, lo fija manualmente dejando nota de auditoría.")
 async def select_final_quote(
     list_id: str, cotizacion_id: str, resultado_id: str,
     confirmed: bool = False, price_clp: Optional[float] = None,
@@ -476,8 +527,58 @@ async def select_final_quote(
     actor = await asyncio.to_thread(_actor, "quotes:write")
     from app.services.comparison_approval_service import select_final_quote as service
     from app.services.supabase import get_supabase
-    return await service(get_supabase(), actor, list_id=list_id, quote_id=cotizacion_id,
-                         result_id=resultado_id, price_clp=price_clp, confirmed=confirmed)
+    seleccion = await service(get_supabase(), actor, list_id=list_id, quote_id=cotizacion_id,
+                              result_id=resultado_id, price_clp=price_clp, confirmed=confirmed)
+    return await _con_proceso(actor, list_id, seleccion)
+
+
+@mcp.tool(
+    name="get_quote_lines",
+    description=(
+        "Ofertas de un ítem como líneas independientes: cada precio que un proveedor ofreció es "
+        "una línea propia, aunque hayan venido en el mismo correo. Usala cuando un proveedor "
+        "cotizó varios productos para el mismo ítem y hay que elegir uno."
+    ),
+    annotations=ToolAnnotations(readOnlyHint=True),
+)
+async def get_quote_lines(cotizacion_id: str) -> dict:
+    actor = await asyncio.to_thread(_actor, "quotes:read")
+    from app.services.quote_lines import resumir
+    from app.services.quote_lines_service import listar_por_item
+    from app.services.supabase import get_supabase
+    lineas = await asyncio.to_thread(listar_por_item, get_supabase(), actor, cotizacion_id)
+    return {"cotizacion_id": cotizacion_id, "quote_lines": lineas, "resumen": resumir(lineas)}
+
+
+@mcp.tool(
+    name="select_quote_line",
+    description=(
+        "Elige una línea de cotización concreta como definitiva del ítem; requiere confirmed=true. "
+        "A diferencia de select_final_quote, identifica la oferta exacta —no al proveedor— así que "
+        "sirve cuando el mismo proveedor ofreció varios precios. La línea anterior queda vigente, "
+        "no se borra."
+    ),
+)
+async def select_quote_line(quote_line_id: str, confirmed: bool = False) -> dict:
+    if confirmed is not True:
+        raise HTTPException(status_code=409, detail="Se requiere confirmación explícita para elegir la oferta definitiva")
+    actor = await asyncio.to_thread(_actor, "quotes:write")
+    from app.services.quote_lines_service import seleccionar
+    from app.services.supabase import get_supabase
+    return await asyncio.to_thread(seleccionar, get_supabase(), actor, quote_line_id)
+
+
+@mcp.tool(
+    name="discard_quote_line",
+    description="Saca una línea de consideración sin borrarla; requiere confirmed=true.",
+)
+async def discard_quote_line(quote_line_id: str, confirmed: bool = False) -> dict:
+    if confirmed is not True:
+        raise HTTPException(status_code=409, detail="Se requiere confirmación explícita para descartar la oferta")
+    actor = await asyncio.to_thread(_actor, "quotes:write")
+    from app.services.quote_lines_service import descartar
+    from app.services.supabase import get_supabase
+    return await asyncio.to_thread(descartar, get_supabase(), actor, quote_line_id)
 
 
 @mcp.tool(name="clear_final_quote", description="Quita la oferta definitiva de un ítem; requiere confirmed=true.")
@@ -492,7 +593,8 @@ async def get_approval_status(list_id: str) -> dict:
     actor = await asyncio.to_thread(_actor, "approvals:read")
     from app.services.comparison_approval_service import get_approval_status as service
     from app.services.supabase import get_supabase
-    return await asyncio.to_thread(service, get_supabase(), actor, list_id)
+    estado = await asyncio.to_thread(service, get_supabase(), actor, list_id)
+    return await _con_proceso(actor, list_id, estado)
 
 
 @mcp.tool(name="get_approval_route", description="Previsualiza responsables y modo de autorización sin crear solicitudes.", annotations=ToolAnnotations(readOnlyHint=True))
@@ -557,7 +659,8 @@ async def prepare_purchase_order(list_id: str, cotizacion_id: str) -> dict:
     actor = await asyncio.to_thread(_actor, "po:read")
     from app.services.purchase_invoice_service import prepare_purchase_order as service
     from app.services.supabase import get_supabase
-    return await asyncio.to_thread(service, get_supabase(), actor, list_id, cotizacion_id)
+    borrador = await asyncio.to_thread(service, get_supabase(), actor, list_id, cotizacion_id)
+    return await _con_proceso(actor, list_id, borrador)
 
 
 @mcp.tool(name="create_purchase_order", description="Crea una OC desde un draft; requiere confirmed=true.")
@@ -565,7 +668,8 @@ async def create_purchase_order(draft_id: str, confirmed: bool = False, notes: O
     actor = await asyncio.to_thread(_actor, "po:write")
     from app.services.purchase_invoice_service import create_purchase_order as service
     from app.services.supabase import get_supabase
-    return await service(get_supabase(), actor, draft_id=draft_id, notes=notes, confirmed=confirmed)
+    oc = await service(get_supabase(), actor, draft_id=draft_id, notes=notes, confirmed=confirmed)
+    return await _con_proceso(actor, oc.get("list_id"), oc)
 
 
 @mcp.tool(name="list_purchase_orders", description="Lista órdenes de compra de la organización.", annotations=ToolAnnotations(readOnlyHint=True))

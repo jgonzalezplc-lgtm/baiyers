@@ -669,6 +669,38 @@ def _campos_pendientes(sb, entity_ids: list[str]) -> set[str]:
     return pendientes
 
 
+def _registrar_lineas(sb, user_id: str, conv: dict, items_ctx: list[dict],
+                      propuestas: list[dict], entity_unico: Optional[str],
+                      mensaje_id: str) -> None:
+    """Guarda una línea de cotización por cada oferta distinta del correo.
+
+    Nunca lanza: perder las líneas es malo, pero tumbar la sincronización del
+    correo entero es peor. El flujo por `resultados` sigue siendo el vigente.
+    """
+    try:
+        from app.services.quote_lines_service import registrar_desde_correo
+
+        mapa = {}
+        for item in items_ctx:
+            entity_id = item.get("entity_id")
+            if not entity_id:
+                continue
+            fila = ejecutar_maybe_single(
+                sb.table("resultados").select("cotizacion_id").eq("id", entity_id).maybe_single()
+            ).data
+            if fila and fila.get("cotizacion_id"):
+                mapa[entity_id] = fila["cotizacion_id"]
+
+        registrar_desde_correo(
+            sb, user_id=user_id, propuestas=propuestas, entity_a_cotizacion=mapa,
+            proveedor_nombre=conv.get("proveedor_nombre"),
+            proveedor_email=conv.get("proveedor_email"),
+            mensaje_id=mensaje_id, entity_unico=entity_unico,
+        )
+    except Exception as e:
+        print(f"[Gmail sync] no se pudieron registrar líneas: {type(e).__name__}: {e}")
+
+
 def _mismo_monto(a, b) -> bool:
     """Compara dos montos tolerando str/float ('19990' vs 19990.0).
 
@@ -930,6 +962,15 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                     # Un precio ambiguo tiene que detener el flujo, no resolverse solo.
                     conflictos = _campos_en_conflicto(extraccion["propuestas"], entity_unico)
                     requiere_decision_humana = False
+
+                    # Cada oferta del correo queda además como una línea propia.
+                    # Es la corrección de fondo del conflicto de arriba: en vez de
+                    # que dos precios compitan por la misma fila de `resultados`,
+                    # cada uno es una línea identificable y seleccionable.
+                    # Convive con el bloqueo: mientras el usuario no elija una
+                    # línea, ningún precio se aplica solo.
+                    _registrar_lineas(sb, user_id, conv, items_ctx, extraccion["propuestas"],
+                                      entity_unico, row["id"])
 
                     # Campos "core" (precio/disponibilidad/plazo/condiciones) con
                     # confianza alta se aplican solos — son los datos operativos
