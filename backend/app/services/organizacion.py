@@ -115,6 +115,60 @@ def obtener_perfil_organizacion(organizacion_id: str) -> dict:
         return {}
 
 
+def obtener_codigo_oc(organizacion_id: str) -> str:
+    """Código de empresa para numerar OCs (`BVITAL`), asignado una sola vez.
+
+    Se persiste en `organizaciones.codigo_oc` en vez de derivarse del nombre en
+    cada emisión: si la empresa se renombra, las OCs nuevas cambiarían de código
+    y su correlativo arrancaría de cero, conviviendo dos series para la misma
+    empresa. Un identificador impreso en un documento comercial no puede depender
+    de un campo editable.
+
+    Nunca lanza: ante cualquier problema devuelve un código derivado del nombre.
+    No poder emitir una OC es peor que emitirla con un código imperfecto.
+    """
+    from app.services.oc_numeracion import derivar_token, desambiguar
+
+    if not organizacion_id:
+        return desambiguar(derivar_token(None), set())
+
+    sb = _sb()
+    try:
+        fila = ejecutar_maybe_single(
+            sb.table("organizaciones").select("nombre, codigo_oc").eq("id", organizacion_id).maybe_single()
+        ).data or {}
+    except Exception as e:
+        # Con la 047 sin aplicar, `codigo_oc` no existe y PostgREST rechaza el
+        # select entero. Se reintenta pidiendo sólo el nombre: sin él el código
+        # sería "BEMPRESA" para todos, que es justo lo que hay que evitar.
+        print(f"[OC] sin columna codigo_oc ({e}); se deriva del nombre")
+        try:
+            fila = ejecutar_maybe_single(
+                sb.table("organizaciones").select("nombre").eq("id", organizacion_id).maybe_single()
+            ).data or {}
+        except Exception:
+            return desambiguar(derivar_token(None), set())
+        return desambiguar(derivar_token(fila.get("nombre")), set())
+
+    if fila.get("codigo_oc"):
+        return fila["codigo_oc"]
+
+    token = derivar_token(fila.get("nombre"))
+    try:
+        tomados = {
+            (f or {}).get("codigo_oc")
+            for f in (sb.table("organizaciones").select("codigo_oc").execute().data or [])
+        }
+        codigo = desambiguar(token, {c for c in tomados if c})
+        sb.table("organizaciones").update({"codigo_oc": codigo}).eq("id", organizacion_id).execute()
+        return codigo
+    except Exception as e:
+        # La columna puede no existir todavía (migración 047 sin aplicar). El
+        # código igual sirve para numerar; sólo no queda fijado.
+        print(f"[OC] no se pudo persistir el código de la organización: {e}")
+        return desambiguar(token, set())
+
+
 def nombres_de_usuarios(auth_uids: list[str]) -> dict[str, str]:
     """Fase D — resuelve una lista de user_ids a nombres legibles para el
     'hecho por X'. Prioriza nombre_usuario del metadata → empresa → email.

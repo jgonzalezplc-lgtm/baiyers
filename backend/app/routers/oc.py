@@ -113,9 +113,70 @@ def _insertar_oc(sb, row: dict) -> tuple[dict, tuple[str, ...]]:
         return sb.table("ordenes_compra").insert(row_base).execute().data[0], omitidos
 
 
+def _numero_oc_disponible(sb, anio: int, codigo: str) -> str:
+    """Siguiente número libre para esta empresa y este año.
+
+    Lee el máximo emitido, no la cantidad de filas: borrar una OC no puede hacer
+    que la siguiente reutilice un número que ya viajó a un proveedor.
+    """
+    from app.services.oc_numeracion import formatear, prefijo, siguiente_correlativo
+
+    existentes = sb.table("ordenes_compra").select("numero_oc").like(
+        "numero_oc", f"{prefijo(anio, codigo)}-%"
+    ).execute().data or []
+    correlativo = siguiente_correlativo([f.get("numero_oc") for f in existentes], anio, codigo)
+    return formatear(anio, codigo, correlativo)
+
+
+def _es_numero_duplicado(error: Exception) -> bool:
+    detalle = str(error).lower()
+    return "23505" in detalle or "duplicate key" in detalle or "already exists" in detalle
+
+
+def _generar_pdf_desde_fila(fila: dict, ctx: AuthContext) -> bytes:
+    """Arma el PDF de la OC a partir de la fila persistida.
+
+    Los totales se recalculan acá en vez de leerse: la tabla guarda
+    `precio_total` pero no subtotal ni IVA, y desglosarlos en el PDF con una
+    cuenta distinta a la de `crear_oc` produciría dos documentos que no cuadran.
+    """
+    from app.services.oc_pdf import generar_pdf_oc
+    from app.services.organizacion import obtener_perfil_organizacion
+
+    total = float(fila.get("precio_total") or 0)
+    cantidad = float(fila.get("cantidad") or 1)
+    unitario = fila.get("precio_unitario")
+    subtotal = float(unitario) * cantidad if unitario is not None else round(total / 1.19, 0)
+
+    perfil = obtener_perfil_organizacion(ctx.organization_id)
+    creado = fila.get("created_at") or ""
+    return generar_pdf_oc({
+        "numero_oc": fila.get("numero_oc"),
+        "fecha": f"{creado[8:10]}/{creado[5:7]}/{creado[0:4]}" if len(creado) >= 10 else "",
+        "nombre_item": fila.get("nombre_item"),
+        "proveedor_nombre": fila.get("proveedor_nombre"),
+        "proveedor_email": fila.get("proveedor_email"),
+        "cantidad": cantidad,
+        "precio_unitario": unitario if unitario is not None else (subtotal / cantidad if cantidad else 0),
+        "moneda": fila.get("moneda") or "CLP",
+        "subtotal": subtotal,
+        "iva": total - subtotal,
+        "total": total,
+        "condiciones_pago": fila.get("condiciones_pago"),
+        "plazo_entrega": fila.get("plazo_entrega"),
+        "notas": fila.get("notas"),
+        "emisor_nombre": perfil.get("nombre"),
+        "emisor_rut": perfil.get("rut"),
+        "emisor_direccion": perfil.get("direccion"),
+    })
+
+
 class EnviarOCRequest(BaseModel):
     oc_id: str
-    pdf_base64: str
+    # Opcional desde 2026-08-26: el frontend sigue mandando el PDF que renderiza
+    # con OCPDFTemplate, pero un cliente headless (MCP) no tiene cómo generarlo.
+    # Si no viene, lo arma el backend.
+    pdf_base64: Optional[str] = None
     proveedor_nombre: str
     proveedor_email: Optional[str] = None
     numero_oc: str
@@ -125,15 +186,16 @@ class EnviarOCRequest(BaseModel):
 
 @router.post("/crear")
 async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_context)):
+    from app.services.organizacion import obtener_codigo_oc
     from app.services.supabase import get_supabase
 
     sb = get_supabase()
 
-    # Correlativo por año
+    # Correlativo por año Y por empresa. El código (`BVITAL`) evita que este
+    # número se confunda con los que la empresa ya emite por su propio ERP.
     year = datetime.now().year
-    res = sb.table("ordenes_compra").select("numero_oc").like("numero_oc", f"OC-{year}-%").execute()
-    correlativo = len(res.data) + 1
-    numero_oc = f"OC-{year}-{correlativo:04d}"
+    codigo = obtener_codigo_oc(ctx.organization_id)
+    numero_oc = _numero_oc_disponible(sb, year, codigo)
 
     subtotal = req.cantidad * req.precio_unitario
     iva = round(subtotal * 0.19, 0)
@@ -165,7 +227,19 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
         "lista_proyecto_id": req.lista_id,
     }
 
-    fila, campos_omitidos = _insertar_oc(sb, row)
+    # El índice único de la 047 es la única garantía real contra dos OCs con el
+    # mismo número: leer el máximo y escribir no es atómico, así que dos
+    # requests simultáneos calculan el mismo correlativo. Cuando la base rechaza
+    # el duplicado, se recalcula y se reintenta.
+    for intento in range(4):
+        try:
+            fila, campos_omitidos = _insertar_oc(sb, {**row, "numero_oc": numero_oc})
+            break
+        except Exception as e:
+            if not _es_numero_duplicado(e) or intento == 3:
+                raise
+            numero_oc = _numero_oc_disponible(sb, year, codigo)
+            print(f"[OC] número duplicado, reintentando con {numero_oc}")
     oc_id = fila["id"]
 
     if contexto_workflow:
@@ -214,10 +288,11 @@ async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_co
 
     sb = get_supabase()
 
-    try:
-        pdf_bytes = base64.b64decode(req.pdf_base64, validate=True)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail="PDF base64 inválido") from exc
+    if req.pdf_base64:
+        try:
+            pdf_bytes = base64.b64decode(req.pdf_base64, validate=True)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="PDF base64 inválido") from exc
 
     oc_actual = sb.table("ordenes_compra").select("*").eq("id", req.oc_id).in_(
         "user_id", ctx.user_ids_organizacion
@@ -226,6 +301,13 @@ async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_co
         raise HTTPException(status_code=404, detail="OC no encontrada")
     if oc_actual[0].get("estado") != "borrador":
         raise HTTPException(status_code=409, detail="La OC ya no está en borrador")
+
+    if not req.pdf_base64:
+        # Se genera después de leer la OC para usar lo REALMENTE persistido, no
+        # lo que venga en el request: un PDF que muestre datos distintos a los de
+        # la fila es peor que no tener PDF, porque el proveedor recibe uno y la
+        # empresa audita el otro.
+        pdf_bytes = _generar_pdf_desde_fila(oc_actual[0], ctx)
 
     # Subir PDF a Supabase Storage
     filename = f"{req.oc_id}.pdf"
