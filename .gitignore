@@ -30,3 +30,11 @@ Thumbs.db
 # Google OAuth (secreto — no subir)
 credentials.json
 **/credentials.json
+
+# Scratch local: artefactos de pruebas, PDFs renderizados, borradores de commit.
+# No son fuente y el repo es público — `outputs/solar_3mwh_test` llegó a tener
+# node_modules adentro, y `tmp/pdfs` itemizados reales.
+outputs/
+tmp/
+.DS_Store
+**/.DS_Store
