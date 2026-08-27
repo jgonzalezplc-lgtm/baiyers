@@ -34,6 +34,16 @@ CATEGORIA_FUENTES: dict[str, set[str]] = {
     "electronica":       ELECTRONICA | ELECTRICO_CL,
     "construccion":      CONSTRUCCION | MADERAS_CL,   # construcción general (sin eléctrico)
     "insumos_medicos":   set(),                       # solo genéricas + proveedores custom
+    # Notebooks, monitores, periféricos, servidores. Baiyer NO tiene scrapers de
+    # retail informático, así que se consultan sólo las fuentes genéricas
+    # (MercadoLibre, Google) más los proveedores privados de la empresa.
+    #
+    # Existe porque sin ella el modelo clasificaba un MacBook como "industrial",
+    # y eso rutea a TODAS las especializadas: Baiyer le preguntaba a Mouser y a
+    # Sodimac por un notebook y devolvía cables y herramientas. Caso real del
+    # 2026-08-27: los tres ítems de "Comparación notebooks" quedaron industriales
+    # y el comparador terminó en $0.
+    "informatica":       set(),
     "industrial":        TODAS_ESPECIFICAS,
     "tuberias_valvulas": CONSTRUCCION,
     # Categorías legacy (v1) — mapeo conservador

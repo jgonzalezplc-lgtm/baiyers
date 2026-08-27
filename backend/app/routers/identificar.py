@@ -50,7 +50,7 @@ Interpreta la intencion, extrae CADA item por separado, y responde SOLO en JSON 
   "nombre_tecnico": "nombre tecnico del item principal (el primero si hay varios)",
   "marca": "marca si es visible o mencionada, sino null",
   "numero_parte": "numero de parte si es visible o mencionado, sino null",
-  "categoria": "electronica|construccion|carpinteria|insumos_medicos|industrial|tuberias_valvulas|mecanico|electrico|hidraulico|neumatico|servicio|consumible|otro",
+  "categoria": "electronica|informatica|construccion|carpinteria|insumos_medicos|industrial|tuberias_valvulas|mecanico|electrico|hidraulico|neumatico|servicio|consumible|otro",
   "terminos_busqueda_es": ["termino1", "termino2", "termino3", "termino4", "termino5"],
   "terminos_busqueda_en": ["term1", "term2", "term3", "term4", "term5"],
   "confianza": "alto|medio|bajo",
@@ -84,7 +84,11 @@ Interpreta la intencion, extrae CADA item por separado, y responde SOLO en JSON 
 Reglas:
 - categoria: elige la MAS ESPECIFICA. "carpinteria" para madera/tablas/tablones/molduras/terciado/OSB
   (NO uses "construccion" ni "electrico" para madera). "electrico" solo para cables/interruptores/
-  tableros/motores. "construccion" para cemento/fierro/áridos/herramientas generales. Cada item de una
+  tableros/motores. "construccion" para cemento/fierro/áridos/herramientas generales.
+  "informatica" para notebooks/computadores/monitores/impresoras/periféricos/servidores/celulares
+  (un MacBook o un ThinkPad NO son "industrial" ni "electronica": "electronica" es para componentes
+  como resistencias o microcontroladores). "industrial" SOLO para maquinaria, insumos de planta o
+  equipamiento de proceso — no lo uses como cajón de sastre. Cada item de una
   lista lleva SU propia categoria (una tabla de pino=carpinteria, un cable=electrico, cemento=construccion).
 - lista_items SIEMPRE presente, con al menos 1 elemento. Si el usuario pidio varios items, un elemento por item.
 - Si el usuario indica cantidad ("50 tornillos"), reflejala en "cantidad".
@@ -584,7 +588,7 @@ Con el contexto "quiero un trozo de madera para construir" los términos correct
 Responde SOLO en JSON válido, sin markdown:
 {
   "nombre_tecnico": "nombre técnico preciso del producto que busca",
-  "categoria": "electronica|construccion|insumos_medicos|industrial|tuberias_valvulas|mecanico|electrico|hidraulico|neumatico|servicio|consumible|otro",
+  "categoria": "electronica|informatica|construccion|insumos_medicos|industrial|tuberias_valvulas|mecanico|electrico|hidraulico|neumatico|servicio|consumible|otro",
   "terminos_busqueda_es": ["término específico 1", "2", "3", "4", "5"],
   "terminos_busqueda_en": ["specific term 1", "2", "3", "4", "5"],
   "palabras_requeridas": ["palabras que DEBEN aparecer en el título de un resultado válido (stems simples, minúsculas)"],
