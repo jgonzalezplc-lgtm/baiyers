@@ -59,6 +59,38 @@ def _serialize_result(row: dict) -> dict:
     }
 
 
+# Techo de filas a traer antes de ordenar en Python. Ordenar en la base y cortar
+# ahí mezclaba monedas (ver `_orden_comparable`), así que el corte tiene que
+# hacerse DESPUÉS. Es un techo y no "todas": una cotización con miles de
+# resultados no debe traerse entera a memoria por una vista de 50.
+MAX_FILAS_A_ORDENAR = 200
+
+
+def _orden_comparable(row: dict) -> tuple:
+    """Orden de una oferta: primero las comparables, después por precio.
+
+    `moneda_confirmada=False` significa que la fuente no declaró la divisa y el
+    dominio no la delata: el monto se guardó como CLP por default del país de
+    búsqueda, pero puede ser USD. Ordenar por el número crudo pone esos primeros
+    —US$365 "parece" más barato que $1.199.990 CLP— y con el corte por `limit`
+    las ofertas chilenas reales ni siquiera llegaban a mostrarse.
+
+    Caso real del 2026-08-27: un MacBook Air devolvía 8 ofertas, las 8 de
+    tiendas de EE.UU. rotuladas CLP (Walmart, refurbished), mientras Hites y
+    UltraPC quedaban fuera del top. No se convierte a una moneda común a
+    propósito: no hay tipo de cambio en el backend, y adivinarlo sería inventar
+    un precio. Sólo se relegan las no comparables.
+    """
+    precio = row.get("precio")
+    if precio is None:
+        precio = row.get("precio_cotizado")
+    return (
+        0 if row.get("moneda_confirmada") else 1,
+        0 if precio is not None else 1,
+        precio if precio is not None else 0,
+    )
+
+
 def get_item_quotes(sb, actor: ApplicationActorContext, quote_id: str, *, limit: int = 50) -> dict:
     if not 1 <= limit <= 100:
         raise HTTPException(status_code=422, detail="limit debe estar entre 1 y 100")
@@ -68,9 +100,13 @@ def get_item_quotes(sb, actor: ApplicationActorContext, quote_id: str, *, limit:
             "id, cotizacion_id, proveedor_nombre, precio, precio_cotizado, moneda, moneda_cotizada, "
             "url, pais, fuente, relevante, plazo_entrega, condiciones_pago, notas_respuesta, "
             "respuesta_recibida_at, metadata"
-        ).eq("cotizacion_id", quote_id).order("precio", desc=False).limit(limit).execute()
+        ).eq("cotizacion_id", quote_id).order("precio", desc=False)
+        .limit(MAX_FILAS_A_ORDENAR).execute()
     )
-    rows = [_serialize_result(row) for row in (result.data or [])]
+    rows = sorted(
+        (_serialize_result(row) for row in (result.data or [])),
+        key=_orden_comparable,
+    )[:limit]
     return {"item": {"cotizacion_id": quote_id, "nombre": quote.get("nombre_identificado")},
             "total": len(rows), "quotes": rows}
 
