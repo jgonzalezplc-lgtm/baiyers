@@ -94,6 +94,38 @@ def _detectar_moneda(s: str) -> tuple[str, bool]:
     return "USD", False
 
 
+# Dominios de país → moneda. Una tienda en `.cl` cobra en pesos chilenos; una en
+# `.com` no dice nada. Es la única evidencia real del origen de un resultado: el
+# país de la BÚSQUEDA no lo es, y confundirlos hacía que un monitor de Walmart a
+# US$84 apareciera como $84 CLP.
+_TLD_ORIGEN: dict[str, tuple[str, str]] = {
+    ".cl": ("CL", "CLP"), ".ar": ("AR", "ARS"), ".pe": ("PE", "PEN"),
+    ".co": ("CO", "COP"), ".mx": ("MX", "MXN"), ".br": ("BR", "BRL"),
+    ".es": ("ES", "EUR"), ".uk": ("GB", "GBP"), ".cn": ("CN", "CNY"),
+}
+
+
+def _origen_por_dominio(url: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """(país, moneda) deducidos del dominio, o (None, None) si no se puede saber.
+
+    Un `.com` es ambiguo a propósito: lo usan tanto tiendas chilenas como
+    estadounidenses. Devolver None es más útil que adivinar, porque deja el
+    resultado marcado como moneda no verificada en vez de afirmar una falsa.
+    """
+    if not url:
+        return None, None
+    try:
+        from urllib.parse import urlparse
+
+        host = (urlparse(url).hostname or "").lower()
+    except Exception:
+        return None, None
+    for tld, origen in _TLD_ORIGEN.items():
+        if host.endswith(tld):
+            return origen
+    return None, None
+
+
 def _parse_precio(price_str: Optional[str]) -> tuple[Optional[float], str]:
     """Detecta moneda y parsea el precio. Compatibilidad: devuelve 2 valores.
 
@@ -169,8 +201,17 @@ async def _serp_query(
             # Sólo se infiere por país cuando la fuente NO dijo la moneda. Un
             # "US$199" leído explícitamente no puede convertirse en $199 CLP por
             # el hecho de que la búsqueda sea chilena.
+            url_item = item.get("link") or item.get("product_link") or ""
+            pais_item, moneda_dominio = _origen_por_dominio(url_item)
             if not moneda_confirmada:
-                moneda = "CLP" if pais_default == "CL" else "USD"
+                if moneda_dominio:
+                    # Una tienda `.cl` cobra en pesos: es evidencia, no supuesto.
+                    moneda, moneda_confirmada = moneda_dominio, True
+                else:
+                    # No se pudo saber. Se usa el país de la búsqueda como
+                    # default, pero queda MARCADO: es lo que permite decir
+                    # "divisa no verificada" en vez de afirmar una falsa.
+                    moneda = "CLP" if pais_default == "CL" else "USD"
 
             # Extraer toda la info disponible de Google Shopping
             extensions = item.get("extensions") or []
@@ -190,9 +231,10 @@ async def _serp_query(
                 "titulo": item.get("title", ""),
                 "precio": precio,
                 "moneda": moneda,
-                "url": item.get("link") or item.get("product_link", ""),
+                "moneda_confirmada": moneda_confirmada,
+                "url": url_item,
                 "fuente": "google",
-                "pais": pais_default,
+                "pais": pais_item or pais_default,
                 "proveedor": item.get("source", ""),
                 "thumbnail": item.get("thumbnail"),
                 # Enriquecidos
@@ -229,8 +271,17 @@ async def _serper_query(
             # Sólo se infiere por país cuando la fuente NO dijo la moneda. Un
             # "US$199" leído explícitamente no puede convertirse en $199 CLP por
             # el hecho de que la búsqueda sea chilena.
+            url_item = item.get("link") or item.get("product_link") or ""
+            pais_item, moneda_dominio = _origen_por_dominio(url_item)
             if not moneda_confirmada:
-                moneda = "CLP" if pais_default == "CL" else "USD"
+                if moneda_dominio:
+                    # Una tienda `.cl` cobra en pesos: es evidencia, no supuesto.
+                    moneda, moneda_confirmada = moneda_dominio, True
+                else:
+                    # No se pudo saber. Se usa el país de la búsqueda como
+                    # default, pero queda MARCADO: es lo que permite decir
+                    # "divisa no verificada" en vez de afirmar una falsa.
+                    moneda = "CLP" if pais_default == "CL" else "USD"
             rating = None
             try:
                 rating = float(item.get("rating") or 0) or None
@@ -240,9 +291,10 @@ async def _serper_query(
                 "titulo": item.get("title", ""),
                 "precio": precio,
                 "moneda": moneda,
-                "url": item.get("link", ""),
+                "moneda_confirmada": moneda_confirmada,
+                "url": url_item,
                 "fuente": "google",
-                "pais": pais_default,
+                "pais": pais_item or pais_default,
                 "proveedor": item.get("source", ""),
                 "thumbnail": item.get("imageUrl"),
                 "descripcion": None,
@@ -250,6 +302,7 @@ async def _serper_query(
                 "rating": rating,
                 "num_reviews": item.get("ratingCount"),
                 "condicion": "nuevo",
+                "moneda_confirmada": moneda_confirmada,
             })
         return results
     except Exception as e:
@@ -407,6 +460,9 @@ def _guardar_supabase(cotizacion_id: str, resultados: list[dict]) -> None:
             "ubicacion_vendedor", "rating", "num_reviews", "reputacion_vendedor",
             "ventas_realizadas", "rohs", "datasheet_url", "garantia", "especificaciones",
             "fuente_label", "extensions", "thumbnail",
+            # Viaja hasta el comparador y el MCP: permite decir "divisa no
+            # verificada" en vez de mostrar un monto con una moneda inventada.
+            "moneda_confirmada",
         }
         # Fuentes que acepta el CHECK constraint original de la tabla. La
         # migración 015 amplía la lista; mientras no esté aplicada, las fuentes

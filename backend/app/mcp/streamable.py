@@ -427,7 +427,16 @@ async def get_web_quote(job_id: str) -> dict:
     return await _con_proceso(actor, (job.get("input_data") or {}).get("list_id"), job)
 
 
-@mcp.tool(name="get_item_quotes", description="Obtiene ofertas web y privadas persistidas para un ítem.", annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(
+    name="get_item_quotes",
+    description=(
+        "Ofertas web y privadas persistidas para un ítem. Cada oferta trae `moneda_confirmada`: "
+        "si es false, la moneda NO se pudo verificar (la tienda no la declaró y el dominio no la "
+        "delata) y el monto puede no ser comparable — advertilo al usuario en vez de presentarlo "
+        "como un precio local."
+    ),
+    annotations=ToolAnnotations(readOnlyHint=True),
+)
 async def get_item_quotes(cotizacion_id: str, limit: int = 50) -> dict:
     actor = await asyncio.to_thread(_actor, "quotes:read")
     from app.services.supabase import get_supabase

@@ -94,3 +94,60 @@ def test_la_firma_vieja_sigue_devolviendo_dos_valores():
 def test_detectar_moneda_es_insensible_a_mayusculas():
     assert _detectar_moneda("us$199")[0] == "USD"
     assert _detectar_moneda("Usd 199")[0] == "USD"
+
+
+# ─── El dominio es la evidencia real del origen ──────────────────────────────
+# Serper devuelve "$84.00" —un símbolo pelado— para un monitor de Walmart. El
+# precio no dice la moneda y el país de la BÚSQUEDA no es el del resultado.
+
+from app.routers.buscar import _origen_por_dominio  # noqa: E402
+
+
+@pytest.mark.parametrize("url,esperado", [
+    ("https://www.sodimac.cl/producto/x", ("CL", "CLP")),
+    ("https://tienda.mercadolibre.cl/z", ("CL", "CLP")),
+    ("https://www.amazon.es/dp/x", ("ES", "EUR")),
+    ("https://tienda.com.ar/x", ("AR", "ARS")),
+])
+def test_el_dominio_delata_el_origen(url, esperado):
+    assert _origen_por_dominio(url) == esperado
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.walmart.com/ip/123",
+    "https://www.bestbuy.com/site/x",
+    "https://www.officedepot.com/a",
+    "",
+    None,
+])
+def test_un_punto_com_no_se_adivina(url):
+    """Lo usan tanto tiendas chilenas como estadounidenses: None es más útil
+    que una moneda inventada."""
+    assert _origen_por_dominio(url) == (None, None)
+
+
+def _resolver(precio: str, url: str, pais_busqueda: str) -> tuple[str, bool]:
+    """Reproduce la decisión completa del buscador tras el arreglo."""
+    _, moneda, confirmada = _parse_precio_detallado(precio)
+    _, moneda_dominio = _origen_por_dominio(url)
+    if not confirmada:
+        if moneda_dominio:
+            moneda, confirmada = moneda_dominio, True
+        else:
+            moneda = "CLP" if pais_busqueda == "CL" else "USD"
+    return moneda, confirmada
+
+
+def test_una_tienda_chilena_queda_confirmada_en_pesos():
+    assert _resolver("$21.190", "https://www.sodimac.cl/x", "CL") == ("CLP", True)
+
+
+def test_walmart_en_una_busqueda_chilena_queda_marcado():
+    """El caso real de los monitores: no se puede saber, y eso se dice."""
+    moneda, confirmada = _resolver("$84.00", "https://www.walmart.com/ip/1", "CL")
+    assert confirmada is False, "debe quedar marcado como no verificado"
+
+
+def test_un_precio_explicito_gana_sobre_el_dominio():
+    """Una tienda .cl que cotiza en dólares es rara pero posible."""
+    assert _resolver("US$199", "https://www.importadora.cl/x", "CL") == ("USD", True)

@@ -43,6 +43,10 @@ def _serialize_result(row: dict) -> dict:
         "proveedor": row.get("proveedor_nombre"), "precio": row.get("precio"),
         "precio_cotizado": row.get("precio_cotizado"),
         "moneda": row.get("moneda_cotizada") or row.get("moneda") or "CLP",
+        # False = la moneda no se pudo verificar (la fuente no la dijo y el
+        # dominio no la delata). El monto puede no ser comparable: hay que
+        # advertirlo, no mostrarlo como si fuera un precio local.
+        "moneda_confirmada": bool(metadata.get("moneda_confirmada", True)),
         "fuente": metadata.get("fuente_label") or row.get("fuente"),
         "url": row.get("url") or "", "pais": row.get("pais"),
         "relevante": row.get("relevante") is not False,
