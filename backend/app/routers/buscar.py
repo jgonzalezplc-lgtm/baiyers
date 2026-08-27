@@ -65,28 +65,55 @@ def _fuentes_de_request(req: "BuscarRequest") -> set[str]:
     return fuentes
 
 
+# Marcas inequívocas de dólar. Un "$" solo NO alcanza: en Chile es el símbolo
+# habitual del peso, y confundirlos hace que un artículo de US$199 aparezca como
+# $199 CLP — mil veces más barato y primero en el comparador.
+_MARCAS_USD = ("us$", "usd", "u$s", "us $")
+
+
+def _detectar_moneda(s: str) -> tuple[str, bool]:
+    """(moneda, confirmada). `confirmada=False` significa "no se pudo saber":
+    el símbolo era ambiguo y esto es sólo el default.
+
+    Antes devolvía "USD" tanto para un precio marcado en dólares como para uno
+    que no decía nada, y el llamador lo reetiquetaba a CLP según el país. Dos
+    suposiciones apiladas, sin forma de distinguir una moneda leída de una
+    inventada.
+    """
+    bajo = s.lower()
+    if "clp" in bajo or "$clp" in bajo:
+        return "CLP", True
+    if any(marca in bajo for marca in _MARCAS_USD):
+        return "USD", True
+    if "€" in s or "EUR" in s:
+        return "EUR", True
+    if "¥" in s or "CNY" in s or "RMB" in s:
+        return "CNY", True
+    if "£" in s or "GBP" in s:
+        return "GBP", True
+    return "USD", False
+
+
 def _parse_precio(price_str: Optional[str]) -> tuple[Optional[float], str]:
-    """Detecta moneda y parsea el precio correctamente."""
+    """Detecta moneda y parsea el precio. Compatibilidad: devuelve 2 valores.
+
+    Para saber si la moneda fue LEÍDA o supuesta, usar `_parse_precio_detallado`.
+    """
+    precio, moneda, _ = _parse_precio_detallado(price_str)
+    return precio, moneda
+
+
+def _parse_precio_detallado(price_str: Optional[str]) -> tuple[Optional[float], str, bool]:
+    """(precio, moneda, moneda_confirmada)."""
     if not price_str:
-        return None, "USD"
+        return None, "USD", False
 
     s = str(price_str).strip()
-
-    # Detectar moneda
-    if "CLP" in s or "clp" in s.lower():
-        moneda = "CLP"
-    elif "€" in s or "EUR" in s:
-        moneda = "EUR"
-    elif "¥" in s or "CNY" in s or "RMB" in s:
-        moneda = "CNY"
-    elif "£" in s or "GBP" in s:
-        moneda = "GBP"
-    else:
-        moneda = "USD"
+    moneda, confirmada = _detectar_moneda(s)
 
     cleaned = re.sub(r"[^\d.,]", "", s)
     if not cleaned:
-        return None, moneda
+        return None, moneda, confirmada
 
     dot_count = cleaned.count(".")
     comma_count = cleaned.count(",")
@@ -120,9 +147,9 @@ def _parse_precio(price_str: Optional[str]) -> tuple[Optional[float], str]:
 
     try:
         val = float(cleaned)
-        return val if val > 0 else None, moneda
+        return (val if val > 0 else None), moneda, confirmada
     except Exception:
-        return None, moneda
+        return None, moneda, confirmada
 
 
 async def _serp_query(
@@ -138,11 +165,12 @@ async def _serp_query(
         data = resp.json()
         results = []
         for item in data.get("shopping_results", [])[:8]:
-            precio, moneda = _parse_precio(item.get("price"))
-            if pais_default == "CL" and moneda == "USD":
-                moneda = "CLP"
-            elif pais_default != "CL" and moneda == "CLP":
-                moneda = "USD"
+            precio, moneda, moneda_confirmada = _parse_precio_detallado(item.get("price"))
+            # Sólo se infiere por país cuando la fuente NO dijo la moneda. Un
+            # "US$199" leído explícitamente no puede convertirse en $199 CLP por
+            # el hecho de que la búsqueda sea chilena.
+            if not moneda_confirmada:
+                moneda = "CLP" if pais_default == "CL" else "USD"
 
             # Extraer toda la info disponible de Google Shopping
             extensions = item.get("extensions") or []
@@ -197,11 +225,12 @@ async def _serper_query(
         data = resp.json()
         results = []
         for item in (data.get("shopping") or [])[:8]:
-            precio, moneda = _parse_precio(item.get("price"))
-            if pais_default == "CL" and moneda == "USD":
-                moneda = "CLP"
-            elif pais_default != "CL" and moneda == "CLP":
-                moneda = "USD"
+            precio, moneda, moneda_confirmada = _parse_precio_detallado(item.get("price"))
+            # Sólo se infiere por país cuando la fuente NO dijo la moneda. Un
+            # "US$199" leído explícitamente no puede convertirse en $199 CLP por
+            # el hecho de que la búsqueda sea chilena.
+            if not moneda_confirmada:
+                moneda = "CLP" if pais_default == "CL" else "USD"
             rating = None
             try:
                 rating = float(item.get("rating") or 0) or None
