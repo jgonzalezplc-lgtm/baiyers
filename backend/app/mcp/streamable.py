@@ -134,7 +134,8 @@ async def create_list(name: str, items: list[dict[str, Any]]) -> dict:
         nombre=str(item.get("nombre") or ""), cantidad=float(item.get("cantidad", 1)),
         unidad=str(item.get("unidad") or "unidad"), partida=item.get("partida"),
     ) for item in items]
-    return await asyncio.to_thread(service, get_supabase(), actor, name, normalized)
+    lista = await asyncio.to_thread(service, get_supabase(), actor, name, normalized)
+    return await _con_proceso(actor, lista.get("id"), lista)
 
 
 @mcp.tool(name="rename_list", description="Cambia el nombre de una lista Baiyer.")
@@ -315,8 +316,11 @@ async def start_web_quote(
     actor = await asyncio.to_thread(_actor, "quotes:write")
     from app.services.supabase import get_supabase
     from app.services.web_quote_service import start_web_quote as service
-    return await service(get_supabase(), actor, list_id=list_id, quote_id=cotizacion_id,
-                         idempotency_key=idempotency_key, expanded=False)
+    job = await service(get_supabase(), actor, list_id=list_id, quote_id=cotizacion_id,
+                        idempotency_key=idempotency_key, expanded=False)
+    # `list_id` puede venir vacío cuando se busca un ítem suelto; ahí el bloque
+    # se omite solo (`bloque_proceso` devuelve {} sin list_id).
+    return await _con_proceso(actor, list_id, job)
 
 
 @mcp.tool(
@@ -342,7 +346,7 @@ async def get_web_quote(job_id: str) -> dict:
     job = await asyncio.to_thread(service, get_supabase(), actor, job_id)
     if job.get("job_type") != "web_quote":
         raise ValueError("El job no corresponde a una búsqueda web")
-    return job
+    return await _con_proceso(actor, (job.get("input_data") or {}).get("list_id"), job)
 
 
 @mcp.tool(name="get_item_quotes", description="Obtiene ofertas web y privadas persistidas para un ítem.", annotations=ToolAnnotations(readOnlyHint=True))
@@ -358,7 +362,8 @@ async def get_list_coverage(list_id: str) -> dict:
     actor = await asyncio.to_thread(_actor, "quotes:read")
     from app.services.supabase import get_supabase
     from app.services.web_quote_service import get_list_coverage as service
-    return await asyncio.to_thread(service, get_supabase(), actor, list_id)
+    cobertura = await asyncio.to_thread(service, get_supabase(), actor, list_id)
+    return await _con_proceso(actor, list_id, cobertura)
 
 
 @mcp.tool(
