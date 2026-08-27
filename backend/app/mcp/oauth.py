@@ -95,10 +95,15 @@ def _cliente(client_id: str) -> Optional[dict]:
 
 
 def _validar_scopes(scope: str) -> list[str]:
-    scopes = list(dict.fromkeys(scope.split())) if scope.strip() else list(DEFAULT_SCOPES)
-    if any(item not in VALID_SCOPES for item in scopes):
+    solicitados = list(dict.fromkeys(scope.split())) if scope.strip() else []
+    if any(item not in VALID_SCOPES for item in solicitados):
         raise HTTPException(400, detail={"error": "invalid_scope"})
-    return scopes
+    # Todas las tools arrancan consultando identidad, listas y contexto de
+    # compra. Algunos clientes piden scopes parciales al reconectar y luego
+    # fallan antes de poder comenzar ese flujo. La base de lectura es parte
+    # del contrato del recurso MCP; los permisos adicionales siguen siendo
+    # exactamente los solicitados por el cliente.
+    return list(dict.fromkeys([*DEFAULT_SCOPES, *solicitados]))
 
 
 def _url_resultado(redirect_uri: str, parametros: dict[str, str]) -> str:

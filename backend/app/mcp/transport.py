@@ -307,19 +307,33 @@ async def revoke_connection(client_id: str, request: Request):
 
 @router.get("/audit")
 async def audit_log(request: Request, limit: int = 50):
-    """Get recent MCP tool call audit log."""
+    """Actividad del MCP Streamable para la pantalla de integraciones."""
     user_id = _user_id_para_ui(request)
 
     try:
         resp = (
-            SUPABASE.table("mcp_audit_log")
-            .select("*")
-            .eq("user_id", user_id)
-            .order("called_at", desc=True)
+            SUPABASE.table("mcp_tool_audit_log")
+            .select("id,tool_name,outcome,http_status,duration_ms,created_at")
+            .eq("actor_user_id", user_id)
+            .order("created_at", desc=True)
             .limit(limit)
             .execute()
         )
-        logs = resp.data or []
+        logs = [
+            {
+                "id": item["id"],
+                "tool_name": item["tool_name"],
+                "called_at": item["created_at"],
+                # La auditoría moderna no conserva payloads ni respuestas.
+                # Este resumen comunica el resultado sin exponer datos.
+                "result_preview": (
+                    f"{'Completada' if item.get('outcome') == 'success' else 'Con error'}"
+                    f" · {item.get('duration_ms', 0)} ms"
+                    + (f" · HTTP {item['http_status']}" if item.get("http_status") else "")
+                ),
+            }
+            for item in (resp.data or [])
+        ]
     except Exception:
         logs = []
 

@@ -74,7 +74,7 @@ def test_authorize_valido_guarda_request_opaco_y_redirige_al_frontend():
         {
             "client_id": "c1",
             "redirect_uri": redirect_uri,
-            "scope": "lists:read",
+            "scope": "lists:read quotes:read suppliers:read jobs:read data:read",
             "state": "state-valid",
             "code_challenge": "a" * 43,
             "code_challenge_method": "S256",
