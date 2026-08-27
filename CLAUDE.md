@@ -56,7 +56,7 @@ cd frontend && npx tsc --noEmit
 
 ## Arquitectura del backend (routers clave en `backend/app/routers/`)
 - `identificar.py` — IA (Gemini) separa el prompt en ítems, asigna **categoría por ítem**, genera términos ES/EN. Detecta proyectos (`es_proyecto`) → lista de materiales. Acepta `industria_empresa` como contexto.
-- `buscar.py` — orquesta búsqueda en paralelo: `_ml_query` (MercadoLibre), `_google_query` (→ Serper.dev si `SERPER_API_KEY`, sino SerpAPI), scrapers de tiendas, electrónica. `_marcar_relevancia` filtra basura. `/buscar` (batch) y `/buscar/stream` (SSE, lo usa el frontend). `/buscar/prefetch` para listas.
+- `buscar.py` — orquesta búsqueda en paralelo: `_ml_query` (MercadoLibre), `_google_query` (→ Serper.dev si `SERPER_API_KEY`, con failover a SerpAPI si Serper falla), scrapers de tiendas, electrónica. `_marcar_relevancia` filtra basura. `/buscar` (batch) y `/buscar/stream` (SSE, lo usa el frontend). `/buscar/prefetch` para listas.
 - `onboarding.py` — `investigar-empresa`: desde dominio o nombre, con Gemini + scraping, devuelve empresa/industria/país/logo/RUT/dirección/categorías. Además, sesión conversacional persistida (`POST /api/onboarding/sesion`, `/turno`, `/confirmar`, `/logo/candidato`, `/logo/subir`) — ver sección "Onboarding conversacional" más abajo.
 - `mail_templates.py` — API de plantillas de correo versionadas por organización (ver sección "Plantillas de correo" más abajo).
 - `contacto.py` + `services/contacto_scraper.py` — al cotizar, scrapea email + WhatsApp del proveedor y arma mensaje pre-hecho (`wa.me`).
@@ -451,7 +451,39 @@ proceso**, reusando `identificar_item()` y `BuscarRequest`/`_buscar_fuentes`/`_f
 - **Estado de conexión Gmail:** el dashboard debe consultar `/api/gmail/status`; no inferir la conexión desde `?gmail=conectado`, porque ese query param sólo existe inmediatamente después del callback OAuth. Al reconectar, conservar el `refresh_token` persistente si Google no devuelve uno nuevo.
 - **credentials.json** (OAuth Gmail) está **gitignored** — en prod se usan env vars `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`.
 - **SMTP:** Resend configurado en Supabase (dominio baiyer.cl verificado). Correos de auth (confirmación/recuperación) salen desde `no-reply@baiyer.cl`.
-- **Serper.dev** integrado (2.500 búsquedas gratis; `SERPER_API_KEY`). Prioriza sobre SerpAPI.
+- **Serper.dev** integrado (2.500 búsquedas gratis; `SERPER_API_KEY`). Prioriza sobre SerpAPI, y
+  **desde el 2026-08-27 cae a SerpAPI si Serper falla** (antes no: ver el gotcha siguiente).
+- **`SERP_API_KEY` y `SERPER_API_KEY` son servicios distintos y se confunden — costó una sesión
+  entera (2026-08-27).** `SERPER_API_KEY` es **Serper.dev**; `SERP_API_KEY` es **SerpAPI**, otra
+  empresa, otra cuenta, otra facturación. Se diferencian en una `E` y están a cinco líneas en el
+  `.env`. El usuario pegó tres veces seguidas su key nueva de Serper en `SERP_API_KEY` creyendo que
+  era la correcta; cada intento "no hacía nada" y parecía que Railway no propagaba la variable.
+  **Antes de diagnosticar, verificar a qué cuenta pertenece cada key**, que es gratis y no consume
+  cuota: `GET https://google.serper.dev/account` con header `X-API-KEY` devuelve
+  `{"balance": N}` — si `N` no coincide con lo que muestra el dashboard en el navegador, son
+  **cuentas distintas** y la key cargada no es la que se cree. Ojo también: los créditos de Serper
+  son **por cuenta, no por API key** — generar una key nueva en la misma cuenta no da créditos.
+- **Serper agotado dejaba a SerpAPI inalcanzable (corregido, commit `24dc343`).** `_google_query`
+  elegía proveedor por *si la key estaba configurada*, no por *si la llamada funcionó*: con
+  `SERPER_API_KEY` cargada pero saldo en cero (`HTTP 400 "Not enough credits"`), lanzaba
+  `FuenteCaida` y la rama de SerpAPI era inalcanzable. Como la categoría `informatica` no tiene
+  scrapers propios, al caerse Serper y MercadoLibre a la vez **cotizar notebooks devolvía cero
+  ofertas** y el comparador quedaba en $0 — que fue el síntoma reportado desde el MCP.
+- **`get_item_quotes` ordenaba mezclando monedas (corregido, commits `7f8769a` + `bfcaa07`).**
+  Ordenaba por `precio` crudo **en la base** y recién ahí aplicaba `limit`, así que el corte se
+  hacía antes de comparar: `US$365` ordenaba sobre `$1.199.990 CLP` y las 16 ofertas chilenas
+  guardadas ni llegaban a mostrarse (las 8 devueltas eran las 8 de EE.UU.). Ahora se traen hasta
+  `MAX_FILAS_A_ORDENAR` y se ordena en Python. **`moneda_confirmada` sola NO alcanza como criterio**
+  —error que se cometió en el primer intento y no cambió nada—: Serper Shopping devuelve links de
+  redirección de `google.com`, no el dominio de la tienda, así que `_origen_por_dominio` no deduce
+  nada y **todas** las ofertas quedan sin confirmar, las chilenas incluidas. El campo que sí
+  distingue es `pais`, que lo fija la variante de búsqueda (`gl=cl` vs `gl=us`). No se convierte a
+  una moneda común a propósito: no hay tipo de cambio en el backend y adivinarlo sería inventar un
+  precio.
+- **Las ofertas de Google Shopping traen ruido de modelo, no sólo de moneda.** En la corrida real
+  del 2026-08-27 aparecieron un "MacBook **Neo** 13" (producto inexistente), un "MacBook Air **M5**"
+  y un "ThinkPad **T14s**" cuando se pedía M4 y T14. El precio más bajo del listado suele ser otro
+  producto: **no presupuestar con el mínimo sin leer la descripción**.
 - **Rotación de secretos: CERRADA, no era un bloqueante (2026-08-25).** Hasta hoy este archivo pedía
   "rotar los secretos expuestos en capturas" y eso figuraba como bloqueante de seguridad #5. Al
   revisarlo con el usuario, **no hubo exposición**: las capturas nunca salieron de su máquina (no se
@@ -473,6 +505,11 @@ proceso**, reusando `identificar_item()` y `BuscarRequest`/`_buscar_fuentes`/`_f
     Orden siempre: crear la nueva → cargarla en Railway → verificar → recién ahí borrar la vieja.
   - Criterio para la próxima vez: una clave sólo se rota si se puede nombrar **dónde** se filtró. Rotar
     "por las dudas" tiene costo (ventana de corte, riesgo de error humano) y beneficio cero.
+  - **2026-08-27: ahora SÍ se puede nombrar el dónde, y hay que rotar.** El usuario compartió por
+    chat una captura de `backend/.env` completo, legible: `SUPABASE_SERVICE_KEY` (`sb_secret_…`),
+    `GEMINI_API_KEY` y `SERP_API_KEY`. Es exactamente el caso que este bloque decía que no había
+    ocurrido nunca. **`SUPABASE_SERVICE_KEY` es la prioritaria** (bypassea RLS y firma el `state` de
+    OAuth de correo). Pendiente al cierre de esa sesión: no se rotó ninguna.
 - **`mcp_jwt_secret` ya no existe** (borrado el 2026-08-25). Era un default hardcodeado en
   `config.py` (`"claria-mcp-secret-change-me-in-production"`) que **no usaba nadie**: los tokens MCP
   son opacos y se validan contra la DB desde la Fase 8 (`verify_mcp_token` → `token_service.load_token`),
@@ -480,6 +517,13 @@ proceso**, reusando `identificar_item()` y `BuscarRequest`/`_buscar_fuentes`/`_f
 
 ## Env vars
 - **Backend (Railway `baiyers`):** SUPABASE_URL, SUPABASE_SERVICE_KEY, GEMINI_API_KEY, SERPER_API_KEY, SERP_API_KEY, ANTHROPIC_API_KEY (vacío), ENVIRONMENT=production, CORS_ORIGINS (incluye baiyer.cl + railway), FRONTEND_URL=https://www.baiyer.cl, GOOGLE_CLIENT_ID/SECRET, GOOGLE_REDIRECT_URI.
+- **Estado real de las fuentes de búsqueda al 2026-08-27** (verificado contra las APIs, no leído del
+  `.env`): `SERPER_API_KEY` = cuenta nueva con 2.500 créditos, **funcionando en prod**.
+  `SERP_API_KEY` **tiene cargada una key de Serper, no de SerpAPI** — o sea el failover existe en el
+  código pero **hoy no tiene respaldo real detrás**; hay que sacar la key de `serpapi.com` y ponerla
+  ahí. `MELI_CLIENT_ID`/`MELI_CLIENT_SECRET` **siguen sin configurar**, así que MercadoLibre está
+  caído desde que cerró su API anónima (commit `0e23aba`) — es la fuente que más ofertas chilenas
+  aportaría y su ausencia es parte de por qué `informatica` depende de una sola fuente viva.
 - **Frontend (Railway `sweet-trust`):** NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_API_URL=https://baiyers-production.up.railway.app.
 
 ## Costos infra
