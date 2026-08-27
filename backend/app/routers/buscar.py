@@ -50,6 +50,9 @@ class BuscarRequest(BaseModel):
     user_id: Optional[str] = Field(default=None, max_length=100)
     incluir_proveedores_custom: bool = True
     busqueda_expandida: bool = False
+    # Lo llena `_buscar_fuentes`: qué devolvió cada fuente. No lo manda el
+    # cliente; viaja de vuelta para que una búsqueda vacía pueda explicarse.
+    diagnostico_fuentes: Optional[dict] = None
 
 
 def _fuentes_de_request(req: "BuscarRequest") -> set[str]:
@@ -116,6 +119,13 @@ _TLD_ORIGEN: dict[str, tuple[str, str]] = {
     ".co": ("CO", "COP"), ".mx": ("MX", "MXN"), ".br": ("BR", "BRL"),
     ".es": ("ES", "EUR"), ".uk": ("GB", "GBP"), ".cn": ("CN", "CNY"),
 }
+
+
+class FuenteCaida(Exception):
+    """Una fuente no pudo responder. Se propaga a propósito: los llamadores usan
+    `gather(return_exceptions=True)` y filtran por `isinstance(list)`, así que el
+    comportamiento degradado se conserva — pero ahora el motivo queda registrado
+    en el diagnóstico en vez de perderse en un `return []`."""
 
 
 def _origen_por_dominio(url: Optional[str]) -> tuple[Optional[str], Optional[str]]:
@@ -277,6 +287,8 @@ async def _serper_query(
             json={"q": query, "gl": gl, "hl": "es"},
             timeout=10.0,
         )
+        if resp.status_code != 200:
+            raise FuenteCaida(f"Serper HTTP {resp.status_code}: {resp.text[:100]}")
         data = resp.json()
         results = []
         for item in (data.get("shopping") or [])[:8]:
@@ -318,9 +330,11 @@ async def _serper_query(
                 "moneda_confirmada": moneda_confirmada,
             })
         return results
+    except FuenteCaida:
+        raise
     except Exception as e:
         print(f"[Serper gl={gl}] Error: {e}")
-        return []
+        raise FuenteCaida(f"Serper: {type(e).__name__}: {e}") from e
 
 
 async def _google_query(
@@ -343,6 +357,8 @@ async def _ml_query(termino: str, client: httpx.AsyncClient) -> list[dict]:
             params={"q": termino, "limit": 12},
             timeout=10.0,
         )
+        if resp.status_code != 200:
+            raise FuenteCaida(f"MercadoLibre HTTP {resp.status_code}: {resp.text[:100]}")
         data = resp.json()
         results = []
         for item in data.get("results", []):
@@ -389,9 +405,11 @@ async def _ml_query(termino: str, client: httpx.AsyncClient) -> list[dict]:
                 "precio_volumen": precio_volumen,
             })
         return results
+    except FuenteCaida:
+        raise
     except Exception as e:
         print(f"[MercadoLibre] Error: {e}")
-        return []
+        raise FuenteCaida(f"MercadoLibre: {type(e).__name__}: {e}") from e
 
 
 def _deduplicar(resultados: list[dict]) -> list[dict]:
@@ -559,7 +577,9 @@ async def _buscar_fuentes(req: BuscarRequest) -> list[dict]:
     # Todo en paralelo: un solo gather para minimizar latencia total
     async with httpx.AsyncClient() as client:
         tareas = [_ml_query(termino_es, client)]
+        nombres_tarea = ["mercadolibre"]
         if settings.serper_api_key or settings.serp_api_key:
+            nombres_tarea += ["google_cl_proveedor", "google_cl_precio", "google_us_supplier", "google_us_wholesale"]
             tareas += [
                 _google_query(f"{termino_es} proveedor Chile", client, gl="cl", pais_default="CL"),
                 _google_query(f"{termino_es} precio", client, gl="cl", pais_default="CL"),
@@ -588,6 +608,7 @@ async def _buscar_fuentes(req: BuscarRequest) -> list[dict]:
         for nombre, coro in especificas.items():
             if nombre in fuentes:
                 tareas.append(coro)
+                nombres_tarea.append(nombre)
             else:
                 coro.close()  # liberar la corrutina no usada
 
@@ -595,8 +616,15 @@ async def _buscar_fuentes(req: BuscarRequest) -> list[dict]:
         if req.incluir_proveedores_custom and req.user_id:
             cat_principal = (req.categorias[0] if req.categorias else None) or req.categoria
             tareas.append(proveedores_custom_para(req.user_id, cat_principal, req.nombre_item))
+            nombres_tarea.append("proveedores_custom")
 
         all_results = await asyncio.gather(*tareas, return_exceptions=True)
+
+    # Diagnóstico por fuente. Existe porque una fuente caída y una fuente sin
+    # resultados se veían EXACTAMENTE igual: cero mudo. El 2026-08-27,
+    # MercadoLibre devolvía 403 y Serper "sin créditos" desde hacía días, y
+    # cada búsqueda vacía se diagnosticaba como un problema de categoría.
+    req.diagnostico_fuentes = _diagnosticar(nombres_tarea, all_results)
 
     todos: list[dict] = []
     for lst in all_results:
@@ -605,6 +633,40 @@ async def _buscar_fuentes(req: BuscarRequest) -> list[dict]:
     cat = (req.categorias[0] if req.categorias else None) or req.categoria
     _marcar_relevancia(todos, req.nombre_item, cat)
     return _deduplicar(todos)
+
+
+def _diagnosticar(nombres: list[str], resultados: list) -> dict:
+    """Qué devolvió cada fuente: resultados, cero, o el error que la tumbó.
+
+    Sin esto una búsqueda vacía es indistinguible de una búsqueda rota, y ése
+    fue el costo real: días diagnosticando la categoría cuando lo que pasaba era
+    que MercadoLibre devolvía 403 y Serper se había quedado sin créditos.
+    """
+    por_fuente: dict[str, Any] = {}
+    for nombre, resultado in zip(nombres, resultados):
+        if isinstance(resultado, BaseException):
+            por_fuente[nombre] = {"estado": "error", "detalle": f"{type(resultado).__name__}: {resultado}"[:160]}
+        elif isinstance(resultado, list):
+            por_fuente[nombre] = {"estado": "ok" if resultado else "sin_resultados", "n": len(resultado)}
+        else:
+            por_fuente[nombre] = {"estado": "respuesta_inesperada"}
+
+    caidas = [n for n, d in por_fuente.items() if d["estado"] == "error"]
+    vacias = [n for n, d in por_fuente.items() if d["estado"] == "sin_resultados"]
+    resumen = {
+        "consultadas": len(por_fuente),
+        "con_resultados": sum(1 for d in por_fuente.values() if d["estado"] == "ok"),
+        "caidas": caidas,
+        "por_fuente": por_fuente,
+    }
+    if not resumen["con_resultados"]:
+        resumen["aviso"] = (
+            f"Ninguna de las {len(por_fuente)} fuentes devolvió resultados"
+            + (f"; {len(caidas)} falló(aron): {', '.join(caidas)}." if caidas
+               else f". Las {len(vacias)} respondieron vacío: puede ser que el término no exista "
+                    "en esas fuentes, o que una API haya dejado de responder en silencio.")
+        )
+    return resumen
 
 
 def _marcar_relevancia(resultados: list[dict], nombre_item: str, categoria: str | None) -> None:

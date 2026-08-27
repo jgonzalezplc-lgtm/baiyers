@@ -123,8 +123,13 @@ async def _run(job_id: str, actor: ApplicationActorContext) -> None:
             if current.get("status") == "cancelled": return
             ordered = [row for row in rows if row.get("precio") is not None] + [row for row in rows if row.get("precio") is None]
             await asyncio.to_thread(_guardar_supabase, quote["id"], ordered[:50])
-            summaries.append({"cotizacion_id": quote["id"], "nombre": request.nombre_item,
-                              "resultados": min(len(ordered), 50)})
+            resumen_item = {"cotizacion_id": quote["id"], "nombre": request.nombre_item,
+                            "resultados": min(len(ordered), 50)}
+            # Si no hubo resultados, el job debe decir POR QUÉ. Un cero mudo hace
+            # indistinguible "no existe el producto" de "la API está caída".
+            if not ordered and request.diagnostico_fuentes:
+                resumen_item["diagnostico"] = request.diagnostico_fuentes
+            summaries.append(resumen_item)
             progress = max(1, int(((index + 1) / len(quotes)) * 100))
             await asyncio.to_thread(update_job, sb, actor, job_id, status="running", progress=progress,
                                     output={"items": summaries})
