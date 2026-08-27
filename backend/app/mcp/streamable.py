@@ -87,6 +87,22 @@ mcp = FastMCP(
         "consultá get_purchase_context: dice en qué etapa está la compra, qué la bloquea y qué "
         "acciones corresponden ahora según el proceso de esta empresa.\n\n"
 
+        "CÓMO PRESENTAR UNA COTIZACIÓN. No resumas: mostrá los datos que las tools te "
+        "devolvieron.\n"
+        "1) Al menos 5 resultados encontrados por Baiyer, con proveedor, precio unitario CON SU "
+        "DIVISA ('21.190 CLP', nunca '21.190'), total por la cantidad pedida y de dónde salió el "
+        "resultado.\n"
+        "2) Si una oferta trae `moneda_confirmada: false`, marcala ahí mismo: la moneda no se pudo "
+        "verificar y el monto puede no ser comparable con precios locales.\n"
+        "3) Después, en una sección aparte: 'También puedes cotizar por correo con estos "
+        "proveedores', separando los del directorio de la empresa de los sugeridos por Baiyer, y "
+        "diciendo por qué calza cada uno.\n"
+        "4) Cerrá diciendo en qué etapa quedó la compra y cuál es el siguiente paso posible.\n\n"
+
+        "SÉ PROACTIVO. El usuario no conoce el proceso de compra; vos sí, porque "
+        "get_purchase_context te lo dice. Ofrecé el siguiente paso en vez de esperar a que lo "
+        "adivine, y no le hagas pedir dos veces lo mismo.\n\n"
+
         "Hacé lecturas y búsquedas sin pedir permiso. Pedí confirmación explícita sólo antes de lo "
         "que sale de la empresa: enviar un correo, elegir una oferta definitiva, solicitar una "
         "aprobación o emitir una OC.\n\n"
