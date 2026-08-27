@@ -225,13 +225,22 @@ export default function ConversacionDetallePage() {
                         ))}
                       </div>
                     )}
-                    {m.direction === "inbound" && !tienePropuesta && (
+                    {/* Antes esto era `!tienePropuesta`, así que el botón se
+                        escondía justo cuando más hacía falta: un correo mal
+                        interpretado SÍ genera propuestas, sólo que equivocadas.
+                        Pasó con la ampolleta del 2026-08-26, donde una segunda
+                        propuesta pisó $19.990 con $25.000 y no había forma de
+                        reprocesar desde la UI. */}
+                    {m.direction === "inbound" && (
                       <button
                         onClick={() => reprocesar(m.id)}
                         disabled={reprocesando === m.id}
                         style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 10, fontSize: 12, color: "var(--brand)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
                       >
-                        <RefreshCw size={12} strokeWidth={1.75} /> {reprocesando === m.id ? "Reprocesando…" : "Reprocesar este correo"}
+                        <RefreshCw size={12} strokeWidth={1.75} />
+                        {reprocesando === m.id
+                          ? "Reprocesando…"
+                          : tienePropuesta ? "Volver a interpretar este correo" : "Reprocesar este correo"}
                       </button>
                     )}
                   </>
