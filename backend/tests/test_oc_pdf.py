@@ -15,7 +15,7 @@ OC = {
     "nombre_item": "Ampolleta LED estándar E27 100W equivalente luz fría",
     "proveedor_nombre": "Joaquín González",
     "proveedor_email": "joaquin.gonzalez.pl@usach.cl",
-    "cantidad": 1, "precio_unitario": 19990.0, "moneda": "CLP",
+    "cantidad": 1, "unidad": "und", "precio_unitario": 19990.0, "moneda": "CLP",
     "subtotal": 19990.0, "iva": 3798.0, "total": 23788.0,
     "condiciones_pago": "transferencia", "plazo_entrega": "48h desde la recepción de la OC",
     "notas": None, "emisor_nombre": "Vital", "emisor_rut": "76.123.456-7",
@@ -93,3 +93,8 @@ def test_montos_cero_no_rompen():
     assert generar_pdf_oc({
         **OC, "precio_unitario": 0, "subtotal": 0, "iva": 0, "total": 0,
     }).startswith(b"%PDF-")
+
+
+@pytest.mark.parametrize("cantidad,unidad", [(5.0, "und"), (0.5, "kg"), (1.25, "m"), (2.75, "L")])
+def test_cantidades_decimales_y_unidad_no_rompen(cantidad, unidad):
+    assert generar_pdf_oc({**OC, "cantidad": cantidad, "unidad": unidad}).startswith(b"%PDF-")

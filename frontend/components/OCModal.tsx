@@ -14,6 +14,8 @@ interface Props {
   plan: string;
   /** Cantidad pre-cargada — la OC se envía por ese número de unidades. */
   cantidadInicial?: number;
+  /** Unidad del ítem de la lista (und, kg, m, L, etc.). */
+  unidadInicial?: string;
   listaId?: string;
   onClose: () => void;
   onEnviada: (numeroOc: string) => void;
@@ -44,9 +46,10 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-export default function OCModal({ resultado, nombreItem, cotizacionId, userId, plan, cantidadInicial, listaId, onClose, onEnviada }: Props) {
+export default function OCModal({ resultado, nombreItem, cotizacionId, userId, plan, cantidadInicial, unidadInicial, listaId, onClose, onEnviada }: Props) {
   const proveedorNombre = resultado.proveedor || resultado.titulo;
   const [cantidad, setCantidad] = useState(cantidadInicial ?? 1);
+  const [unidad, setUnidad] = useState(unidadInicial || "und");
   const [precioUnitario, setPrecioUnitario] = useState(resultado.precio ?? 0);
   const [moneda, setMoneda] = useState(resultado.moneda || "CLP");
   const [condicionesPago, setCondicionesPago] = useState("30 dias");
@@ -87,6 +90,7 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
           proveedor_nombre: proveedorNombre,
           proveedor_email: email || null,
           cantidad,
+          unidad: unidad.trim() || "und",
           precio_unitario: precioUnitario,
           moneda,
           condiciones_pago: condicionesPago,
@@ -192,19 +196,25 @@ export default function OCModal({ resultado, nombreItem, cotizacionId, userId, p
                 {resultado.precio && <span style={{ marginLeft: 12, color: "var(--success)", fontWeight: 600 }}>{fmt(resultado.precio, moneda)}</span>}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 90px", gap: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 100px 1fr 90px", gap: 12 }}>
                 <div>
                   <label style={labelStyle}>Cantidad</label>
                   <input
                     type="text"
-                    inputMode="numeric"
+                    inputMode="decimal"
                     value={cantidad === 0 ? "" : String(cantidad)}
                     onChange={e => {
-                      const digits = e.target.value.replace(/\D/g, "");
-                      setCantidad(digits === "" ? 0 : Number(digits));
+                      const value = e.target.value.replace(",", ".");
+                      if (/^\d*(?:\.\d{0,3})?$/.test(value)) {
+                        setCantidad(value === "" ? 0 : Number(value));
+                      }
                     }}
                     style={inputStyle}
                   />
+                </div>
+                <div>
+                  <label style={labelStyle}>Unidad</label>
+                  <input value={unidad} maxLength={30} onChange={e => setUnidad(e.target.value)} style={inputStyle} />
                 </div>
                 <div>
                   <label style={labelStyle}>Precio unitario</label>

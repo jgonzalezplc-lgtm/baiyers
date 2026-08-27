@@ -5,7 +5,7 @@ from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api_publica.auth import verificar_api_key
 from app.api_publica.rate_limiter import check_and_increment
@@ -21,7 +21,7 @@ API_INTERNAL = "http://localhost:8000"
 class EmitirOCRequest(BaseModel):
     cotizacion_id: str
     proveedor_id: str
-    cantidad: int
+    cantidad: float = Field(gt=0, multiple_of=0.001, allow_inf_nan=False)
     precio_unitario: int
     condiciones_pago: Optional[str] = "contado"
     plazo_entrega: Optional[str] = ""

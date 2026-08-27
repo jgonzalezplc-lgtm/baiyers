@@ -39,6 +39,7 @@ def prepare_purchase_order(sb, actor: ApplicationActorContext, list_id: str, quo
         "list_id": list_id, "cotizacion_id": quote_id, "resultado_id": result_id,
         "nombre_item": item.get("nombre"), "proveedor_nombre": result.get("proveedor_nombre"),
         "proveedor_email": result.get("proveedor_email"), "cantidad": float(item.get("cantidad") or 1),
+        "unidad": item.get("unidad") or "und",
         "precio_unitario": float(unit), "moneda": result.get("moneda_cotizada") or result.get("moneda") or "CLP",
         "condiciones_pago": result.get("condiciones_pago") or "30 días",
         "plazo_entrega": result.get("plazo_entrega") or "",
@@ -108,11 +109,15 @@ async def create_purchase_order(
                 ),
             })
     from app.routers.oc import CrearOCRequest, crear_oc
-    request = CrearOCRequest(**{key: payload[key] for key in (
+    request_data = {key: payload[key] for key in (
         "cotizacion_id", "resultado_id", "nombre_item", "proveedor_nombre",
         "proveedor_email", "cantidad", "precio_unitario", "moneda",
         "condiciones_pago", "plazo_entrega",
-    )}, notas=notes)
+    )}
+    # Los drafts previos a la migración no tenían unidad; siguen siendo OCs de
+    # unidades, pero cualquier draft nuevo conserva la unidad de la lista.
+    request_data["unidad"] = payload.get("unidad") or "und"
+    request = CrearOCRequest(**request_data, notas=notes)
     result = await crear_oc(request, actor.to_auth_context())
     commit_draft(sb, actor, draft_id, entity_type="purchase_order", entity_id=result["id"])
     # `list_id` viaja en la respuesta para que el llamador pueda pedir el estado

@@ -1295,6 +1295,7 @@ export default function ListaDetallePage() {
             userId={userId ?? ""}
             plan={plan}
             cantidadInicial={ocItem.cantidad || 1}
+            unidadInicial={ocItem.unidad || "und"}
             listaId={id}
             onClose={() => setOcItem(null)}
             onEnviada={(numeroOc: string) => {

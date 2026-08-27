@@ -178,9 +178,14 @@ def _tabla_item(pdf, ancho: float, oc: dict, moneda: str, subtotal: float) -> No
     pdf.set_text_color(*_TINTA)
     pdf.set_font("Helvetica", "", 9)
     cantidad = oc.get("cantidad")
+    unidad = oc.get("unidad") or "und"
+    try:
+        cantidad_texto = f"{float(cantidad):g} {unidad}"
+    except (TypeError, ValueError):
+        cantidad_texto = ""
     valores = (
         _texto(oc.get("nombre_item") or ""),
-        f"{cantidad:g}" if isinstance(cantidad, (int, float)) else "",
+        cantidad_texto,
         formatear_monto(float(oc.get("precio_unitario") or 0), moneda),
         formatear_monto(subtotal, moneda),
     )

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.services.auth_context import AuthContext, get_auth_context
 
@@ -62,7 +62,8 @@ class CrearOCRequest(BaseModel):
     nombre_item: str
     proveedor_nombre: str
     proveedor_email: Optional[str] = None
-    cantidad: float = 1
+    cantidad: float = Field(default=1, gt=0, multiple_of=0.001, allow_inf_nan=False)
+    unidad: str = Field(default="und", min_length=1, max_length=30)
     precio_unitario: float
     moneda: str = "CLP"
     condiciones_pago: str = "30 días"
@@ -79,7 +80,7 @@ class CrearOCRequest(BaseModel):
 # el correo a mano antes de poder enviarla.
 _CAMPOS_EXTRA_OC = (
     "nombre_item", "proveedor_nombre", "proveedor_email",
-    "cantidad", "precio_unitario", "notas", "lista_proyecto_id",
+    "cantidad", "unidad", "precio_unitario", "notas", "lista_proyecto_id",
     "direccion_despacho", "emisor_nombre", "emisor_rut", "emisor_direccion",
 )
 
@@ -176,6 +177,7 @@ def _generar_pdf_desde_fila(fila: dict, ctx: AuthContext) -> bytes:
         "proveedor_nombre": fila.get("proveedor_nombre"),
         "proveedor_email": fila.get("proveedor_email"),
         "cantidad": cantidad,
+        "unidad": fila.get("unidad") or "und",
         "precio_unitario": unitario if unitario is not None else (subtotal / cantidad if cantidad else 0),
         "moneda": fila.get("moneda") or "CLP",
         "subtotal": subtotal,
@@ -252,6 +254,7 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
         "proveedor_nombre": req.proveedor_nombre[:200],
         "proveedor_email": req.proveedor_email,
         "cantidad": req.cantidad,
+        "unidad": req.unidad.strip(),
         "precio_unitario": req.precio_unitario,
         "notas": req.notas,
         "direccion_despacho": _texto_despacho(despacho) or None,
@@ -299,6 +302,7 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
         "proveedor_nombre": fila.get("proveedor_nombre"),
         "proveedor_email": fila.get("proveedor_email"),
         "cantidad": fila.get("cantidad"),
+        "unidad": fila.get("unidad") or "und",
         "precio_unitario": fila.get("precio_unitario"),
         # Presente sólo si algo no se pudo persistir; el cliente puede avisar en
         # vez de descubrirlo al fallar el envío.

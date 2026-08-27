@@ -8,6 +8,7 @@ export interface OCData {
   proveedor_nombre: string;
   proveedor_email?: string | null;
   cantidad: number;
+  unidad?: string | null;
   precio_unitario: number;
   moneda: string;
   subtotal: number;
@@ -71,6 +72,10 @@ function fmt(n: number, moneda: string) {
   return `${moneda} ${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function fmtCantidad(cantidad: number, unidad?: string | null) {
+  return `${Number(cantidad.toFixed(3)).toString()} ${unidad || "und"}`;
+}
+
 export default function OCPDFTemplate({ oc }: { oc: OCData }) {
   const emisorNombre = oc.emisor_nombre || "Baiyer";
 
@@ -118,7 +123,7 @@ export default function OCPDFTemplate({ oc }: { oc: OCData }) {
         </View>
         <View style={s.tableRowAlt}>
           <Text style={[{ fontSize: 10, color: "#1e293b" }, s.col1]}>{oc.nombre_item}</Text>
-          <Text style={[{ fontSize: 10, color: "#1e293b", textAlign: "center" }, s.col2]}>{oc.cantidad}</Text>
+          <Text style={[{ fontSize: 10, color: "#1e293b", textAlign: "center" }, s.col2]}>{fmtCantidad(oc.cantidad, oc.unidad)}</Text>
           <Text style={[{ fontSize: 10, color: "#1e293b", textAlign: "right" }, s.col3]}>{fmt(oc.precio_unitario, oc.moneda)}</Text>
           <Text style={[{ fontSize: 10, color: "#1e293b", textAlign: "right" }, s.col4]}>{fmt(oc.subtotal, oc.moneda)}</Text>
         </View>

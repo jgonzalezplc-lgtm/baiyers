@@ -19,7 +19,7 @@ from app.routers.oc import _CAMPOS_EXTRA_OC, _es_columna_inexistente, _insertar_
 FILA = {
     "numero_oc": "OC-2026-0008", "estado": "borrador", "precio_total": 23788.0,
     "nombre_item": "Ampolleta LED E27 100W", "proveedor_nombre": "Joaquín González",
-    "proveedor_email": "joaquin.gonzalez.pl@usach.cl", "cantidad": 1,
+    "proveedor_email": "joaquin.gonzalez.pl@usach.cl", "cantidad": 1, "unidad": "und",
     "precio_unitario": 19990.0, "notas": None, "lista_proyecto_id": "lista-1",
     "direccion_despacho": "Bodega Central, Maipú",
     "emisor_nombre": "Vital", "emisor_rut": "76.123.456-7",
