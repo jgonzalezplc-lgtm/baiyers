@@ -461,6 +461,37 @@ async def get_purchase_context(list_id: str) -> dict:
     return await asyncio.to_thread(obtener_contexto_compra, get_supabase(), actor, list_id)
 
 
+@mcp.tool(
+    name="get_workflow",
+    description=(
+        "El ciclo de compras configurado por la empresa: etapas del canvas, roles y quién cumple "
+        "cada uno. Si no hay ninguno, o si existe pero el motor no lo está usando, lo dice en "
+        "`aviso` y devuelve el link para configurarlo en `configurar_en`."
+    ),
+    annotations=ToolAnnotations(readOnlyHint=True),
+)
+async def get_workflow() -> dict:
+    actor = await asyncio.to_thread(_actor, "lists:read")
+    from app.services.workflow_lectura import workflow_activo
+    return await asyncio.to_thread(workflow_activo, actor)
+
+
+@mcp.tool(
+    name="get_rollout_status",
+    description=(
+        "Qué motor gobierna las compras nuevas: el grafo de la empresa ('unified') o el flujo fijo "
+        "('legacy', el default). Consultala cuando el usuario pregunte por su proceso: una empresa "
+        "puede tener el ciclo dibujado y validado y aun así NO estar usándolo. Cambiar de motor no "
+        "se hace por MCP; `configurar_en` trae el link."
+    ),
+    annotations=ToolAnnotations(readOnlyHint=True),
+)
+async def get_rollout_status() -> dict:
+    actor = await asyncio.to_thread(_actor, "lists:read")
+    from app.services.workflow_lectura import estado_rollout
+    return await asyncio.to_thread(estado_rollout, actor)
+
+
 @mcp.tool(name="suggest_suppliers", description="Sugiere proveedores explicables para cada ítem de una lista.", annotations=ToolAnnotations(readOnlyHint=True))
 async def suggest_suppliers(list_id: str) -> dict:
     actor = await asyncio.to_thread(_actor, "suppliers:read")

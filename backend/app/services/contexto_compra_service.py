@@ -56,7 +56,30 @@ def obtener_contexto_compra(
             completadas=grafo["completadas"], pendientes=grafo["pendientes"],
             transiciones=grafo["transiciones"], aprobaciones=grafo["aprobaciones"],
         )
-    return construir_contexto(list_id, senales)
+
+    contexto = construir_contexto(list_id, senales)
+    # `origen: "derivado"` a secas no explica nada. Si la empresa TIENE su ciclo
+    # dibujado y validado pero el motor está en `legacy`, el grafo no gobierna y
+    # nadie se entera: las autorizaciones salen al correo fijo de configuración,
+    # no a los responsables del canvas.
+    aviso = _aviso_de_motor(actor)
+    if aviso:
+        contexto["aviso"] = aviso["aviso"]
+        contexto["configurar_en"] = aviso.get("configurar_en")
+    return contexto
+
+
+def _aviso_de_motor(actor: ApplicationActorContext) -> Optional[dict[str, Any]]:
+    """Por qué la etapa es derivada y no viene del proceso real. Nunca lanza: es
+    una explicación, no puede tumbar el contexto."""
+    try:
+        from app.services.workflow_lectura import estado_rollout
+
+        estado = estado_rollout(actor)
+        return estado if estado.get("aviso") else None
+    except Exception as e:
+        print(f"[ContextoCompra] no se pudo explicar el motor: {type(e).__name__}: {e}")
+        return None
 
 
 def bloque_proceso(
