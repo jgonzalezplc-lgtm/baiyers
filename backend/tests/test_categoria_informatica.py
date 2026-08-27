@@ -75,3 +75,37 @@ def test_el_prompt_desaconseja_industrial_como_cajon_de_sastre():
 
     fuente = Path("app/routers/identificar.py").read_text()
     assert "cajón de sastre" in fuente
+
+
+# ─── Ampliar no puede significar "preguntale a todos" ────────────────────────
+# Caso real (2026-08-27): con la categoría ya bien asignada (`informatica`), la
+# búsqueda AMPLIADA la descartaba y consultaba las 16 fuentes industriales.
+# Devolvió 24 resultados: interruptores, cámaras y material eléctrico.
+
+from app.routers.buscar import BuscarRequest, _fuentes_de_request  # noqa: E402
+
+
+def _fuentes(categoria, *, ampliada):
+    return _fuentes_de_request(BuscarRequest(
+        descripcion="x", cotizacion_id="c1", categoria=categoria,
+        busqueda_expandida=ampliada,
+    ))
+
+
+@pytest.mark.parametrize("categoria", ["informatica", "insumos_medicos"])
+def test_ampliar_no_agrega_ruido_industrial(categoria):
+    """Sin fuentes especializadas para el rubro, sumar las 16 industriales no
+    aporta un solo resultado relevante."""
+    assert _fuentes(categoria, ampliada=True) == set()
+
+
+def test_ampliar_si_abre_el_abanico_en_una_categoria_con_fuentes():
+    """Ése es el propósito de ampliar y no se rompe."""
+    normal = _fuentes("construccion", ampliada=False)
+    ampliada = _fuentes("construccion", ampliada=True)
+    assert normal < ampliada
+    assert "dartel" in ampliada and "dartel" not in normal
+
+
+def test_sin_categoria_ampliar_consulta_todo():
+    assert _fuentes(None, ampliada=True) == TODAS_ESPECIFICAS

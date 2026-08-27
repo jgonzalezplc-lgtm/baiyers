@@ -54,9 +54,22 @@ class BuscarRequest(BaseModel):
 
 def _fuentes_de_request(req: "BuscarRequest") -> set[str]:
     from app.services.categoria_mapper import fuentes_para_categoria
-    if req.busqueda_expandida:
-        return fuentes_para_categoria(None)
+
     cats = [c for c in (req.categorias or []) if c] or ([req.categoria] if req.categoria else [])
+
+    if req.busqueda_expandida:
+        # Ampliar significa "buscá en más lados", no "preguntale a todos". Para
+        # una categoría que a propósito NO tiene fuentes especializadas
+        # (informática, insumos médicos), sumar las 16 industriales no agrega un
+        # solo resultado relevante: agrega ruido.
+        #
+        # Pasó de verdad el 2026-08-27: una búsqueda ampliada de monitores trajo
+        # 24 resultados —interruptores, cámaras y material eléctrico— porque
+        # descartaba la categoría y consultaba Mouser, Dartel y las madereras.
+        if cats and all(not fuentes_para_categoria(c) for c in cats):
+            return set()
+        return fuentes_para_categoria(None)
+
     if not cats:
         return fuentes_para_categoria(None)
     fuentes: set[str] = set()
