@@ -351,12 +351,30 @@ async def _google_query(
 
 
 async def _ml_query(termino: str, client: httpx.AsyncClient) -> list[dict]:
+    from app.services.mercadolibre_auth import (
+        SinCredencialesMeli, invalidar_cache, obtener_token,
+    )
     try:
-        resp = await client.get(
-            "https://api.mercadolibre.com/sites/MLC/search",
-            params={"q": termino, "limit": 12},
-            timeout=10.0,
-        )
+        try:
+            token = await obtener_token(client)
+        except SinCredencialesMeli as e:
+            # No es un fallo transitorio: reintentar no sirve, hay que configurar.
+            raise FuenteCaida(str(e)) from e
+
+        async def pedir(bearer: str):
+            return await client.get(
+                "https://api.mercadolibre.com/sites/MLC/search",
+                params={"q": termino, "limit": 12},
+                headers={"Authorization": f"Bearer {bearer}"},
+                timeout=10.0,
+            )
+
+        resp = await pedir(token)
+        if resp.status_code == 401:
+            # El token pudo revocarse antes de su expiración nominal: se pide uno
+            # nuevo y se reintenta UNA vez, no en bucle.
+            invalidar_cache()
+            resp = await pedir(await obtener_token(client))
         if resp.status_code != 200:
             raise FuenteCaida(f"MercadoLibre HTTP {resp.status_code}: {resp.text[:100]}")
         data = resp.json()

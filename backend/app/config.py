@@ -7,6 +7,12 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     serp_api_key: str = ""
     serper_api_key: str = ""   # Serper.dev (alternativa más barata a SerpAPI)
+    # MercadoLibre cerró su API de búsqueda anónima en 2025 (403 forbidden).
+    # App en developers.mercadolibre.cl. `meli_refresh_token` sólo hace falta si
+    # el grant client_credentials no sirve para la API de búsqueda.
+    meli_client_id: str = ""
+    meli_client_secret: str = ""
+    meli_refresh_token: str = ""
     anthropic_api_key: str = ""
     environment: str = "development"
     # Si no se define, los jobs automáticos sólo corren en producción. Esto
