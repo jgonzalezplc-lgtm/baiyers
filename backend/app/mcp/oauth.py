@@ -378,17 +378,11 @@ async def token(
     else:
         raise HTTPException(400, detail={"error": "unsupported_grant_type"})
 
-    # Persist connection summary without storing raw credentials.
+    # Persist connection summary without storing raw credentials. El verifier
+    # también lo hace al usar un token preexistente (backfill automático).
     try:
-        access_token = response["access_token"]
-        SUPABASE.table("mcp_connections").upsert({
-            "user_id": user_id,
-            "client_id": client_id,
-            "scopes": scopes,
-            "token_hash": hashlib.sha256(access_token.encode()).hexdigest()[:16],
-            "connected_at": datetime.now(timezone.utc).isoformat(),
-            "last_used_at": datetime.now(timezone.utc).isoformat(),
-        }, on_conflict="user_id,client_id").execute()
+        from app.mcp.token_service import registrar_conexion
+        registrar_conexion(user_id, client_id, scopes, response["access_token"])
     except Exception:
         pass  # Don't fail token exchange if DB write fails
 

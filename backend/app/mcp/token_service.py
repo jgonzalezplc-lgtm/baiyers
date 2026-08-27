@@ -23,6 +23,29 @@ def _iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat()
 
 
+def registrar_conexion(
+    user_id: str,
+    client_id: str,
+    scopes: list[str],
+    access_token: str,
+) -> None:
+    """Guarda el resumen visible de una conexión OAuth MCP.
+
+    El registro es derivado de un token válido, por lo que también se actualiza
+    al usar una sesión emitida antes de que existiera ``mcp_connections``.
+    Nunca se almacena el token en claro.
+    """
+    ahora = _iso(datetime.now(timezone.utc))
+    get_supabase().table("mcp_connections").upsert({
+        "user_id": user_id,
+        "client_id": client_id,
+        "scopes": scopes,
+        "token_hash": token_hash(access_token)[:16],
+        "connected_at": ahora,
+        "last_used_at": ahora,
+    }, on_conflict="user_id,client_id").execute()
+
+
 def issue_token_pair(user_id: str, organization_id: str, client_id: str, scopes: list[str], resource: str) -> dict:
     sb = get_supabase()
     now = datetime.now(timezone.utc)
@@ -107,10 +130,13 @@ class BaiyerTokenVerifier:
         if not row or row.get("resource") != settings.mcp_resource_url:
             return None
         try:
+            ahora = _iso(datetime.now(timezone.utc))
             get_supabase().table("mcp_oauth_tokens").update({
-                "last_used_at": _iso(datetime.now(timezone.utc))
+                "last_used_at": ahora
             }).eq("id", row["id"]).execute()
+            registrar_conexion(row["user_id"], row["client_id"], row.get("scopes") or [], token)
         except Exception:
+            # El acceso MCP no debe caerse si falla sólo el resumen de UI.
             pass
         expires_at = int(datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00")).timestamp())
         return AccessToken(
