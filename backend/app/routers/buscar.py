@@ -340,11 +340,27 @@ async def _serper_query(
 async def _google_query(
     query: str, client: httpx.AsyncClient, gl: str = "cl", pais_default: str = "CL"
 ) -> list[dict]:
-    """Búsqueda web/shopping en Google: usa Serper.dev si está configurado
-    (más barato), sino SerpAPI. Si no hay ninguna key, devuelve []."""
+    """Búsqueda web/shopping en Google: prefiere Serper.dev (más barato) y cae a
+    SerpAPI si Serper no responde. Si no hay ninguna key, devuelve [].
+
+    El failover mira si la llamada FUNCIONÓ, no si la key existe. Antes bastaba
+    con tener `SERPER_API_KEY` cargada para que SerpAPI quedara inalcanzable: al
+    agotarse el cupo gratis de Serper (`HTTP 400 "Not enough credits"`) la fuente
+    lanzaba `FuenteCaida` y la búsqueda devolvía cero, con SerpAPI intacto al
+    lado. Eso dejó sin precios a toda la categoría `informatica` —que no tiene
+    scrapers propios y depende sólo de las genéricas— hasta que se notó por el
+    diagnóstico por fuente. Caso real del 2026-08-27.
+    """
     from app.config import settings
     if settings.serper_api_key:
-        return await _serper_query(query, settings.serper_api_key, client, gl, pais_default)
+        try:
+            return await _serper_query(query, settings.serper_api_key, client, gl, pais_default)
+        except FuenteCaida as e:
+            if not settings.serp_api_key:
+                raise
+            # Serper caído pero hay respaldo: se registra y se sigue. Si SerpAPI
+            # también falla, su FuenteCaida sube y el diagnóstico la muestra.
+            print(f"[google gl={gl}] Serper caído ({e}); cayendo a SerpAPI.")
     if settings.serp_api_key:
         return await _serp_query(query, settings.serp_api_key, client, gl, pais_default)
     return []
