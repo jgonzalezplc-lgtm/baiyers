@@ -517,7 +517,17 @@ async def get_rollout_status() -> dict:
     return await asyncio.to_thread(estado_rollout, actor)
 
 
-@mcp.tool(name="suggest_suppliers", description="Sugiere proveedores explicables para cada ítem de una lista.", annotations=ToolAnnotations(readOnlyHint=True))
+@mcp.tool(
+    name="suggest_suppliers",
+    description=(
+        "Proveedores candidatos por ítem, en DOS listas separadas: `del_directorio` (con los que "
+        "la empresa ya trabaja) y `sugeridos_por_baiyer` (del banco global). Cada uno trae `motivo` "
+        "explicando por qué calza. Mostrá las dos por separado y trasladá `pregunta_al_usuario` "
+        "tal cual: es el punto donde el flujo pasa de leer a escribirle a un tercero. No selecciona "
+        "ni envía nada."
+    ),
+    annotations=ToolAnnotations(readOnlyHint=True),
+)
 async def suggest_suppliers(list_id: str) -> dict:
     actor = await asyncio.to_thread(_actor, "suppliers:read")
     from app.services.rfq_mcp_service import suggest_suppliers as service

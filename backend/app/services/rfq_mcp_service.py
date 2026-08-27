@@ -29,8 +29,15 @@ async def suggest_suppliers(actor: ApplicationActorContext, list_id: str) -> dic
 
     detail = await detalle_lista(list_id, actor.to_auth_context())
     items = []
+    total_directorio = 0
     for item in detail.get("items", []):
         recommendations = item.get("proveedores_recomendados") or []
+        # Las dos listas van SEPARADAS, no aplanadas: "ya trabajo con ellos" y
+        # "Baiyer los propone" son cosas distintas para quien decide a quién
+        # cotizar, y antes el cliente tenía que deducirlo del campo `origen`.
+        del_directorio = [_proveedor(p) for p in recommendations if p.get("origen") == "proveedor"]
+        sugeridos = [_proveedor(p) for p in recommendations if p.get("origen") != "proveedor"]
+        total_directorio += len(del_directorio)
         items.append({
             "cotizacion_id": item.get("cotizacion_id"),
             "nombre": item.get("nombre"),
@@ -38,9 +45,52 @@ async def suggest_suppliers(actor: ApplicationActorContext, list_id: str) -> dic
             "unidad": item.get("unidad") or "un",
             "categoria": item.get("categoria") or "otro",
             "n_candidatos": len(recommendations),
+            "del_directorio": del_directorio,
+            "sugeridos_por_baiyer": sugeridos,
+            # Se conserva la lista plana: había clientes leyéndola.
             "proveedores_recomendados": recommendations,
         })
-    return {"list_id": list_id, "items": items}
+
+    hay_candidatos = any(item["n_candidatos"] for item in items)
+    salida = {
+        "list_id": list_id,
+        "items": items,
+        "resumen": {
+            "items": len(items),
+            "items_sin_candidatos": sum(1 for i in items if not i["n_candidatos"]),
+            "proveedores_del_directorio": total_directorio,
+        },
+    }
+    if hay_candidatos:
+        # La pregunta viaja como dato y no como prosa del modelo: es el punto
+        # donde el flujo pasa de leer a escribirle a un tercero, y quien decide
+        # eso es una persona.
+        salida["pregunta_al_usuario"] = "¿Envío los correos cotizando a estos proveedores?"
+        salida["antes_de_enviar"] = (
+            "Ningún correo sale de acá. `prepare_rfq` arma los borradores para revisarlos y "
+            "`send_rfq` los envía, y ése exige confirmación explícita."
+        )
+    else:
+        salida["aviso"] = (
+            "Ningún ítem tiene proveedores candidatos. Podés agregar proveedores al directorio "
+            "con create_supplier, o revisar la categoría de los ítems."
+        )
+    return salida
+
+
+def _proveedor(p: dict) -> dict:
+    """Forma mínima y explicada de un candidato: quién es, por qué calza y si ya
+    está elegido. `motivo` es lo que evita que el cliente tenga que inventarlo."""
+    return {
+        "id": p.get("id"),
+        "nombre": p.get("nombre"),
+        "email": p.get("email"),
+        "origen_label": p.get("origen_label"),
+        "motivo": p.get("match_label"),
+        "score": p.get("match_score"),
+        "sitio_web": p.get("sitio_web"),
+        "seleccionado": bool(p.get("seleccionado")),
+    }
 
 
 async def select_supplier_for_item(
