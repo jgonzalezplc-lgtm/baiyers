@@ -82,10 +82,10 @@ mcp = FastMCP(
         "los proveedores de esta empresa y guarda su historial: no busques por fuera lo que estas "
         "tools pueden responder, ni traigas precios de otra fuente sin decir de dónde salieron.\n\n"
 
-        "Punto de partida: preview_document_import si el usuario adjuntó un archivo, "
-        "create_list + start_web_quote para una necesidad escrita. Antes de proponer o ejecutar "
-        "un paso, consultá get_purchase_context: dice en qué etapa está la compra, qué la "
-        "bloquea y qué acciones corresponden ahora según el proceso de esta empresa.\n\n"
+        "Punto de partida: quote_project para una cotización o proyecto que ya existe, "
+        "quote_new_project para una necesidad nueva. Antes de proponer o ejecutar un paso, "
+        "consultá get_purchase_context: dice en qué etapa está la compra, qué la bloquea y qué "
+        "acciones corresponden ahora según el proceso de esta empresa.\n\n"
 
         "Hacé lecturas y búsquedas sin pedir permiso. Pedí confirmación explícita sólo antes de lo "
         "que sale de la empresa: enviar un correo, elegir una oferta definitiva, solicitar una "
@@ -109,6 +109,48 @@ mcp = FastMCP(
         allowed_origins=[value.strip() for value in settings.mcp_allowed_origins.split(",") if value.strip()],
     ),
 )
+
+
+@mcp.tool(
+    name="quote_project",
+    description=(
+        "Flujo principal para cotizar una lista o proyecto existente: busca primero en internet y, si termina "
+        "durante la llamada, devuelve por ítem hasta varias ofertas, la mejor alternativa CLP y el total estimado. "
+        "También propone proveedores confiables/recomendados de Baiyer para una RFQ futura, sin preparar ni enviar correos. "
+        "Úsala antes que las tools granulares cuando el usuario pregunta por cotizaciones en curso o pide cotizar un proyecto ya creado."
+    ),
+)
+async def quote_project(
+    list_id: str, idempotency_key: str, wait_seconds: int = 12, offers_per_item: int = 3,
+) -> dict:
+    actor = await asyncio.to_thread(_actor, "quotes:write")
+    from app.services.mcp_quote_workflow import quote_existing_list
+    from app.services.supabase import get_supabase
+    return await quote_existing_list(
+        get_supabase(), actor, list_id=list_id, idempotency_key=idempotency_key,
+        wait_seconds=wait_seconds, offers_per_item=offers_per_item,
+    )
+
+
+@mcp.tool(
+    name="quote_new_project",
+    description=(
+        "Inicia una cotización nueva desde una descripción de proyecto: identifica los ítems, crea una lista de cotización "
+        "si los datos están completos, busca precios web y devuelve alternativas por ítem y total estimado. "
+        "No envía correos ni selecciona proveedores; si faltan datos, devuelve sólo las preguntas imprescindibles."
+    ),
+)
+async def quote_new_project(
+    description: str, idempotency_key: str, name: Optional[str] = None, industry: Optional[str] = None,
+    wait_seconds: int = 12, offers_per_item: int = 3,
+) -> dict:
+    actor = await asyncio.to_thread(_actor, "quotes:write")
+    from app.services.mcp_quote_workflow import quote_new_project as service
+    from app.services.supabase import get_supabase
+    return await service(
+        get_supabase(), actor, description=description, idempotency_key=idempotency_key,
+        name=name, industry=industry, wait_seconds=wait_seconds, offers_per_item=offers_per_item,
+    )
 
 
 @mcp.tool(

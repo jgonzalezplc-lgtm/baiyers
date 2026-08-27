@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Trash2, CheckCircle2, XCircle, Link2, Mail } from "lucide-react";
+import { ArrowLeft, Trash2, CheckCircle2, XCircle, Link2, Mail, GitBranch } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/authFetch";
 import { BtnPrimary, BtnSecondary, Card, SkeletonBox, CascadeWrapper } from "@/components/ui";
@@ -745,6 +745,13 @@ export default function CanvasWorkflowPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {/* El motor que ejecuta este ciclo (unificado o legado) se elige acá y ya no
+              en /settings: es una propiedad del ciclo, no de la cuenta. */}
+          <BtnSecondary onClick={() => router.push("/settings/rollout")}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <GitBranch size={15} strokeWidth={1.75} /> Motor de ejecución
+            </span>
+          </BtnSecondary>
           <BtnSecondary onClick={() => setNodos(prev => ordenarPorNiveles(prev, conexiones))} disabled={guardando}>Ordenar automáticamente</BtnSecondary>
           <BtnSecondary onClick={validar} disabled={guardando}>Validar</BtnSecondary>
           {workflow.estado === "activo" ? (

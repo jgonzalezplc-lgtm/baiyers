@@ -71,6 +71,7 @@ def test_initialize_y_tools_list_usan_jsonrpc_estandar(client, monkeypatch):
     names = {tool["name"] for tool in tools.json()["result"]["tools"]}
     assert {
         "baiyer_status", "list_lists", "get_list", "create_list", "rename_list",
+        "quote_project", "quote_new_project",
         "add_list_items", "update_list_item", "remove_list_item",
         "start_project_intake", "continue_project_intake", "commit_project_intake",
         "preview_document_import", "commit_document_import",
