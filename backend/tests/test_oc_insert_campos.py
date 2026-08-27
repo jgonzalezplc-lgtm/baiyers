@@ -22,6 +22,8 @@ FILA = {
     "proveedor_email": "joaquin.gonzalez.pl@usach.cl", "cantidad": 1,
     "precio_unitario": 19990.0, "notas": None, "lista_proyecto_id": "lista-1",
     "direccion_despacho": "Bodega Central, Maipú",
+    "emisor_nombre": "Vital", "emisor_rut": "76.123.456-7",
+    "emisor_direccion": "Av. Providencia 1234",
 }
 
 

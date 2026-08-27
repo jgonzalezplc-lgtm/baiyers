@@ -15,8 +15,24 @@ from app.services.mcp_context import ApplicationActorContext
 from app.services.supabase import ejecutar_maybe_single
 
 # Estados de conversación que significan "una persona tiene que mirar esto".
-_ESTADOS_REVISION = ("human_review_required", "clarification_required")
-_ESTADOS_RESPONDIDA = ("supplier_replied", "partially_answered", "complete", "closed", "compra_iniciada")
+# Dos motivos distintos de revisión humana, con causas y salidas distintas:
+#   - conflicto: el correo trajo más de un precio para el mismo ítem y hay que elegir.
+#   - ambigua:   la extracción no pudo interpretar el correo (modelo caído, timeout,
+#                respuesta poco clara). No hay nada que elegir todavía.
+# Estaban juntos y el aviso hablaba de "más de un precio" en los dos casos, que es
+# falso —y engañoso— para el segundo. Se vio con datos reales: la lista del WC
+# estaba en `clarification_required` por un timeout del extractor.
+_ESTADOS_CONFLICTO = ("human_review_required",)
+_ESTADOS_AMBIGUA = ("clarification_required",)
+
+# Estados que implican que el proveedor YA escribió. Incluye los dos de revisión:
+# una conversación que necesita mirada humana la necesita PORQUE llegó una
+# respuesta. Sin esto la etapa se quedaba en "esperando cotizaciones" con la
+# respuesta ya en la bandeja.
+_ESTADOS_RESPONDIDA = (
+    "supplier_replied", "partially_answered", "complete", "closed", "compra_iniciada",
+    *_ESTADOS_CONFLICTO, *_ESTADOS_AMBIGUA,
+)
 
 
 def obtener_contexto_compra(
@@ -93,7 +109,8 @@ def _leer_senales(sb, actor: ApplicationActorContext, lista: dict) -> Senales:
         rfq_preparadas=_contar(sb, "rfq_batches", lista_id, "estado", ["draft", "ready_to_send"]),
         rfq_enviadas=_contar(sb, "rfq_batches", lista_id, "estado", ["sent", "sending", "delivery_uncertain"]),
         respuestas_recibidas=_contar(sb, "gmail_conversations", lista_id, "estado", list(_ESTADOS_RESPONDIDA)),
-        conversaciones_en_revision=_contar(sb, "gmail_conversations", lista_id, "estado", list(_ESTADOS_REVISION)),
+        conversaciones_en_conflicto=_contar(sb, "gmail_conversations", lista_id, "estado", list(_ESTADOS_CONFLICTO)),
+        conversaciones_ambiguas=_contar(sb, "gmail_conversations", lista_id, "estado", list(_ESTADOS_AMBIGUA)),
         definitivos=len(definitivos),
         definitivos_sin_precio=sum(
             1 for d in definitivos.values()

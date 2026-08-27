@@ -55,9 +55,23 @@ def test_lista_vacia_no_se_declara_lista_para_autorizar():
 
 def test_precios_en_conflicto_bloquea():
     """El caso del correo con $19.990 y $25.000 para el mismo ítem."""
-    bloqueos = derivar_bloqueos(s(conversaciones_en_revision=1), "comparacion")
+    bloqueos = derivar_bloqueos(s(conversaciones_en_conflicto=1), "comparacion")
     assert [b["codigo"] for b in bloqueos] == ["precios_en_conflicto"]
-    assert bloqueos[0]["accion"] == "get_supplier_reply"
+    assert bloqueos[0]["accion"] == "get_quote_lines"
+
+
+def test_respuesta_no_interpretada_es_un_bloqueo_distinto():
+    """Se descubrió con datos reales: la lista del WC estaba en
+    `clarification_required` por un timeout del extractor, no por precios en
+    conflicto, y el aviso decía "más de un precio" — falso y engañoso."""
+    bloqueos = derivar_bloqueos(s(conversaciones_ambiguas=1), "comparacion")
+    assert [b["codigo"] for b in bloqueos] == ["respuesta_no_interpretada"]
+    assert "más de un precio" not in bloqueos[0]["mensaje"]
+
+
+def test_los_dos_motivos_de_revision_pueden_convivir():
+    bloqueos = derivar_bloqueos(s(conversaciones_en_conflicto=1, conversaciones_ambiguas=1), "comparacion")
+    assert {b["codigo"] for b in bloqueos} == {"precios_en_conflicto", "respuesta_no_interpretada"}
 
 
 def test_oferta_sin_precio_bloquea():
@@ -92,7 +106,7 @@ def test_compra_sana_no_tiene_bloqueos():
 
 def test_todo_bloqueo_nombra_una_accion():
     """Un bloqueo que no dice cómo salir obliga al cliente a adivinar."""
-    todos = s(conversaciones_en_revision=1, definitivos_sin_precio=1, definitivos_sin_email=1,
+    todos = s(conversaciones_en_conflicto=1, definitivos_sin_precio=1, definitivos_sin_email=1,
               proveedores_sin_homologar=1, aprobacion_estado="pendiente")
     for etapa in ("comparacion", "esperando_aprobacion", "emision_oc"):
         for bloqueo in derivar_bloqueos(todos, etapa):
@@ -143,8 +157,8 @@ def test_el_modo_grafo_usa_las_etiquetas_de_la_empresa():
 
 
 def test_las_proximas_acciones_priorizan_los_bloqueos():
-    contexto = construir_contexto("lista-1", s(conversaciones_en_revision=1))
-    assert contexto["proximas_acciones"][0]["tool"] == "get_supplier_reply"
+    contexto = construir_contexto("lista-1", s(conversaciones_en_conflicto=1))
+    assert contexto["proximas_acciones"][0]["tool"] == "get_quote_lines"
 
 
 def test_sin_bloqueos_propone_el_siguiente_paso():

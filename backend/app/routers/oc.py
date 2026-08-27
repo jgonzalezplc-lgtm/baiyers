@@ -80,7 +80,7 @@ class CrearOCRequest(BaseModel):
 _CAMPOS_EXTRA_OC = (
     "nombre_item", "proveedor_nombre", "proveedor_email",
     "cantidad", "precio_unitario", "notas", "lista_proyecto_id",
-    "direccion_despacho",
+    "direccion_despacho", "emisor_nombre", "emisor_rut", "emisor_direccion",
 )
 
 
@@ -185,9 +185,12 @@ def _generar_pdf_desde_fila(fila: dict, ctx: AuthContext) -> bytes:
         "plazo_entrega": fila.get("plazo_entrega"),
         "notas": fila.get("notas"),
         "direccion_despacho": fila.get("direccion_despacho"),
-        "emisor_nombre": perfil.get("nombre"),
-        "emisor_rut": perfil.get("rut"),
-        "emisor_direccion": perfil.get("direccion"),
+        # El emisor guardado manda sobre el perfil vigente: la OC debe decir
+        # quién la emitió ENTONCES. Se cae al perfil actual sólo para las OC
+        # previas a la 050, que no lo registran.
+        "emisor_nombre": fila.get("emisor_nombre") or perfil.get("nombre"),
+        "emisor_rut": fila.get("emisor_rut") or perfil.get("rut"),
+        "emisor_direccion": fila.get("emisor_direccion") or perfil.get("direccion"),
     })
 
 
@@ -206,7 +209,9 @@ class EnviarOCRequest(BaseModel):
 
 @router.post("/crear")
 async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_context)):
-    from app.services.organizacion import obtener_codigo_oc, obtener_despacho_organizacion
+    from app.services.organizacion import (
+        obtener_codigo_oc, obtener_despacho_organizacion, obtener_perfil_organizacion,
+    )
     from app.services.supabase import get_supabase
 
     sb = get_supabase()
@@ -226,6 +231,7 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
     # Se congela en la orden: si la empresa después cambia de bodega, la OC ya
     # enviada debe seguir diciendo a dónde se despachaba cuando se emitió.
     despacho = obtener_despacho_organizacion(ctx.organization_id)
+    perfil_emisor = obtener_perfil_organizacion(ctx.organization_id)
 
     from app.services.workflow_purchase_order import asegurar_contexto_oc
     contexto_workflow = asegurar_contexto_oc(ctx.actor_user_id, req.lista_id)
@@ -249,6 +255,11 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
         "precio_unitario": req.precio_unitario,
         "notas": req.notas,
         "direccion_despacho": _texto_despacho(despacho) or None,
+        # Congelado al emitir: si la empresa se renombra, esta OC sigue
+        # diciendo quién la emitió. Mismo criterio que el número y el despacho.
+        "emisor_nombre": perfil_emisor.get("nombre"),
+        "emisor_rut": perfil_emisor.get("rut"),
+        "emisor_direccion": perfil_emisor.get("direccion"),
         "lista_proyecto_id": req.lista_id,
     }
 
@@ -271,8 +282,10 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
         from app.services.workflow_purchase_order import enlazar_oc
         enlazar_oc(oc_id, req.lista_id, contexto_workflow)
 
-    from app.services.organizacion import obtener_perfil_organizacion
-    perfil = obtener_perfil_organizacion(ctx.organization_id)
+    # Se reusa el perfil ya leído para la fila: leerlo dos veces en la misma
+    # emisión podría devolver valores distintos si alguien renombra la empresa
+    # justo en el medio, y la OC quedaría con un emisor guardado y otro devuelto.
+    perfil = perfil_emisor
 
     # Los campos que viven en la tabla se devuelven DESDE LA FILA, no desde el
     # request: antes se hacía eco de lo pedido, así que el cliente veía
@@ -298,9 +311,10 @@ async def crear_oc(req: CrearOCRequest, ctx: AuthContext = Depends(get_auth_cont
         "plazo_entrega": req.plazo_entrega,
         "notas": req.notas,
         "fecha": datetime.now().strftime("%d/%m/%Y"),
-        "emisor_nombre": perfil.get("nombre"),
-        "emisor_rut": perfil.get("rut"),
-        "emisor_direccion": perfil.get("direccion"),
+        "emisor_nombre": fila.get("emisor_nombre") or perfil.get("nombre"),
+        "emisor_rut": fila.get("emisor_rut") or perfil.get("rut"),
+        "emisor_direccion": fila.get("emisor_direccion") or perfil.get("direccion"),
+        # El logo no se congela: es una URL a Storage, no un dato del documento.
         "emisor_logo_url": perfil.get("logo_url"),
         # Vacío cuando no está configurada, nunca la dirección administrativa.
         # Que el cliente pueda distinguir "no hay" de "hay" es el punto: con el

@@ -63,7 +63,8 @@ class Senales:
     rfq_preparadas: int = 0
     rfq_enviadas: int = 0
     respuestas_recibidas: int = 0
-    conversaciones_en_revision: int = 0
+    conversaciones_en_conflicto: int = 0   # más de un precio: hay que elegir
+    conversaciones_ambiguas: int = 0       # no se pudo interpretar el correo
     definitivos: int = 0
     definitivos_sin_precio: int = 0
     definitivos_sin_email: int = 0
@@ -110,12 +111,23 @@ def derivar_bloqueos(s: Senales, etapa: str) -> list[dict[str, str]]:
     """
     bloqueos: list[dict[str, str]] = []
 
-    if s.conversaciones_en_revision:
+    if s.conversaciones_en_conflicto:
         bloqueos.append({
             "codigo": "precios_en_conflicto",
             "mensaje": (
-                f"{s.conversaciones_en_revision} conversación(es) con más de un precio para "
+                f"{s.conversaciones_en_conflicto} conversación(es) con más de un precio para "
                 "el mismo ítem. Ninguno se aplicó solo: hay que elegir cuál corresponde."
+            ),
+            "accion": "get_quote_lines",
+        })
+
+    if s.conversaciones_ambiguas:
+        bloqueos.append({
+            "codigo": "respuesta_no_interpretada",
+            "mensaje": (
+                f"{s.conversaciones_ambiguas} respuesta(s) de proveedor que la extracción no "
+                "pudo interpretar. Los datos están en el correo pero no en la ficha; "
+                "reprocesá el mensaje o cargalos a mano."
             ),
             "accion": "get_supplier_reply",
         })
