@@ -65,6 +65,9 @@ def _serialize_result(row: dict) -> dict:
 # resultados no debe traerse entera a memoria por una vista de 50.
 MAX_FILAS_A_ORDENAR = 200
 
+# Baiyer cotiza compras en Chile: una oferta local es la comparable por default.
+MERCADO_LOCAL = "CL"
+
 
 def _orden_comparable(row: dict) -> tuple:
     """Orden de una oferta: primero las comparables, después por precio.
@@ -80,12 +83,21 @@ def _orden_comparable(row: dict) -> tuple:
     UltraPC quedaban fuera del top. No se convierte a una moneda común a
     propósito: no hay tipo de cambio en el backend, y adivinarlo sería inventar
     un precio. Sólo se relegan las no comparables.
+
+    Ojo con `moneda_confirmada` por sí sola: NO alcanza. Serper Shopping
+    devuelve links de redirección de `google.com`, no el dominio de la tienda,
+    así que `_origen_por_dominio` no deduce nada y TODAS las ofertas —incluidas
+    las chilenas— quedan sin confirmar. Por eso se desempata además por `pais`,
+    que sí distingue: lo fija la variante de búsqueda (`gl=cl` vs `gl=us`), y
+    una oferta traída de la búsqueda chilena en pesos es mucho más comparable
+    que una de `gl=us` cuyo monto casi seguro es USD.
     """
     precio = row.get("precio")
     if precio is None:
         precio = row.get("precio_cotizado")
     return (
         0 if row.get("moneda_confirmada") else 1,
+        0 if (row.get("pais") or "").upper() == MERCADO_LOCAL else 1,
         0 if precio is not None else 1,
         precio if precio is not None else 0,
     )
