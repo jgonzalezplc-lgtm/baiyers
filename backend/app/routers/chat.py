@@ -60,14 +60,26 @@ def _cargar_contexto_usuario(user_id: str) -> dict:
     return ctx
 
 
-async def _ejecutar_sql_seguro(sql: str, user_id: str) -> list[dict]:
-    """Sanitiza y ejecuta la query generada por Gemini."""
-    from app.services.supabase import get_supabase
-    from app.services.sql_safety import sanitizar_sql
-    sb = get_supabase()
-    sql_safe = sanitizar_sql(sql, user_id)
-    result = sb.rpc("ejecutar_query_usuario", {"sql_text": sql_safe, "uid": user_id}).execute()
-    return result.data or []
+# Acá vivía `_ejecutar_sql_seguro()`, que sanitizaba con `services/sql_safety.py`
+# el SQL que escribía Gemini y lo ejecutaba vía la RPC `ejecutar_query_usuario`.
+# Se borró junto con el sanitizador el 2026-08-31. Tres motivos:
+#
+# 1. Estaba muerta desde el commit inicial: nadie la llamó nunca (`git log -S`),
+#    y la RPC que invocaba no existe en ninguna migración.
+# 2. El sanitizador no aislaba organizaciones. Inyectaba el filtro de tenant sólo
+#    si la cadena "user_id" NO aparecía en el SQL, así que `SELECT user_id, ...`
+#    o `WHERE user_id IS NOT NULL` salían sin filtro y devolvían datos de todas
+#    las empresas. Un subquery (`FROM (SELECT ...)`) además esquivaba la
+#    allowlist de tablas, porque el regex `FROM\s+(\w+)` no matchea `FROM (`.
+# 3. Conectarla era un renglón. Con el empleado digital encima —que encadena
+#    llamadas sin supervisión y come correo de proveedores como input— dejar eso
+#    a mano era una trampa, no una feature pendiente.
+#
+# Si alguna vez se quiere "chat con tus datos" de verdad, la respuesta NO es
+# arreglar el regex: es `services/semantic_query.py`, que ya usa el MCP
+# (`query_baiyer_data`). Es allowlist de entidades/campos/operadores y filtra por
+# `in_(ownership, actor.organization_user_ids)` en el query builder, sin construir
+# SQL como texto. Un solo límite de tenant para web, MCP y agente.
 
 
 @router.post("/mensaje")
