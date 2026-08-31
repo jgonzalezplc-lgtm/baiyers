@@ -17,6 +17,24 @@ def _entity(arguments: dict[str, Any]) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _nivel_de_confirmacion(arguments: dict[str, Any]) -> str:
+    """Qué respaldo tuvo la acción, sin inventarle autoridad al modelo.
+
+    Antes acá se escribía `"explicit"` cuando el modelo mandaba `confirmed=true`.
+    El problema es que `confirmed` es un argumento que el propio modelo elige:
+    la auditoría terminaba certificando "un humano confirmó" sobre la base de un
+    booleano que nadie verificó. Con el empleado digital —donde no hay una
+    persona leyendo el cliente— eso sería directamente falso, y la regla dura 6
+    del PRD pide registrar *qué autorización habilitó* cada acción.
+
+    `asserted_by_model` dice lo único que se sabe de verdad: que el llamador
+    afirmó tener confirmación. Cuando F1 traiga la barrera real (elicitation del
+    cliente o fila de aprobación persistida), ese caso pasará a `"explicit"` y
+    esta función va a poder distinguirlos, que es justo lo que hoy no se puede.
+    """
+    return "asserted_by_model" if arguments.get("confirmed") is True else "none"
+
+
 def _record(raw_token: str, payload: dict, status: int, duration_ms: int, rpc_error: bool = False) -> None:
     from app.mcp.token_service import load_token
     from app.services.supabase import get_supabase
@@ -34,7 +52,7 @@ def _record(raw_token: str, payload: dict, status: int, duration_ms: int, rpc_er
         "idempotency_key_hash": hashlib.sha256(str(idem).encode()).hexdigest() if idem else None,
         "outcome": "success" if status < 400 and not rpc_error else "error", "http_status": status,
         "duration_ms": duration_ms,
-        "confirmation_level": "explicit" if arguments.get("confirmed") is True else "none",
+        "confirmation_level": _nivel_de_confirmacion(arguments),
     }).execute()
 
 
