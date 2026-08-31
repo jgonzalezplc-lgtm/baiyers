@@ -34,6 +34,13 @@ function OutlookIcon() {
   );
 }
 
+/** Sólo destinos internos: `//evil.cl` es una URL absoluta para el navegador,
+ *  así que un `next` que empiece con `//` sería un open redirect. */
+function destinoSeguro(next: string | null): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/dashboard";
+  return next;
+}
+
 function LoginInner() {
   const params = useSearchParams();
   const [email, setEmail] = useState("");
@@ -60,7 +67,7 @@ function LoginInner() {
       setError("Email o contrasena incorrectos");
       setLoading(false);
     } else {
-      window.location.href = "/dashboard";
+      window.location.href = destinoSeguro(params.get("next"));
     }
   };
 
@@ -72,7 +79,7 @@ function LoginInner() {
       // entra al dashboard; ahí el perfil incompleto se ofrece de forma
       // flotante. `conectar_gmail=1` conserva el consentimiento encadenado,
       // pero Gmail también debe volver al dashboard.
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=/dashboard&conectar_gmail=1` },
+      options: { redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(destinoSeguro(params.get("next")))}&conectar_gmail=1` },
     });
     if (error) setError(`No se pudo iniciar con Google: ${error.message}`);
   };

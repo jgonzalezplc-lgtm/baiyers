@@ -164,8 +164,10 @@ def test_decide_request_confirmado_usa_token_solo_despues_de_autorizar(monkeypat
     monkeypatch.setattr("app.services.comparison_approval_service._authorized_request", lambda *_: request)
     decide = MagicMock()
 
-    async def fake_decide(token, req):
-        decide(token, req.decision)
+    async def fake_decide(token, req, ctx):
+        # El ctx no es opcional: `decidir` vuelve a verificar la identidad
+        # contra el autorizador designado, así que el actor tiene que viajar.
+        decide(token, req.decision, ctx.actor_user_id)
         return {"ok": True, "estado": "aprobado"}
 
     monkeypatch.setattr("app.routers.aprobaciones.decidir", fake_decide)
@@ -174,4 +176,4 @@ def test_decide_request_confirmado_usa_token_solo_despues_de_autorizar(monkeypat
         item_decisions={}, confirmed=True,
     ))
     assert result["estado"] == "aprobado"
-    decide.assert_called_once_with("secret", "aprobar")
+    decide.assert_called_once_with("secret", "aprobar", "approver-user")

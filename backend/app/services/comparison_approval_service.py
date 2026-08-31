@@ -193,7 +193,7 @@ async def decide_request(
     from app.routers.aprobaciones import DecisionRequest, decidir
     return await decidir(request["token"], DecisionRequest(
         decision=decision, comentario=comment, item_decisions=item_decisions,
-    ))
+    ), actor.to_auth_context())
 
 
 def list_workflow_events(sb, actor: ApplicationActorContext, list_id: str) -> dict:

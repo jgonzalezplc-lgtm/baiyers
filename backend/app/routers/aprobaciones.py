@@ -117,8 +117,11 @@ def _crear_solicitud_aprobacion(user_id: str, req: SolicitudRequest) -> dict:
 
 @router.post("/solicitar")
 async def solicitar_aprobacion(req: SolicitudRequest, ctx: AuthContext = Depends(get_auth_context)):
-    """Crea la solicitud y devuelve el magic link para incluir en el correo."""
-    return _crear_solicitud_aprobacion(ctx.actor_user_id, req)
+    """Crea la solicitud. El link de autorización NO se devuelve al solicitante:
+    viaja sólo dentro del correo al autorizador. Devolverlo acá era el vector
+    real de autoaprobación (ver comentario del bloque de autorización)."""
+    sol = _crear_solicitud_aprobacion(ctx.actor_user_id, req)
+    return {"id": sol["id"], "expira_at": sol["expira_at"]}
 
 
 @router.get("/solicitudes")
@@ -132,7 +135,62 @@ async def listar_solicitudes(estado: Optional[str] = None, ctx: AuthContext = De
     return res.data or []
 
 
-# ─── Magic link — decisión sin login ───────────────────────────────────────
+# ─── Link de autorización — exige sesión del autorizador designado ─────────
+#
+# El token identifica QUÉ solicitud es; NO acredita QUIÉN decide. Hasta el
+# 2026-08-30 sí lo hacía (bearer puro, endpoints públicos) y eso rompía la
+# separación de deberes: `request_approval` del MCP devolvía el `magic_link`
+# en su propia respuesta, así que el solicitante recibía la llave para
+# autoaprobarse — verificado en producción. Peor: el MCP ya hacía la
+# comprobación correcta en `comparison_approval_service._authorized_request`,
+# y el link era un bypass de ese mismo control. Ahora la identidad sale
+# siempre de la sesión y se compara contra el autorizador designado.
+
+
+def _email_del_actor(actor_user_id: str) -> Optional[str]:
+    from app.services.supabase import get_supabase
+    try:
+        resp = get_supabase().auth.admin.get_user_by_id(actor_user_id)
+        user = getattr(resp, "user", None)
+        return (getattr(user, "email", None) or "").strip().lower() or None
+    except Exception:
+        return None
+
+
+def _solicitud_para_actor(token: str, ctx: AuthContext) -> dict:
+    """Carga la solicitud del token y exige que el actor autenticado sea su
+    autorizador designado. Devuelve 404 —nunca 403— cuando la solicitud no
+    es de su organización: un 403 confirmaría que el token existe."""
+    from app.services.supabase import get_supabase
+    sb = get_supabase()
+
+    res = sb.table("approval_requests").select("*").eq("token", token).limit(1).execute()
+    row = (res.data or [None])[0]
+    if not row or row.get("user_id") not in ctx.user_ids_organizacion:
+        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+
+    responsable_id = row.get("responsable_id")
+    if responsable_id:
+        # Camino workflow: el autorizador es una persona con rol asignado.
+        autorizado = ejecutar_maybe_single(
+            sb.table("responsables").select("id")
+            .eq("id", responsable_id)
+            .eq("usuario_baiyer_id", ctx.actor_user_id)
+            .eq("activo", True).maybe_single()
+        ).data
+    else:
+        # Camino legado: el autorizador es sólo un correo escrito a mano. Se
+        # exige que la sesión sea de ese correo; ya no basta con tener el link.
+        esperado = (row.get("aprobador_email") or "").strip().lower()
+        autorizado = bool(esperado) and _email_del_actor(ctx.actor_user_id) == esperado
+
+    if not autorizado:
+        raise HTTPException(
+            status_code=403,
+            detail="Esta autorización está dirigida a otra persona. Inicia sesión con la cuenta del autorizador.",
+        )
+    return row
+
 
 class DecisionRequest(BaseModel):
     decision: str  # "aprobar" | "aprobar_con_observaciones" | "rechazar"
@@ -143,16 +201,15 @@ class DecisionRequest(BaseModel):
 
 
 @router.get("/token/{token}")
-async def info_token(token: str):
-    """El frontend /authorize/{token} consulta esto para mostrar el resumen."""
+async def info_token(token: str, ctx: AuthContext = Depends(get_auth_context)):
+    """El frontend /authorize/{token} consulta esto para mostrar el resumen.
+    Exige sesión del autorizador: el resumen incluye montos y proveedores."""
     from app.services.supabase import get_supabase
     sb = get_supabase()
-    res = sb.table("approval_requests").select(
-        "id, referencia, resumen, estado, aprobador_email, expira_at, created_at"
-    ).eq("token", token).limit(1).execute()
-    row = (res.data or [None])[0]
-    if not row:
-        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    completa = _solicitud_para_actor(token, ctx)
+    row = {k: completa.get(k) for k in (
+        "id", "referencia", "resumen", "estado", "aprobador_email", "expira_at", "created_at"
+    )}
     if row["estado"] == "pendiente" and row.get("expira_at") and row["expira_at"] < _now():
         sb.table("approval_requests").update({"estado": "expirado"}).eq("id", row["id"]).execute()
         row["estado"] = "expirado"
@@ -160,17 +217,14 @@ async def info_token(token: str):
 
 
 @router.post("/token/{token}/decidir")
-async def decidir(token: str, req: DecisionRequest):
+async def decidir(token: str, req: DecisionRequest, ctx: AuthContext = Depends(get_auth_context)):
     from app.services.supabase import get_supabase
     sb = get_supabase()
 
     if req.decision not in ("aprobar", "aprobar_con_observaciones", "rechazar"):
         raise HTTPException(status_code=400, detail="Decisión inválida")
 
-    res = sb.table("approval_requests").select("*").eq("token", token).limit(1).execute()
-    row = (res.data or [None])[0]
-    if not row:
-        raise HTTPException(status_code=404, detail="Solicitud no encontrada")
+    row = _solicitud_para_actor(token, ctx)
     if row["estado"] != "pendiente":
         raise HTTPException(status_code=409, detail=f"Solicitud ya está en estado '{row['estado']}'")
     if row.get("expira_at") and row["expira_at"] < _now():
