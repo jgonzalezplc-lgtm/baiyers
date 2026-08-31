@@ -110,14 +110,71 @@ _EXTENSION_POR_TIPO = {
 }
 
 
+BUCKET_LOGOS = "company-logos"
+
+# Una semana. El logo se consume desde el navegador de un miembro de la
+# organización justo después de pedir el perfil, así que con minutos alcanzaría;
+# la ventana larga existe porque `user_metadata.logo_url` guarda una COPIA de
+# esta URL (la leen el dashboard y /settings) y una copia con vida corta se
+# rompería sola a los pocos minutos. No es "casi público": sigue caducando, sigue
+# sin ser enumerable y se puede revocar rotando el objeto.
+VIGENCIA_URL_LOGO_SEGUNDOS = 7 * 24 * 60 * 60
+
+
 def subir_logo(organizacion_id: str, content_type: str, contenido: bytes) -> str:
-    """Sube el logo ya validado al bucket `company-logos` y devuelve la URL
-    pública. El path incluye un UUID para invalidar cachés de navegador al
-    reemplazar el logo."""
+    """Sube el logo ya validado y devuelve su PATH dentro del bucket.
+
+    Devuelve el path y no una URL a propósito: el path es lo durable y es lo que
+    va a `organizaciones.logo_storage_path`. La URL se firma al leer, con
+    `url_firmada_de_logo()`.
+
+    Antes esto devolvía `get_public_url(...)` y esa URL se guardaba en la base.
+    El bucket `company-logos` es privado, así que la ruta `/object/public/...`
+    respondía `400 Bucket not found` y el logo NUNCA cargaba: los PDFs de OC y
+    los informes caían siempre al fallback de texto, en silencio, porque el
+    fallback se ve bien y nadie lo leyó como un error.
+
+    El UUID en el path invalida cachés de navegador al reemplazar el logo.
+    """
     ext = _EXTENSION_POR_TIPO.get((content_type or "").lower(), "png")
     filename = f"{organizacion_id}/{uuid.uuid4().hex}.{ext}"
-    sb = _sb()
-    sb.storage.from_("company-logos").upload(
+    _sb().storage.from_(BUCKET_LOGOS).upload(
         filename, contenido, {"content-type": content_type, "upsert": "true"},
     )
-    return sb.storage.from_("company-logos").get_public_url(filename)
+    return filename
+
+
+def url_firmada_de_logo(path: str) -> str | None:
+    """URL temporal para un logo del bucket privado. `None` si no se puede
+    firmar — el logo es decorativo y su ausencia nunca debe tumbar la generación
+    de un documento (mismo criterio que `obtener_perfil_organizacion`)."""
+    if not path:
+        return None
+    try:
+        resp = _sb().storage.from_(BUCKET_LOGOS).create_signed_url(
+            path, VIGENCIA_URL_LOGO_SEGUNDOS,
+        )
+    except Exception as e:
+        print(f"[logo] no se pudo firmar '{path}': {e}")
+        return None
+    if isinstance(resp, dict):
+        # El SDK cambió el nombre de la clave entre versiones.
+        return resp.get("signedURL") or resp.get("signedUrl") or resp.get("signed_url")
+    return getattr(resp, "signed_url", None)
+
+
+def path_de_logo_legado(url: str | None) -> str | None:
+    """Rescata el path desde una `logo_url` vieja de tipo `/object/public/...`.
+
+    Las organizaciones que subieron su logo antes de este cambio tienen una URL
+    rota guardada, pero esa URL CONTIENE el path real. Extraerlo evita tener que
+    correr un backfill: se recuperan solas la primera vez que alguien lee su
+    perfil. Devuelve None si la URL no es de este bucket.
+    """
+    if not url:
+        return None
+    marca = f"/{BUCKET_LOGOS}/"
+    if marca not in url:
+        return None
+    path = url.split(marca, 1)[1].split("?", 1)[0].strip()
+    return path or None

@@ -116,11 +116,26 @@ def obtener_perfil_organizacion(organizacion_id: str) -> dict:
     sb = _sb()
     try:
         resp = sb.table("organizaciones").select(
-            "nombre, rut, direccion, logo_url, industria, pais, sitio_web"
+            "nombre, rut, direccion, logo_url, logo_storage_path, industria, pais, sitio_web"
         ).eq("id", organizacion_id).maybe_single().execute()
-        return (resp.data if resp else None) or {}
+        perfil = (resp.data if resp else None) or {}
     except Exception:
         return {}
+
+    # `company-logos` es privado, así que el `logo_url` guardado no resuelve:
+    # se firma uno nuevo en cada lectura. Es el único punto donde se resuelve, y
+    # por eso `GET /api/organizacion/mia` —que expande este perfil— devuelve una
+    # URL fresca sin necesidad de tocarlo.
+    if perfil:
+        from app.services.logo_upload import path_de_logo_legado, url_firmada_de_logo
+
+        # Las organizaciones anteriores a este cambio no tienen
+        # `logo_storage_path`, pero su `logo_url` roto contiene el path: se
+        # recuperan solas al leerlas, sin backfill.
+        path = perfil.get("logo_storage_path") or path_de_logo_legado(perfil.get("logo_url"))
+        perfil["logo_url"] = url_firmada_de_logo(path) if path else None
+        perfil.pop("logo_storage_path", None)
+    return perfil
 
 
 def obtener_despacho_organizacion(organizacion_id: str) -> dict:

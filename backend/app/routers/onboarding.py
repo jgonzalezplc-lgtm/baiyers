@@ -398,13 +398,18 @@ async def confirmar_logo_candidato(session_id: str, req: LogoCandidatoRequest, c
     content_type = detectar_content_type(contenido, content_type)
 
     try:
-        logo_url = subir_logo(ctx_org.organizacion_id, content_type, contenido)
+        # `subir_logo` devuelve el PATH, no una URL: el bucket es privado y la
+        # URL se firma al leer. Se persiste el path como fuente de verdad, más
+        # una URL firmada en `logo_url` para el preview inmediato del chat.
+        logo_path = subir_logo(ctx_org.organizacion_id, content_type, contenido)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"No se pudo subir el logo: {e}")
 
+    from app.services.logo_upload import url_firmada_de_logo
     from app.services.supabase import get_supabase
+    logo_url = url_firmada_de_logo(logo_path)
     get_supabase().table("organizaciones").update({
-        "logo_url": logo_url, "logo_origen": "investigado",
+        "logo_url": logo_url, "logo_storage_path": logo_path, "logo_origen": "investigado",
     }).eq("id", ctx_org.organizacion_id).execute()
 
     return {"logo_url": logo_url}
@@ -427,13 +432,15 @@ async def subir_logo_endpoint(session_id: str, archivo: UploadFile = File(...), 
         raise HTTPException(status_code=400, detail=str(e))
 
     try:
-        logo_url = subir_logo(ctx_org.organizacion_id, archivo.content_type, contenido)
+        logo_path = subir_logo(ctx_org.organizacion_id, archivo.content_type, contenido)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"No se pudo subir el logo: {e}")
 
+    from app.services.logo_upload import url_firmada_de_logo
     from app.services.supabase import get_supabase
+    logo_url = url_firmada_de_logo(logo_path)
     get_supabase().table("organizaciones").update({
-        "logo_url": logo_url, "logo_origen": "subido",
+        "logo_url": logo_url, "logo_storage_path": logo_path, "logo_origen": "subido",
     }).eq("id", ctx_org.organizacion_id).execute()
 
     return {"logo_url": logo_url}
