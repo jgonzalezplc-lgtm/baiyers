@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Check, ChevronDown, MessageSquare, X } from "lucide-react";
 import { Badge, BtnPrimary, BtnSecondary, Card } from "@/components/ui";
+import { authFetch } from "@/lib/authFetch";
+import { createClient } from "@/lib/supabase/client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -51,20 +53,32 @@ export default function AuthorizePage() {
   const [decisionesItems, setDecisionesItems] = useState<Record<string, { estado: "aprobado" | "rechazado"; motivo?: string }>>({});
   const [alternativasAbiertas, setAlternativasAbiertas] = useState<Record<string, boolean>>({});
 
+  // Decidir exige sesión del autorizador designado: tener el link ya no basta
+  // (antes cualquiera con la URL aprobaba, incluido el propio solicitante).
+  // Sin sesión, se manda a login y se vuelve a esta misma página.
   useEffect(() => {
-    fetch(`${API_URL}/api/aprobaciones/token/${token}`)
-      .then(async (r) => {
-        if (!r.ok) throw new Error((await r.json()).detail ?? "Error");
-        return r.json();
-      })
-      .then((data) => { setSol(data); const previas = data.resumen?.decisiones_items || {}; setDecisionesItems(previas); })
-      .catch((e) => setError(e.message));
+    (async () => {
+      const { data } = await createClient().auth.getSession();
+      if (!data.session) {
+        window.location.href = `/login?next=${encodeURIComponent(`/authorize/${token}`)}`;
+        return;
+      }
+      try {
+        const r = await authFetch(`${API_URL}/api/aprobaciones/token/${token}`);
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail ?? "Error");
+        setSol(d);
+        setDecisionesItems(d.resumen?.decisiones_items || {});
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Error");
+      }
+    })();
   }, [token]);
 
   const decidir = async (decision: "aprobar" | "aprobar_con_observaciones" | "rechazar") => {
     setEnviando(true);
     try {
-      const r = await fetch(`${API_URL}/api/aprobaciones/token/${token}/decidir`, {
+      const r = await authFetch(`${API_URL}/api/aprobaciones/token/${token}/decidir`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decision, comentario: comentario || undefined, item_decisions: decisionesItems }),

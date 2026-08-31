@@ -28,8 +28,6 @@ RUTAS_PUBLICAS: frozenset[str] = frozenset({
     "GET /api/health",                              # liveness de Railway
     # Magic links: el autorizador/proveedor decide desde el correo, sin cuenta.
     # El token del path ES la credencial y se valida en el endpoint.
-    "GET /api/aprobaciones/token/{token}",
-    "POST /api/aprobaciones/token/{token}/decidir",
     "GET /api/oc/info/{token}",
     "POST /api/oc/confirmar/{token}",
     # OAuth: SÓLO los callbacks, que los invoca Google/Microsoft y no pueden

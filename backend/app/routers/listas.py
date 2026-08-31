@@ -1035,12 +1035,10 @@ async def solicitar_aprobacion(lista_id: str, req: SolicitarAprobacionRequest, c
         }
         _guardar_lista(sb, lista_id, data)
 
-    return {
-        "success": True,
-        "magic_link": sol["magic_link"],
-        "token": sol["token"],
-        "expira_at": sol["expira_at"],
-    }
+    # Ni `magic_link` ni `token` vuelven al solicitante: con cualquiera de los
+    # dos se arma la URL de autorización. El link viaja sólo en el correo al
+    # autorizador, que además ahora debe iniciar sesión para decidir.
+    return {"success": True, "expira_at": sol["expira_at"]}
 
 
 class ReenviarAprobacionRequest(BaseModel):
