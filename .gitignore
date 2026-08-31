@@ -35,6 +35,13 @@ credentials.json
 # No son fuente y el repo es público — `outputs/solar_3mwh_test` llegó a tener
 # node_modules adentro, y `tmp/pdfs` itemizados reales.
 outputs/
+# `output/` en singular es otro directorio, no un typo del de arriba: se llenó a
+# mano el 27-08-2026 con `output/pdf/OC-2026-BVITAL-0001.pdf` (y su PNG quedó en
+# `tmp/pdfs/` un minuto después, o sea fue una inspección visual). Ninguna parte
+# de la app escribe ahí: los PDFs de OC los genera el frontend con
+# @react-pdf/renderer y nunca tocan el disco del repo. Va acá porque esa OC es de
+# una organización real, con proveedor, montos y dirección de despacho.
+output/
 tmp/
 .DS_Store
 **/.DS_Store
