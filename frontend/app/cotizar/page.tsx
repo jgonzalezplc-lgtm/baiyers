@@ -92,13 +92,17 @@ export default function CotizarPage() {
   }, []);
 
   const identificarUno = async (descripcion: string, adjunto: AdjuntoCotizacion | null = null, respuestas: Record<string, string | number | boolean> = {}): Promise<ResultadoIA> => {
+    // `user_id` NO va en el body: desde el cierre del borde HTTP el backend lo
+    // sobrescribe con el actor del token y este endpoint exige sesión, así que
+    // mandarlo sólo lo filtraba a logs. Por lo mismo va con `authFetch` y no con
+    // `fetch` a secas — así estaba y devolvía 401, dejando muerto el primer paso
+    // de "Nueva cotización".
     const body: Record<string, unknown> = { modo_cubicacion_conversacional: true, respuestas_cubicacion: respuestas };
-    if (userId) body.user_id = userId;
     if (descripcion) body.descripcion = descripcion;
     if (industriaEmpresa) body.industria_empresa = industriaEmpresa;
     if (adjunto?.tipo === "imagen") { body.imagen_base64 = adjunto.base64; body.imagen_mime = adjunto.mime; }
     if (adjunto?.tipo === "documento") { body.archivo_base64 = adjunto.base64; body.archivo_mime = adjunto.mime; body.archivo_nombre = adjunto.nombre; }
-    const res = await fetch(`${API_URL}/api/identificar`, {
+    const res = await authFetch(`${API_URL}/api/identificar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
