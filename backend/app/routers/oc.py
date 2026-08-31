@@ -511,6 +511,52 @@ async def enviar_oc(req: EnviarOCRequest, ctx: AuthContext = Depends(get_auth_co
     return {"success": True, "numero_oc": req.numero_oc, "pdf_url": pdf_url}
 
 
+# Campos que `/oc` (y el empleado digital, vía `semantic_query.purchase_orders`)
+# esperan de cada orden. Se normalizan acá y no en el cliente para que web y
+# agente lean exactamente la misma forma.
+def _oc_resumen(fila: dict) -> dict:
+    return {
+        "id": fila.get("id"),
+        "numero_oc": fila.get("numero_oc"),
+        "cotizacion_id": fila.get("cotizacion_id"),
+        "nombre_item": fila.get("nombre_item"),
+        "proveedor_nombre": fila.get("proveedor_nombre"),
+        "condiciones_pago": fila.get("condiciones_pago"),
+        "precio_total": float(fila.get("precio_total") or 0),
+        "moneda": fila.get("moneda") or "CLP",
+        "estado": fila.get("estado"),
+        "created_at": fila.get("created_at"),
+    }
+
+
+@router.get("")
+async def listar_ocs(ctx: AuthContext = Depends(get_auth_context), limite: int = 200):
+    """Órdenes de compra de la organización, de la más reciente a la más vieja.
+
+    Este endpoint no existía: `/oc` en el frontend llamaba `GET /api/oc?user_id=`
+    y recibía 404, pero el error quedaba tapado por un `if (res.ok)` y un catch
+    vacío, así que la pantalla mostraba "0 órdenes" en vez de un fallo. Es decir,
+    una empresa con OCs reales veía exactamente lo mismo que una sin ninguna.
+
+    Se filtra por la organización entera (no sólo por el actor): una OC la emite
+    una persona pero es de la empresa, igual que en el resto de la app.
+    """
+    from app.services.supabase import get_supabase
+
+    sb = get_supabase()
+    # `select("*")` a propósito: varias columnas de `_CAMPOS_EXTRA_OC` pueden no
+    # existir si el ALTER TABLE no corrió en ese entorno, y pedirlas por nombre
+    # haría fallar la consulta entera. `_oc_resumen` tolera que falten.
+    res = (
+        sb.table("ordenes_compra").select("*")
+        .in_("user_id", ctx.user_ids_organizacion)
+        .order("created_at", desc=True)
+        .limit(max(1, min(limite, 500)))
+        .execute()
+    )
+    return [_oc_resumen(f) for f in (res.data or [])]
+
+
 @router.get("/info/{token}")
 async def info_oc(token: str):
     from app.services.supabase import get_supabase

@@ -1,18 +1,22 @@
 "use client";
 import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
+import { authFetch } from "@/lib/authFetch";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// Los nombres son los de la tabla `ordenes_compra`, no una traducción: antes
+// esta interfaz decía `item` y `total`, campos que la base nunca tuvo (son
+// `nombre_item` y `precio_total`). Como el endpoint tampoco existía, la
+// discrepancia nunca se notó.
 interface OC {
   id: string;
   numero_oc: string;
-  cotizacion_id: string;
-  item: string;
-  proveedor_nombre: string;
+  cotizacion_id: string | null;
+  nombre_item: string | null;
+  proveedor_nombre: string | null;
   condiciones_pago: string | null;
-  total: number;
+  precio_total: number;
   moneda: string;
   estado: string;
   created_at: string;
@@ -41,27 +45,32 @@ function fmtFecha(iso: string) {
 export default function OCPage() {
   const [ocs, setOcs] = useState<OC[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [filtroEstado, setFiltroEstado] = useState("todas");
 
-  useEffect(() => {
-    createClient().auth.getUser().then(({ data }) => {
-      if (data.user) { setUserId(data.user.id); cargar(data.user.id); }
-    });
-  }, []);
+  useEffect(() => { cargar(); }, []);
 
-  const cargar = async (uid: string) => {
+  // El `user_id` ya no viaja en la query: el backend lo deriva del token.
+  // Un fallo ahora se muestra; antes se tragaba y la pantalla vacía era
+  // indistinguible de "no tienes órdenes".
+  const cargar = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/oc?user_id=${uid}`);
-      if (res.ok) setOcs(await res.json());
-    } catch { /* silent */ } finally { setLoading(false); }
+      const res = await authFetch(`${API_URL}/api/oc`);
+      if (!res.ok) throw new Error(`El servidor respondió ${res.status}`);
+      setOcs(await res.json());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudieron cargar las órdenes de compra");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const filtradas = filtroEstado === "todas" ? ocs : ocs.filter(o => o.estado === filtroEstado);
   const totalMes = ocs
     .filter(o => ["confirmada", "recibido_conforme", "despachada", "pagada"].includes(o.estado))
-    .reduce((s, o) => s + o.total, 0);
+    .reduce((s, o) => s + o.precio_total, 0);
 
   return (
     <>
@@ -121,6 +130,20 @@ export default function OCPage() {
           <div style={{ padding: "40px 16px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
             Cargando...
           </div>
+        ) : error ? (
+          // Un fallo de carga NO puede parecer "no hay órdenes": son cosas
+          // distintas y confundirlas fue justamente el bug de esta pantalla.
+          <div style={{ padding: "40px 16px", textAlign: "center" }}>
+            <div style={{ fontSize: 12, color: "var(--text-error)", marginBottom: 12 }}>
+              No se pudieron cargar las órdenes de compra. {error}
+            </div>
+            <button onClick={cargar} style={{
+              fontSize: 11, color: "var(--accent)", background: "none",
+              border: "none", cursor: "pointer", textDecoration: "underline",
+            }}>
+              Reintentar
+            </button>
+          </div>
         ) : filtradas.length === 0 ? (
           <div style={{ padding: "40px 16px", textAlign: "center" }}>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
@@ -144,10 +167,10 @@ export default function OCPage() {
                 alignItems: "center",
               }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-primary)" }}>{oc.numero_oc}</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{oc.item}</div>
-                <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{oc.proveedor_nombre}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{oc.nombre_item || "—"}</div>
+                <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{oc.proveedor_nombre || "—"}</div>
                 <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{oc.condiciones_pago || "—"}</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{fmt(oc.total)}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{fmt(oc.precio_total)}</div>
                 <div>
                   <span style={{
                     fontSize: 9,
