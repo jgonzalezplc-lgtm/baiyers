@@ -559,7 +559,13 @@ input, textarea, select, button { font-family: inherit; }
 
 /* Figura recostada del cierre. Se apoya sobre el logotipo gigante, así que su
    altura se mide contra la caja del texto y cambia con el breakpoint. */
-.bl-cierre-figura { bottom: 46%; width: clamp(200px, 27vw, 420px); }
+.bl-cierre-figura {
+  bottom: 46%;
+  width: clamp(200px, 27vw, 420px);
+  /* El desplazamiento horizontal va acá y no inline para poder recentrarla en
+     el teléfono, donde el logotipo es mucho más angosto. */
+  transform: translateX(-12%) rotate(-9deg);
+}
 /* Fila de cierre: frase a la izquierda y CTA a la derecha. */
 .bl-cierre-pie { justify-content: space-between; }
 .bl-cierre-marca { font-size: clamp(110px, 24vw, 400px); }
@@ -629,7 +635,11 @@ input, textarea, select, button { font-family: inherit; }
   /* En px y no en %: al achicar el logotipo su caja quedó tan baja (~67px) que
      un porcentaje se vuelve un ajuste de milímetros y la figura, que conserva
      su ancho, volvía a flotar. */
-  .bl-cierre-figura { bottom: 1px; width: 46vw; }
+  .bl-cierre-figura {
+    bottom: 1px;
+    width: 46vw;
+    transform: translateX(-19%) rotate(-9deg);
+  }
 
   /* 24vw de 375px son 90px, pero el mínimo del clamp lo empujaba a 110px y el
      logotipo se salía por la derecha. Acá manda el ancho disponible. */

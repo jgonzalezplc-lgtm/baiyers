@@ -606,7 +606,7 @@ export default function LandingContent() {
               {/* `bottom` va por clase y no inline: en el teléfono hay que
                   bajar la figura para que se apoye en las letras, y un estilo
                   inline le gana a cualquier media query. */}
-              <div className="bl-cierre-figura" style={{ position: "absolute", left: "50%", transform: "translateX(-12%) rotate(-9deg)", pointerEvents: "none", zIndex: 2 }}>
+              <div className="bl-cierre-figura" style={{ position: "absolute", left: "50%", pointerEvents: "none", zIndex: 2 }}>
                 <Image src={BASE + "body-lying.png"} alt="Baiyer recostado sobre el logotipo" width={900} height={900} sizes="(max-width: 900px) 60vw, 420px" style={{ width: "100%", height: "auto", display: "block" }} />
                 <Image src={BASE + "head-tired.png"} alt="" width={900} height={753} sizes="(max-width: 900px) 20vw, 140px" style={{ position: "absolute", left: "2%", top: "16%", width: "33%", height: "auto", display: "block", transform: "rotate(-6deg)" }} />
               </div>
