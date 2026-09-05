@@ -441,7 +441,43 @@ input, textarea, select, button { font-family: inherit; }
 @keyframes blParpadeo { 50% { opacity: .2; } }
 .bl-cursor { animation: blParpadeo 1.05s steps(1) infinite; }
 
-.bl-navlink:hover { color: #B8B0FF; }
+/* Barra de navegación. En escritorio es un riel vertical en la esquina; en
+   móvil se acuesta (ver la media query de más abajo). */
+.bl-nav {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 26px;
+  padding: 26px 34px 34px;
+}
+.bl-nav-marca {
+  font-family: 'PP Mondwest', ui-monospace, monospace;
+  font-weight: 700;
+  font-size: 40px;
+  line-height: 1;
+  color: #fff;
+  letter-spacing: .01em;
+  -webkit-text-stroke: .6px currentColor;
+}
+.bl-nav-links {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 20px;
+}
+/* Va como `.bl a.bl-navlink` y no como `.bl-navlink` a secas: si no, pierde
+   contra `.bl a { color: #1000FF }` y los enlaces quedan azules sobre azul. */
+.bl a.bl-navlink {
+  font-family: var(--font-jetbrains), ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: .2em;
+  color: #fff;
+}
+.bl a.bl-navlink:hover { color: #B8B0FF; }
 .bl-cta:hover { background: #111111 !important; color: #fff !important; border-color: #111111 !important; }
 .bl-pill-azul:hover { background: #111111; border-color: #111111; }
 .bl-pill-linea:hover { background: #F0EFEC; }
@@ -459,6 +495,45 @@ input, textarea, select, button { font-family: inherit; }
   to   { opacity: 1; transform: none; }
 }
 .bl-faq-abierta { animation: blFaqIn .34s cubic-bezier(.22,1,.36,1) both; }
+
+.bl-hero {
+  position: relative;
+  background: #1000FF;
+  color: #fff;
+  min-height: 100vh;
+  padding: 130px 24px 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+.bl-hero-grid {
+  position: relative;
+  z-index: 2;
+  max-width: 1180px;
+  margin: 0 auto;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 36px;
+  align-items: center;
+}
+.bl-hero-acciones {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 44px;
+}
+/* `min-height` reserva el alto de la frase más larga: el titular cicla tres y
+   sin la reserva el CTA saltaría en cada cambio. */
+.bl-hero-titulo {
+  font-family: 'PP Mondwest', ui-monospace, monospace;
+  font-size: clamp(40px, 5.4vw, 92px);
+  line-height: 1.02;
+  letter-spacing: .01em;
+  margin: 0;
+  min-height: 4.2em;
+}
 
 /* La figura del hero se ancla al borde inferior izquierdo del bloque azul. */
 .bl-hero-figura {
@@ -482,21 +557,124 @@ input, textarea, select, button { font-family: inherit; }
   z-index: 3;
 }
 
-/* Bajo ~900px las tarjetas se apilan y la figura del hero ya no cabe al lado
-   del texto. Se manda al borde derecho —el titular y el CTA son izquierdos— y
-   se atenúa para que quede de fondo: centrada le pasaba justo por detrás del
-   botón y la cabeza CRT competía con la etiqueta. */
+/* ── Hero en pantallas angostas ───────────────────────────────────────────
+   En escritorio la figura va al costado del titular y ocupa media portada.
+   Bajo 900px no hay ancho para eso, pero el personaje ES la portada: en vez de
+   atenuarlo de fondo, el hero se vuelve vertical —texto centrado arriba, figura
+   abajo a tamaño completo y mirando de frente (sin puntero, `useMirada` fija la
+   mirada al frente)—. El riel de navegación también se acuesta: apilado se
+   comía media pantalla y empujaba a la figura fuera de cuadro. */
 @media (max-width: 900px) {
-  .bl-hero-figura {
-    left: auto;
-    right: -14vw;
-    bottom: -24px;
-    width: clamp(190px, 46vw, 300px);
-    opacity: .38;
+  .bl-nav {
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    gap: 16px;
+    padding: 16px 20px;
   }
-  .bl-hero-hueco { display: none; }
-  .bl-hero-copy { transform: none; }
+  .bl-nav-marca { font-size: 26px; }
+  .bl-nav-links {
+    flex-direction: row;
+    align-items: center;
+    margin-left: auto;
+    gap: 14px;
+  }
+  /* `nowrap` y más chicos: los tres tienen que entrar en una sola fila. */
+  .bl a.bl-navlink {
+    font-size: 9px;
+    letter-spacing: .1em;
+    white-space: nowrap;
+  }
+
+  .bl-hero {
+    align-items: flex-start;
+    padding-top: 96px;
+  }
+  /* Una sola columna: con `auto-fit`, una tablet de ~780px todavía armaba dos y
+     el texto quedaba en una mitad en vez de centrado en la pantalla. */
+  .bl-hero-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  /* El hueco pasa a ir DEBAJO del texto (en escritorio va al lado) y reserva en
+     el flujo el alto de la figura, para que nunca se monte sobre el CTA. */
+  .bl-hero-hueco {
+    display: block;
+    order: 3;
+    height: calc(min(80vw, 310px) * 1.52);
+  }
+  .bl-hero-copy {
+    order: 2;
+    transform: none;
+    text-align: center;
+  }
+  .bl-hero-acciones { justify-content: center; margin-top: 28px; }
+  .bl-hero-figura {
+    left: 50%;
+    right: auto;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: min(62vw, 240px);
+    opacity: 1;
+  }
+
   .bl-figura-rfq { display: none; }
+}
+
+/* En un teléfono la barra se reparte a lo alto del hero: el logotipo arriba y
+   los tres enlaces abajo, apoyados sobre la figura. Uno al lado del otro no
+   entraban —"FAQ" se salía de pantalla— y apilados se comían media portada.
+   Al ocupar todo el alto, la barra tapaba el CTA: por eso no recibe punteros y
+   se los devuelve sólo a los enlaces. */
+@media (max-width: 560px) {
+  .bl-nav {
+    width: 100%;
+    height: 100vh;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0;
+    padding: 18px 20px 30px;
+    pointer-events: none;
+  }
+  .bl-nav-marca { font-size: 46px; }
+  .bl-nav-links {
+    flex-direction: row;
+    justify-content: center;
+    margin: 0;
+    gap: 14px;
+    pointer-events: auto;
+  }
+  .bl a.bl-navlink { font-size: 8.5px; letter-spacing: .08em; }
+
+  /* Con la figura más chica sobra alto: el titular crece y se lleva el peso. */
+  .bl-hero { padding-top: 104px; }
+  .bl-hero-titulo { font-size: clamp(38px, 12vw, 52px); }
+  .bl-hero-hueco { height: calc(min(62vw, 240px) * 1.52); }
+}
+
+/* ── Tablas (RFQ y órdenes de compra) en pantallas angostas ───────────────
+   Las dos filas son de 3 columnas donde el proveedor es la elástica (`1fr`) y
+   las otras dos son fijas: el estado se lleva 150-170px y el monto 74-84px. En
+   un teléfono eso deja la columna del proveedor en ~15px, o sea el nombre
+   desaparecía detrás de los puntos suspensivos.
+
+   Solución: dos columnas —proveedor y monto, que es lo que se compara— y el
+   estado baja a una línea propia debajo, a lo ancho. La cabecera pierde su
+   rótulo "ESTADO" porque esa columna ya no existe ahí. Las reglas van con
+   `!important` porque el `grid-template-columns` está inline en el componente,
+   tal como llegó del handoff. */
+@media (max-width: 620px) {
+  .bl-tabla-cab,
+  .bl-tabla-fila {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    row-gap: 7px;
+  }
+  /* 1 = proveedor · 2 = estado · 3 = monto */
+  .bl-tabla-cab > :nth-child(2) { display: none; }
+  .bl-tabla-fila > :nth-child(2) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    max-width: none !important;
+    justify-content: flex-start !important;
+  }
 }
 
 /* El grafo del ciclo de compra es una serpentina de 3 columnas: cada tarjeta
