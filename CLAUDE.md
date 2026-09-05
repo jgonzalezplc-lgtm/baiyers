@@ -50,6 +50,26 @@ cd frontend && npx tsc --noEmit
     `globals.css`.
   - Gotcha de Tailwind: su preflight pone `list-style: none`, así que un `<ol>` **no numera** salvo
     que lo declares explícitamente.
+  - **La landing pública `/` es la ÚNICA excepción y no sigue nada de lo anterior** (rehecha el
+    2026-09-04 desde un handoff de diseño). Estética retro-editorial: fondo papel `#F7F7F5`, azul
+    eléctrico `#1000FF` como único acento, display pixel-art **PP Mondwest** (self-hosted en
+    `public/fonts/`), UI mono en **JetBrains Mono** (`--font-jetbrains`, cargada por `next/font` en
+    el layout), bordes negros de 1px, píldoras de 999px y cursores pixelados. Todo cuelga de `.bl`
+    en `globals.css` y **no toca ningún token del producto** — no "arreglar" la landing para que se
+    parezca al resto de la app, la divergencia es deliberada.
+    - Archivos: `components/landing/{LandingContent,Figura}.tsx`, `hooks.ts`, `datos.ts`. Assets en
+      `public/landing/baiyer/`. El maquetado va **inline**, tal como llegó del handoff; en
+      `globals.css` sólo vive lo que inline no expresa (keyframes, `:hover`, `@font-face`, media
+      queries, cursores).
+    - `datos.ts` es fuente única: `FAQS` y `ETAPAS` alimentan a la vez lo visible y el JSON-LD de
+      `app/page.tsx` (`FAQPage` / `ItemList`). Si cambia el copy, cambia el structured data solo.
+    - **Trampas ya pisadas, no repetirlas:** (1) `next/image` **sin `sizes`** pide el candidato más
+      grande del srcset (1920px) y en dev el optimizador se atora tanto que la página nunca hidrata
+      — parecía un bug de React y no lo era; todas las figuras llevan `sizes`. (2) Encadenar
+      `setTimeout` desde dentro de un updater de `setState` no sobrevive al doble render de
+      StrictMode: los dos tipeos (`useFraseHero`, `useTitulosTipeados`) usan un timer por render y
+      un `setInterval` único. (3) Los títulos se observan por `document.querySelectorAll('[data-ttl]')`
+      y no por refs: el reloj de la maqueta re-renderiza 25 veces por segundo y reengancha los refs.
 - **Idioma:** UI y comentarios en español.
 - **Commits:** terminar con `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. Commit/push solo cuando corresponde; `main` es la rama de deploy.
 - El build de Next **ignora errores de TS/lint** (`next.config.js`: `ignoreBuildErrors`/`ignoreDuringBuilds`) — hay deuda de tipos pre-existente. No confíes en el build para atrapar tipos; corre `tsc --noEmit`.

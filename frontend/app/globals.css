@@ -384,90 +384,134 @@ input, textarea, select, button { font-family: inherit; }
 }
 
 /* ═══════════════════════ Landing pública ═══════════════════════════════════
-   Sólo la usa `/` (components/landing/). Vive acá y no como estilo inline
-   porque son un keyframe y un grid con áreas nombradas: ninguno de los dos se
-   expresa bien inline.
+   Sólo la usa `/` (components/landing/). El diseño es retro-editorial y no
+   comparte NADA con el design system del producto: fondo papel, azul eléctrico
+   como único acento, display en pixel-art. Por eso todo cuelga de `.bl` y no
+   toca ningún token de la app.
+
+   El resto del maquetado va inline en `LandingContent.tsx`, tal como llegó del
+   handoff. Acá viven sólo las cosas que inline no expresa: keyframes, `:hover`,
+   `@font-face`, media queries y los cursores pixelados.
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* Entrada del logo alternante del titular (Claude ↔ ChatGPT). */
-@keyframes landingLogoIn {
-  from { opacity: 0; transform: translateY(0.12em); }
-  to   { opacity: 1; transform: translateY(0); }
+@font-face {
+  font-family: 'PP Mondwest';
+  src: url('/fonts/PPMondwest-Regular.otf') format('opentype');
+  font-weight: 400 700;
+  font-display: swap;
 }
 
-.landing-features {
-  position: relative;
-  height: 480vh;
+.bl {
+  background: #F7F7F5;
+  color: #111111;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  overflow-x: hidden;
 }
+.bl ::selection { background: #1000FF; color: #fff; }
+.bl a { color: #1000FF; text-decoration: none; }
 
-.landing-features__panel {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+/* El handoff traía cursores pixelados propios (flecha y mano en SVG inline).
+   Se sacaron a pedido: el cursor del sistema. */
+
+/* Copia de los encabezados que existe en el HTML pero no se ve: los títulos se
+   escriben en el cliente y sin ella el `<h1>`/`<h2>` viajan vacíos. */
+.bl-solo-lectores {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
   overflow: hidden;
-  padding: clamp(24px, 5vh, 64px) 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
-.landing-features__mobile-hint {
-  display: none;
+/* `all: unset` en los botones del FAQ también borra el `outline`, así que sin
+   esto quien navega con teclado recorre 11 preguntas sin ver dónde está. */
+.bl button:focus-visible,
+.bl a:focus-visible {
+  outline: 2px solid #1000FF;
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+.bl-cta:focus-visible { outline-color: #fff; }
+
+/* Cursor de bloque que parpadea al final de cada titular tipeado. */
+@keyframes blParpadeo { 50% { opacity: .2; } }
+.bl-cursor { animation: blParpadeo 1.05s steps(1) infinite; }
+
+.bl-navlink:hover { color: #B8B0FF; }
+.bl-cta:hover { background: #111111 !important; color: #fff !important; border-color: #111111 !important; }
+.bl-pill-azul:hover { background: #111111; border-color: #111111; }
+.bl-pill-linea:hover { background: #F0EFEC; }
+
+/* Halo de la alerta de conciliación: llama la atención sin mover el layout. */
+@keyframes blPulso {
+  0%   { box-shadow: 0 0 0 0 rgba(245,158,11,.55); }
+  70%  { box-shadow: 0 0 0 10px rgba(245,158,11,0); }
+  100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+}
+.bl-alerta { animation: blPulso 2s ease-out infinite; }
+
+@keyframes blFaqIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+.bl-faq-abierta { animation: blFaqIn .34s cubic-bezier(.22,1,.36,1) both; }
+
+/* La figura del hero se ancla al borde inferior izquierdo del bloque azul. */
+.bl-hero-figura {
+  position: absolute;
+  left: calc(clamp(-56px, 1vw, 48px) + 10vw);
+  bottom: -56px;
+  width: clamp(250px, 38vw, 560px);
+  pointer-events: none;
+  z-index: 1;
+}
+/* Columna vacía que le reserva el espacio a esa figura en el grid del hero. */
+.bl-hero-hueco { order: 1; height: clamp(240px, 52vh, 560px); }
+.bl-hero-copy { order: 2; transform: translateY(-28%); }
+
+.bl-figura-rfq {
+  position: absolute;
+  right: -26px;
+  top: -24px;
+  width: clamp(140px, 18vw, 210px);
+  pointer-events: none;
+  z-index: 3;
 }
 
-.landing-bento {
-  display: grid;
-  gap: clamp(16px, 1.6vw, 22px);
-  align-items: stretch;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-areas:
-    "left black green"
-    "left blue  blue";
-}
-
-/* El bento de 3 columnas no entra en tablet ni en móvil. El handoff dejaba
-   esto como pendiente conocido ("pulir espaciado en móvil"); sin estos saltos
-   las tarjetas quedan ilegibles bajo ~900px. */
+/* Bajo ~900px las tarjetas se apilan y la figura del hero ya no cabe al lado
+   del texto. Se manda al borde derecho —el titular y el CTA son izquierdos— y
+   se atenúa para que quede de fondo: centrada le pasaba justo por detrás del
+   botón y la cabeza CRT competía con la etiqueta. */
 @media (max-width: 900px) {
-  .landing-bento {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-areas:
-      "left  black"
-      "left  green"
-      "blue  blue";
+  .bl-hero-figura {
+    left: auto;
+    right: -14vw;
+    bottom: -24px;
+    width: clamp(190px, 46vw, 300px);
+    opacity: .38;
   }
+  .bl-hero-hueco { display: none; }
+  .bl-hero-copy { transform: none; }
+  .bl-figura-rfq { display: none; }
 }
 
-@media (max-width: 640px) {
-  /* El panel completo es más alto que el viewport de un teléfono. Si se
-     mantiene centrado, sticky y con overflow oculto, Safari recorta el título
-     superior. En móvil usamos un panel normal y los chips cambian la tarjeta. */
-  .landing-features {
-    height: auto;
-  }
+/* El grafo del ciclo de compra es una serpentina de 3 columnas: cada tarjeta
+   fija su `grid-column`/`grid-row` inline para dibujar el zigzag. En un
+   teléfono esas columnas quedan de ~90px y los títulos se parten a la mitad,
+   así que se apila en una sola y el orden del DOM —que ya es 1→13— hace de
+   recorrido. Las flechas → ← sobran ahí: sólo queda el ↓ implícito. */
+@media (max-width: 620px) {
+  .bl-grafo { grid-template-columns: minmax(0, 1fr) !important; }
+  .bl-grafo-nodo { grid-column: 1 !important; grid-row: auto !important; }
+  .bl-flecha-h { display: none; }
+}
 
-  .landing-features__panel {
-    position: relative;
-    top: auto;
-    height: auto;
-    min-height: 0;
-    justify-content: flex-start;
-    overflow: visible;
-    padding: 48px 0 56px;
-  }
-
-  .landing-features__desktop-hint {
-    display: none;
-  }
-
-  .landing-features__mobile-hint {
-    display: inline;
-  }
-
-  .landing-bento {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "left" "black" "green" "blue";
-  }
+@media (prefers-reduced-motion: reduce) {
+  .bl-cursor, .bl-alerta, .bl-faq-abierta { animation: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

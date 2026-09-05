@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import LandingContent from "@/components/landing/LandingContent";
-import { FAQS, FEATURES, SITIO } from "@/components/landing/datos";
+import { ETAPAS, FAQS, SITIO } from "@/components/landing/datos";
 
 /**
  * SEO / AEO / GEO de la portada.
@@ -19,9 +19,9 @@ import { FAQS, FEATURES, SITIO } from "@/components/landing/datos";
  */
 export const metadata: Metadata = {
   metadataBase: new URL(SITIO),
-  title: "Baiyer · Cotiza y compra con agentes de IA | Procurement para empresas en Chile",
+  title: "Baiyer · El empleado digital para tus compras",
   description:
-    "Baiyer automatiza tu proceso de compra: agentes de correo piden cotizaciones a tus proveedores, comparan precios de tiendas chilenas, MercadoLibre y Google Shopping, y generan la orden de compra tras la aprobación. Se conecta a Gmail, Outlook, Claude y ChatGPT.",
+    "Baiyer es un empleado digital de procurement para empresas en Chile. Cotiza con proveedores, compara precios, gestiona autorizaciones, homologa proveedores, emite órdenes de compra y concilia facturas.",
   keywords: [
     "procurement Chile", "cotizaciones automáticas", "software de compras",
     "comparar precios proveedores", "orden de compra automática",
@@ -41,15 +41,15 @@ export const metadata: Metadata = {
     locale: "es_CL",
     url: SITIO,
     siteName: "Baiyer",
-    title: "Baiyer · Tu proceso de compra completo desde Claude o ChatGPT",
+    title: "Baiyer · El empleado digital de compras",
     description:
-      "Agentes de correo que cotizan por ti. De semanas a minutos, al mejor precio. Procurement automatizado para empresas en Chile.",
+      "Baiyer cotiza, compara, sigue proveedores y compra sólo cuando tu equipo lo aprueba.",
     images: [{ url: "/landing/og.png", width: 1200, height: 630, alt: "Baiyer — procurement automatizado con IA" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Baiyer · Procurement automatizado con IA",
-    description: "Agentes de correo que cotizan por ti. De semanas a minutos, al mejor precio.",
+    title: "Baiyer · Empleado digital de compras",
+    description: "Baiyer cotiza, compara y prepara compras bajo las reglas de tu empresa.",
     images: ["/landing/og.png"],
   },
   category: "business software",
@@ -66,7 +66,7 @@ function jsonLd() {
         name: "Baiyer",
         url: SITIO,
         description:
-          "Plataforma chilena de procurement que automatiza cotización, comparación de precios y órdenes de compra con agentes de IA.",
+          "Plataforma chilena de procurement con un empleado digital que automatiza cotización, comparación, aprobaciones y compras.",
         areaServed: { "@type": "Country", name: "Chile" },
         knowsLanguage: ["es-CL"],
         contactPoint: {
@@ -96,24 +96,26 @@ function jsonLd() {
         inLanguage: "es-CL",
         publisher: { "@id": `${SITIO}/#organizacion` },
         description:
-          "Software de compras que identifica qué necesitas comprar, busca proveedores, solicita cotizaciones por correo, compara precios y genera la orden de compra tras la aprobación interna.",
-        featureList: FEATURES.map(f => f.title),
+          "Software de compras con un empleado digital que identifica pedidos, busca proveedores, solicita cotizaciones por correo, compara precios y prepara compras tras la aprobación interna.",
+        featureList: ETAPAS.map(e => e.label),
         // Sin `offers`: los precios públicos se retiraron de la landing y
         // declarar un precio que no se muestra es structured data engañoso.
       },
       {
-        // La sección de producto muestra una tarjeta por vez, así que 5 de las
-        // 6 descripciones nunca están en el DOM y ningún rastreador las ve.
-        // Esta lista se las entrega completas, sin texto oculto en la página.
+        // El grafo del ciclo de compra es la lista real de capacidades, y en
+        // la página aparece como tarjetas animadas. Declararla como ItemList
+        // ordenada le da a un buscador el proceso completo, en orden, sin
+        // depender de que interprete el grafo visual.
         "@type": "ItemList",
         "@id": `${SITIO}/#capacidades`,
-        name: "Qué hace Baiyer",
+        name: "Ciclo de compra que ejecuta Baiyer",
         inLanguage: "es-CL",
-        itemListElement: FEATURES.map((f, i) => ({
+        itemListOrder: "https://schema.org/ItemListOrderAscending",
+        itemListElement: ETAPAS.map((e, i) => ({
           "@type": "ListItem",
           position: i + 1,
-          name: f.title,
-          description: f.desc,
+          name: e.label,
+          description: e.role,
         })),
       },
       {
