@@ -44,6 +44,9 @@ interface Propuesta {
   confidence: number | null;
   estado: "propuesta" | "aplicado" | "descartado";
   source_id: string;
+  // Presente sólo cuando el dato salió de un adjunto y no del cuerpo del correo.
+  // Lo resuelve el backend para no tener que cruzar dos arreglos acá.
+  source_filename?: string | null;
 }
 
 const CAMPO_LABEL: Record<string, string> = {
@@ -198,7 +201,11 @@ export default function ConversacionDetallePage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {mensajes.map(m => {
             const abierto = !colapsados.has(m.id);
-            const tienePropuesta = propuestas.some(p => p.source_id === m.id);
+            // Una propuesta sacada de un adjunto apunta al adjunto, no al
+            // mensaje: sin mirar también sus adjuntos, un correo que sólo trae
+            // el PDF con los precios se vería como si no hubiera aportado nada.
+            const idsDelMensaje = new Set([m.id, ...adjuntosPorMensaje(m.id).map(a => a.id)]);
+            const tienePropuesta = propuestas.some(p => idsDelMensaje.has(p.source_id));
             return (
               <Card key={m.id} padding={16} style={{ background: m.direction === "outbound" ? "var(--brand-50)" : "var(--surface)" }}>
                 <button
@@ -273,6 +280,17 @@ export default function ConversacionDetallePage() {
                       <span style={{ color: "var(--n-500)", fontWeight: 400 }}>Nuevo: </span>
                       {parseVal(p.new_value)}{p.currency ? ` ${p.currency}` : ""}
                     </div>
+                    {/* De dónde salió el dato. Sin esto no hay forma de juzgar
+                        la propuesta: no es lo mismo un precio leído de la prosa
+                        del correo que uno sacado de una tabla en un PDF. */}
+                    {p.source_filename && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--n-500)", marginBottom: 8 }}>
+                        <Paperclip size={12} strokeWidth={1.75} />
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          Leído de {p.source_filename}
+                        </span>
+                      </div>
+                    )}
                     {typeof p.confidence === "number" && (
                       <div style={{ marginBottom: 10 }}>
                         <Badge tipo={p.confidence >= 0.85 ? "success" : p.confidence >= 0.5 ? "warning" : "error"}>
@@ -300,7 +318,10 @@ export default function ConversacionDetallePage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {propuestasDecididas.map(p => (
                   <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12.5, color: "var(--n-600)", padding: "6px 10px", background: "var(--canvas)", borderRadius: "var(--r-md)" }}>
-                    <span>{CAMPO_LABEL[p.field] || p.field}: {parseVal(p.new_value)}</span>
+                    <span>
+                      {CAMPO_LABEL[p.field] || p.field}: {parseVal(p.new_value)}
+                      {p.source_filename && ` · ${p.source_filename}`}
+                    </span>
                     <Badge tipo={p.estado === "aplicado" ? "success" : "default"}>{p.estado === "aplicado" ? "Aplicada" : "Descartada"}</Badge>
                   </div>
                 ))}

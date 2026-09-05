@@ -715,6 +715,107 @@ def _mismo_monto(a, b) -> bool:
     return abs(na - nb) < 0.01
 
 
+async def _extraer_de_todas_las_fuentes(sb, service, conv: dict, gmail_message_id: str,
+                                        mensaje_row_id: str, cuerpo: str,
+                                        items_ctx: list[dict]) -> dict:
+    """Interpreta el cuerpo del correo Y sus adjuntos, y devuelve todo junto.
+
+    En Chile la cotización suele venir adjunta y el cuerpo dice apenas "adjunto
+    valores". Hasta el 2026-08-31 sólo se leía el cuerpo, así que ese correo
+    entraba como una respuesta sin datos.
+
+    Cada propuesta sale etiquetada con su origen en `_origen` (None = cuerpo, o
+    la fila de `gmail_attachments`). Se devuelven mezcladas a propósito: aguas
+    abajo, `_campos_en_conflicto` tiene que ver las de todas las fuentes juntas.
+    Si el cuerpo dice $25.000 y el PDF dice $19.990, eso ES un conflicto y tiene
+    que frenar la auto-aplicación — es exactamente el caso para el que se
+    escribió esa función.
+
+    Los adjuntos se leen de `gmail_attachments` y no de la respuesta de la API:
+    el insert de adjuntos sólo corre para mensajes nuevos, así que depender de la
+    memoria dejaría a un mensaje guardado a medias sin parsear para siempre.
+    """
+    from app.services.email_understanding import extraer_actualizaciones
+
+    extraccion = await extraer_actualizaciones(cuerpo, items_ctx)
+    propuestas = [{**p, "_origen": None} for p in extraccion["propuestas"]]
+    respondio_todo = extraccion["respondio_todo"]
+    requiere_aclaracion = extraccion["requiere_aclaracion"]
+
+    try:
+        from app.services.adjunto_parser import es_parseable, preparar_adjunto
+
+        adjuntos = sb.table("gmail_attachments").select(
+            "id, filename, mime_type, gmail_attachment_id, texto_extraido"
+        ).eq("message_id", mensaje_row_id).execute().data or []
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Gmail sync] no se pudieron leer los adjuntos: {exc}")
+        adjuntos = []
+
+    for adjunto in adjuntos:
+        # Idempotencia. No es cosmética: el cron corre cada minuto sobre todos
+        # los usuarios, así que un re-parseo en loop es un problema de factura de
+        # Gemini antes que de correctitud.
+        if adjunto.get("texto_extraido"):
+            continue
+        if not es_parseable(adjunto.get("filename"), adjunto.get("mime_type")):
+            continue
+        try:
+            documento = await asyncio.to_thread(
+                preparar_adjunto, service, gmail_message_id, adjunto
+            )
+            if not documento:
+                continue
+            # El cuerpo NO se reenvía junto al adjunto, aunque daría contexto: el
+            # modelo volvería a extraer de él los mismos datos que ya extrajo en
+            # la primera llamada, y saldrían dos filas de `item_field_updates`
+            # para un solo hecho. Cada fuente se lee una vez y sólo a sí misma.
+            parcial = await extraer_actualizaciones("", items_ctx, documento=documento)
+        except Exception as exc:  # noqa: BLE001
+            # Un adjunto ilegible no puede tumbar la sincronización: el cuerpo del
+            # correo ya se procesó y ese resultado vale. Mismo criterio que
+            # `_registrar_lineas`.
+            print(f"[Gmail sync] adjunto {adjunto.get('filename')}: {type(exc).__name__}: {exc}")
+            continue
+
+        try:
+            sb.table("gmail_attachments").update({
+                "texto_extraido": documento.resumen_auditoria,
+                "hash": documento.sha256,
+            }).eq("id", adjunto["id"]).execute()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[Gmail sync] no se pudo marcar el adjunto {adjunto['id']}: {exc}")
+
+        # Dos adjuntos pueden repetir el mismo dato (la cotización en PDF y la
+        # misma cotización en planilla). Valores idénticos para el mismo campo del
+        # mismo ítem son un solo hecho, no dos propuestas que revisar. Si los
+        # valores difieren no se descarta nada: eso es un conflicto y lo resuelve
+        # `_campos_en_conflicto` frenando la auto-aplicación.
+        ya_vistas = {
+            (p.get("entity_id"), p["field"], json.dumps(p.get("new_value"), default=str, sort_keys=True))
+            for p in propuestas
+        }
+        for p in parcial["propuestas"]:
+            clave = (p.get("entity_id"), p["field"],
+                     json.dumps(p.get("new_value"), default=str, sort_keys=True))
+            if clave in ya_vistas:
+                continue
+            ya_vistas.add(clave)
+            propuestas.append({**p, "_origen": adjunto})
+        respondio_todo = respondio_todo or parcial["respondio_todo"]
+        # `requiere_aclaracion` sólo se relaja si alguna fuente entendió algo: un
+        # cuerpo vacío que devuelve el vacío seguro no debe marcar todo el correo
+        # como ambiguo cuando el PDF sí se leyó bien.
+        if parcial["propuestas"]:
+            requiere_aclaracion = requiere_aclaracion and parcial["requiere_aclaracion"]
+
+    return {
+        "propuestas": propuestas,
+        "respondio_todo": respondio_todo,
+        "requiere_aclaracion": requiere_aclaracion,
+    }
+
+
 def _campos_en_conflicto(propuestas: list[dict], entity_unico: Optional[str]) -> set[tuple[str, str]]:
     """(entity_id, field) para los que el correo trae más de un valor distinto.
 
@@ -791,13 +892,19 @@ async def _sincronizar_usuario(user_id: str) -> dict:
     hilo de Gmail, los persiste (idempotente por gmail_message_id) y para los
     inbound corre el Email Understanding Agent, guardando sus propuestas."""
     from app.services.gmail_service import get_gmail_service, listar_mensajes_thread, headers_de, extraer_texto_plano, extraer_adjuntos_meta
-    from app.services.email_understanding import extraer_actualizaciones
     from app.services.supabase import get_supabase
     from app.services import gmail_conversation_agent
     from app.services.gmail_conversation_agent import CAMPOS_SEGUIMIENTO
     from app.services.notificaciones import crear_notificacion
 
     UMBRAL_AUTO_APLICAR = 0.85
+    # Un dato sacado de un adjunto exige más confianza que uno del cuerpo. Dos
+    # motivos, y ninguno es teórico: el PDF lo controla por completo el proveedor
+    # (mejor vector de inyección que un cuerpo de correo), y el parseo de tablas
+    # falla distinto que el de prosa — se equivoca de columna, o toma el total de
+    # la línea por el precio unitario. Todo lo que quede bajo el umbral igual se
+    # guarda como propuesta para que una persona la apruebe.
+    UMBRAL_AUTO_APLICAR_ADJUNTO = 0.95
 
     sb = get_supabase()
     res = sb.table("user_integrations").select("*").eq("user_id", user_id).eq("provider", "gmail").single().execute()
@@ -949,7 +1056,9 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                 else:
                     es_respuesta_rfq = True
                     items_ctx = _items_contexto(sb, conv)
-                    extraccion = await extraer_actualizaciones(cuerpo, items_ctx)
+                    extraccion = await _extraer_de_todas_las_fuentes(
+                        sb, service, conv, msg["id"], row["id"], cuerpo, items_ctx,
+                    )
                     entity_unico = items_ctx[0]["entity_id"] if len(items_ctx) == 1 else None
 
                     # Un correo puede cotizar VARIOS productos contra un solo ítem
@@ -1002,9 +1111,11 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                             and previo is not None
                             and not _mismo_monto(previo, p["new_value"])
                         )
+                        origen = p.get("_origen")
+                        umbral = UMBRAL_AUTO_APLICAR_ADJUNTO if origen else UMBRAL_AUTO_APLICAR
                         auto_aplicar = (
                             campo_seguimiento in CAMPOS_SEGUIMIENTO
-                            and p["confidence"] >= UMBRAL_AUTO_APLICAR
+                            and p["confidence"] >= umbral
                             and not en_conflicto
                             and not pisa_precio
                         )
@@ -1018,8 +1129,11 @@ async def _sincronizar_usuario(user_id: str) -> dict:
                             "previous_value": json.dumps(previo, default=str),
                             "new_value": json.dumps(p["new_value"], default=str),
                             "currency": p.get("currency"),
-                            "source_type": "gmail_message",
-                            "source_id": row["id"],
+                            # La procedencia es lo que hace auditable el dato: quien
+                            # revisa la propuesta tiene que poder ver que el precio
+                            # salió de "cotizacion_1234.pdf" y no del cuerpo.
+                            "source_type": "gmail_attachment" if origen else "gmail_message",
+                            "source_id": origen["id"] if origen else row["id"],
                             "supplier_nombre": conv.get("proveedor_nombre"),
                             "supplier_email": conv.get("proveedor_email"),
                             "confidence": p["confidence"],
@@ -1189,6 +1303,19 @@ async def listar_conversaciones(ctx: AuthContext = Depends(get_auth_context)):
     if ids_mensajes_con_propuesta:
         msgs = sb.table("gmail_messages").select("id,conversation_id").in_("id", ids_mensajes_con_propuesta).execute().data or []
         conv_por_mensaje = {m["id"]: m["conversation_id"] for m in msgs}
+        # Una propuesta sacada de un adjunto apunta al adjunto, no al mensaje
+        # (`source_type='gmail_attachment'`). Sin este salto extra no se contaría
+        # como pendiente y la conversación se vería sin nada que revisar.
+        sin_resolver = [i for i in ids_mensajes_con_propuesta if i not in conv_por_mensaje]
+        if sin_resolver:
+            adj = sb.table("gmail_attachments").select("id,message_id").in_("id", sin_resolver).execute().data or []
+            faltantes = sb.table("gmail_messages").select("id,conversation_id").in_(
+                "id", [a["message_id"] for a in adj]
+            ).execute().data or [] if adj else []
+            conv_de_mensaje = {m["id"]: m["conversation_id"] for m in faltantes}
+            for a in adj:
+                if a["message_id"] in conv_de_mensaje:
+                    conv_por_mensaje[a["id"]] = conv_de_mensaje[a["message_id"]]
     pendientes_por_conv: dict[str, int] = {}
     for p in propuestas:
         conv_id = conv_por_mensaje.get(p.get("source_id"))
@@ -1216,7 +1343,16 @@ async def detalle_conversacion(conversation_id: str, ctx: AuthContext = Depends(
     propuestas = []
     if ids_mensajes:
         adjuntos = sb.table("gmail_attachments").select("*").in_("message_id", ids_mensajes).execute().data or []
-        propuestas = sb.table("item_field_updates").select("*").in_("source_id", ids_mensajes).order("created_at", desc=True).execute().data or []
+        # Las propuestas que salieron de un adjunto apuntan al adjunto, no al
+        # mensaje: hay que pedir los dos conjuntos de ids o quedan invisibles.
+        nombre_por_adjunto = {a["id"]: a.get("filename") for a in adjuntos}
+        propuestas = sb.table("item_field_updates").select("*").in_(
+            "source_id", ids_mensajes + list(nombre_por_adjunto)
+        ).order("created_at", desc=True).execute().data or []
+        # Se resuelve acá y no en el cliente para que la pantalla no tenga que
+        # cruzar dos arreglos para contestar "¿de dónde salió este precio?".
+        for p in propuestas:
+            p["source_filename"] = nombre_por_adjunto.get(p.get("source_id"))
 
     return {"conversacion": conv, "mensajes": mensajes, "adjuntos": adjuntos, "propuestas": propuestas}
 

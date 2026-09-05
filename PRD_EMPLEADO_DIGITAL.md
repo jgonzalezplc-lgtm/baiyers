@@ -19,8 +19,12 @@ funcionando igual que hoy.
 
 ## 2. Decisiones tomadas (2026-08-30, con el dueño del producto)
 
-- **Canal inicial: correo.** Reusa el buzón ya conectado y `gmail_conversation_agent`. Slack,
-  WhatsApp y Teams vienen después, sobre la misma capa de canales, sin tocar el cerebro.
+- **Identidad corporativa del agente.** Cada organización conecta un buzón que le pertenece,
+  idealmente `compras@empresa.cl` o `baiyer@empresa.cl`. Es la identidad remitente única de
+  Baiyer para solicitudes internas y contactos con proveedores: nunca usa el correo personal de
+  quien configuró la plataforma. Slack, WhatsApp y Teams siguen el mismo principio: una app, bot
+  o cuenta Business corporativa por organización, sobre la misma capa de canales y sin tocar el
+  cerebro.
 - **Pagos: el agente sí paga**, con tarjetas de débito/prepago virtuales de un tercero, tanto para
   ecommerce como para transferencia a proveedor. Hay una API de un proveedor extranjero ya
   contratada; su documentación se integra en la Fase 5.
@@ -142,13 +146,36 @@ autorización, y de qué rol del workflow.
 Un adaptador por canal normaliza a un mensaje entrante común (canal, identidad externa, texto,
 adjuntos, hilo). El cerebro no sabe de qué canal viene nada.
 
+Los canales previstos son **correo** (inicial), **Slack, WhatsApp y Microsoft Teams**. Cada uno
+es un adaptador de entrada y salida sobre el mismo contrato, nunca una segunda versión del
+cerebro. La conexión se habilita con opt-in explícito por canal y organización; WhatsApp usa la
+cuenta Business de la empresa y Teams una app instalada por su administrador. La identidad se
+resuelve por el identificador nativo del canal y se vincula a un miembro verificado antes de
+conceder permisos superiores a N0.
+
+El correo inicial es un **buzón operativo corporativo** conectado mediante OAuth delegado por un
+administrador, no la bandeja personal de un comprador. Todos los RFQ, seguimientos, respuestas a
+solicitudes internas y correos a proveedores salen desde esa dirección; los humanos continúan
+viendo el hilo, pero Baiyer conserva una identidad continua aunque cambien las personas del
+equipo. Si la empresa no tiene una dirección existente, el onboarding le pide crearla y recién
+entonces conecta el canal.
+
 **Resolución de identidad** es la pieza crítica: correo, número o handle → usuario, organización y
 rol. Si no se puede resolver con certeza, el agente responde pidiendo verificación y no ejecuta
 nada. Un remitente desconocido nunca hereda permisos del hilo.
 
-### 4.3 Persona — configuración por organización
-Nombre, tono, uso de emojis, tratamiento, y frases propias. Se compone en el system prompt junto
-con el contexto de la empresa.
+### 4.3 Identidad, persona y centro de control
+Nombre, tono, uso de emojis, tratamiento y frases propias se componen en el system prompt junto
+con el contexto de la empresa. La identidad visible debe coincidir con la del canal: por ejemplo,
+Mara de Baiyer operando desde `compras@empresa.cl`, el bot de Teams y la cuenta de WhatsApp
+Business de la misma empresa.
+
+La aplicación web no se reemplaza por el agente: es el **centro de control** de Baiyer. Desde ella
+el administrador configura la identidad y los canales, integrantes y permisos, workflow y límites
+de autonomía, proveedores y plantillas de correo. El equipo además puede revisar conversaciones,
+editar o aprobar borradores de correo y RFQ, comparar cotizaciones, operar órdenes de compra,
+ver aprobaciones, auditoría y métricas. El agente ejecuta trabajo; la plataforma conserva el
+control, la trazabilidad y las operaciones que requieren una interfaz deliberada.
 
 ### 4.4 Biblioteca de precios
 Extiende `precio_historico.py`: vigencia por categoría, refresco en background de lo consultado con
@@ -237,10 +264,10 @@ emisor. No es una decisión técnica y no la resuelve el código.
 
 | Fase | Alcance | Entregable verificable |
 |---|---|---|
-| F1 | Cerebro + registro de tools + canal correo | Se le escribe al buzón y cotiza, responde y pide autorización |
+| F1 | Cerebro + registro de tools + buzón operativo corporativo | Se escribe a `compras@empresa.cl` o equivalente y Baiyer cotiza, responde y pide autorización |
 | F2 | Identidad, roles y persona configurable | El agente sabe quién le habla y qué puede pedirle |
 | F3 | Biblioteca de precios viva | Informe pedido de improviso, con antigüedad declarada |
-| F4 | Slack | Mismo agente, canal nuevo, sin tocar el cerebro |
+| F4 | Canales conversacionales: Slack, WhatsApp y Microsoft Teams | Mismo agente y contrato de canal; cada integración se activa con opt-in y sin tocar el cerebro |
 | F5 | Pagos con tarjetas virtuales | Mock → emisor real → ecommerce asistido |
 | F6 | Escucha proactiva de canales | Opt-in explícito por canal, nunca por organización |
 

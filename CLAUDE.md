@@ -931,3 +931,16 @@ PRD exige "una fase por vez" y checkpoints, no un big-bang.
   `respuestas_cubicacion` estructuradas y conserva intactos a los clientes antiguos.
 - `/cotizar` pregunta máximo tres datos por turno, no reenvía la imagen y muestra trazabilidad
   neto/compra antes de publicar mediante el flujo real de cotizaciones y listas.
+
+## Empleado digital (proyecto en curso — 2026-08-30 en adelante)
+Baiyer como agente que trabaja sobre un buzón: cotiza, responde y pide autorización. **Dos
+documentos, y no se duplican acá a propósito:**
+- **`PRD_EMPLEADO_DIGITAL.md`** — el contrato: decisiones, reglas duras, los 4 ejes, pagos con
+  tarjetas virtuales y las fases F1–F6.
+- **`ESTADO_EMPLEADO_DIGITAL.md`** — la continuidad: qué está hecho, qué está sin commitear, qué
+  decisiones no se re-litigan y las trampas concretas. **Leer ése antes de retomar.**
+
+Estado en una línea: **ninguna fase empezada**; hay fundación (registro de capacidades, commit
+`0047d58`) y el parseo de adjuntos de cotizaciones. El prerrequisito de la §6 del PRD ya fue
+verificado contra Supabase real el 2026-09-05: los tres tests de aislamiento entre organizaciones
+pasaron (`backend/tests/test_aislamiento_organizaciones.py`). **F1 está desbloqueada**.

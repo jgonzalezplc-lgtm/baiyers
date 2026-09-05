@@ -5,9 +5,6 @@ import json
 import re
 import time
 import unicodedata
-import io
-import zipfile
-import xml.etree.ElementTree as ET
 from typing import Annotated, Any, Optional
 from uuid import uuid4
 
@@ -15,6 +12,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.services.documentos import texto_office
 from app.services.llm_rate_limit import limitar_por_ip
 from app.services.auth_context import AuthContext, get_auth_context
 
@@ -195,46 +193,6 @@ def _normalizar_preguntas(preguntas: list) -> list[dict]:
     return normalizadas
 
 
-def _texto_office(data: bytes, nombre: str) -> str:
-    """Extrae texto tabular de DOCX/XLSX sin ejecutar macros ni contenido externo."""
-    nombre = nombre.lower()
-    try:
-        if nombre.endswith(".docx"):
-            with zipfile.ZipFile(io.BytesIO(data)) as zf:
-                root = ET.fromstring(zf.read("word/document.xml"))
-            ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-            parrafos = []
-            for p in root.iter(ns + "p"):
-                texto = "".join(t.text or "" for t in p.iter(ns + "t")).strip()
-                if texto:
-                    parrafos.append(texto)
-            return "\n".join(parrafos)
-        if nombre.endswith((".xlsx", ".xlsm")):
-            import openpyxl
-            wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-            lineas = []
-            for ws in wb.worksheets:
-                lineas.append(f"[HOJA: {ws.title}]")
-                for row in ws.iter_rows(values_only=True):
-                    vals = [str(v).strip() if v is not None else "" for v in row]
-                    if any(vals):
-                        lineas.append("\t".join(vals))
-            return "\n".join(lineas)
-        if nombre.endswith(".xls"):
-            import pandas as pd
-            hojas = pd.read_excel(io.BytesIO(data), sheet_name=None, header=None)
-            lineas = []
-            for titulo, frame in hojas.items():
-                lineas.append(f"[HOJA: {titulo}]")
-                for fila in frame.fillna("").astype(str).values.tolist():
-                    if any(v.strip() for v in fila):
-                        lineas.append("\t".join(v.strip() for v in fila))
-            return "\n".join(lineas)
-    except (KeyError, zipfile.BadZipFile, ET.ParseError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=f"No se pudo leer el archivo Office: {exc}")
-    raise HTTPException(status_code=415, detail="Formato Office no compatible")
-
-
 def _preguntas_itemizado_faltantes(result: dict) -> list[dict]:
     preguntas = []
     for indice, item in enumerate(result.get("lista_items") or []):
@@ -376,7 +334,7 @@ async def identificar_item(
         if nombre_archivo.lower().endswith(".pdf") or mime == "application/pdf":
             parts.append({"mime_type": "application/pdf", "data": archivo_bytes})
         else:
-            texto_archivo = _texto_office(archivo_bytes, nombre_archivo)
+            texto_archivo = texto_office(archivo_bytes, nombre_archivo)
             prompt_archivo = (
                 f"\n\n<itemizado_adjunto nombre={json.dumps(nombre_archivo)}>\n"
                 + texto_archivo[:120000]

@@ -81,12 +81,15 @@ async def guardar_rating(req: RatingRequest, ctx: AuthContext = Depends(get_auth
 
 @router.get("/{proveedor_id}/historial")
 async def historial_supplier(proveedor_id: str, ctx: AuthContext = Depends(get_auth_context)):
-    from app.services.supabase import get_supabase
+    from app.services.supabase import ejecutar_maybe_single, get_supabase
 
     sb = get_supabase()
     ids = ctx.user_ids_organizacion
 
-    proveedor = sb.table("proveedores").select("*").eq("id", proveedor_id).in_("user_id", ids).single().execute()
+    proveedor = ejecutar_maybe_single(
+        sb.table("proveedores").select("*").eq("id", proveedor_id)
+        .in_("user_id", ids).maybe_single()
+    )
     if not proveedor.data:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
