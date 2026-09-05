@@ -557,6 +557,10 @@ input, textarea, select, button { font-family: inherit; }
   z-index: 3;
 }
 
+/* Figura recostada del cierre. Se apoya sobre el logotipo gigante, así que su
+   altura se mide contra la caja del texto y cambia con el breakpoint. */
+.bl-cierre-figura { bottom: 46%; }
+
 /* ── Hero en pantallas angostas ───────────────────────────────────────────
    En escritorio la figura va al costado del titular y ocupa media portada.
    Bajo 900px no hay ancho para eso, pero el personaje ES la portada: en vez de
@@ -616,6 +620,10 @@ input, textarea, select, button { font-family: inherit; }
   }
 
   .bl-figura-rfq { display: none; }
+
+  /* El logotipo del cierre es mucho más bajo acá, así que el 46% de escritorio
+     deja a la figura flotando en el aire. Se baja hasta apoyarla en las letras. */
+  .bl-cierre-figura { bottom: 0; }
 }
 
 /* En un teléfono la barra se reparte a lo alto del hero: el logotipo arriba y

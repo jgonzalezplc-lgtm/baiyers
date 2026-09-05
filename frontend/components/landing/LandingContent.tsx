@@ -603,7 +603,10 @@ export default function LandingContent() {
         <div style={{ maxWidth: 1180, width: "100%", margin: "0 auto", padding: "15vh 24px 0", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <div style={{ width: "fit-content", maxWidth: "100%", margin: "0 auto" }}>
             <div style={{ position: "relative" }}>
-              <div style={{ position: "absolute", left: "50%", bottom: "46%", width: "clamp(200px,27vw,420px)", transform: "translateX(-12%) rotate(-9deg)", pointerEvents: "none", zIndex: 2 }}>
+              {/* `bottom` va por clase y no inline: en el teléfono hay que
+                  bajar la figura para que se apoye en las letras, y un estilo
+                  inline le gana a cualquier media query. */}
+              <div className="bl-cierre-figura" style={{ position: "absolute", left: "50%", width: "clamp(200px,27vw,420px)", transform: "translateX(-12%) rotate(-9deg)", pointerEvents: "none", zIndex: 2 }}>
                 <Image src={BASE + "body-lying.png"} alt="Baiyer recostado sobre el logotipo" width={900} height={900} sizes="(max-width: 900px) 60vw, 420px" style={{ width: "100%", height: "auto", display: "block" }} />
                 <Image src={BASE + "head-tired.png"} alt="" width={900} height={753} sizes="(max-width: 900px) 20vw, 140px" style={{ position: "absolute", left: "2%", top: "16%", width: "33%", height: "auto", display: "block", transform: "rotate(-6deg)" }} />
               </div>
