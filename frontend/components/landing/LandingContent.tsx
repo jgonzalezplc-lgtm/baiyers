@@ -231,24 +231,30 @@ export default function LandingContent() {
   return (
     <div className="bl">
       {/* ── Nav fija ── */}
-      <div style={{ position: "absolute", top: 0, left: 0, zIndex: 60, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 26, padding: "26px 34px 34px" }}>
-        <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 40, lineHeight: 1, color: "#fff", letterSpacing: ".01em", WebkitTextStroke: ".6px currentColor" }}>BAiYER</div>
-        <nav style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 20 }}>
+      {/* El layout de la barra vive en `.bl-nav` (globals.css) y no inline: en
+          móvil se acuesta, y un estilo inline no lo puede pisar una media query. */}
+      <div className="bl-nav">
+        <div className="bl-nav-marca">BAiYER</div>
+        <nav className="bl-nav-links">
           {[["#producto", "EMPLEADO DIGITAL"], ["#proceso", "CÓMO FUNCIONA"], ["#nosotros", "FAQ"]].map(([href, txt]) => (
-            <a key={href} href={href} className="bl-navlink" style={{ fontFamily: MONO, fontSize: 12, letterSpacing: ".2em", color: "#fff" }}>{txt}</a>
+            <a key={href} href={href} className="bl-navlink">{txt}</a>
           ))}
         </nav>
       </div>
 
       {/* ── 1. Hero ── */}
-      <header style={{ position: "relative", background: C.azul, color: "#fff", minHeight: "100vh", padding: "130px 24px 0", overflow: "hidden", display: "flex", alignItems: "center" }}>
+      {/* Igual que la nav, el layout del hero vive en CSS: en móvil cambia de
+          "figura al costado, texto centrado a la altura de los ojos" a "texto
+          centrado arriba, figura abajo", y eso una media query no lo puede
+          hacer contra estilos inline. */}
+      <header className="bl-hero">
         <div className="bl-hero-figura">
           <Figura cuerpo="body-headless.png" zona={zona} alt="Baiyer, el empleado digital de compras" proporcion={119.3} prioridad />
         </div>
-        <div style={{ position: "relative", zIndex: 2, maxWidth: 1180, margin: "0 auto", width: "100%", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 36, alignItems: "center" }}>
+        <div className="bl-hero-grid">
           <div className="bl-hero-hueco" />
           <div className="bl-hero-copy">
-            <h1 style={{ fontFamily: DISPLAY, fontSize: "clamp(40px,5.4vw,92px)", lineHeight: 1.02, margin: 0, letterSpacing: ".01em", minHeight: "4.2em" }}>
+            <h1 className="bl-hero-titulo">
               {/* El h1 cicla tres frases y se escribe en el cliente: sin esta
                   copia la portada no tiene encabezado principal en el HTML.
                   Se fija la primera frase —la que ve todo el mundo al cargar—
@@ -259,7 +265,7 @@ export default function LandingContent() {
                 <span className="bl-cursor" style={{ display: "inline-block", width: ".62em", height: ".78em", background: "#fff", marginLeft: ".12em", verticalAlign: "-.06em" }} />
               </span>
             </h1>
-            <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", marginTop: 44 }}>
+            <div className="bl-hero-acciones">
               <CtaExplosiva
                 etiqueta="CONVERSEMOS! →"
                 poses={[
@@ -356,11 +362,11 @@ export default function LandingContent() {
                   badge={rfqEnCurso ? "RFQ EN CURSO" : "EN ESPERA"}
                 />
                 <div style={{ padding: "18px 18px 16px" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 14, fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: C.mudo, paddingBottom: 12, borderBottom: `1px solid ${C.regla}` }}>
+                  <div className="bl-tabla-cab" style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 14, fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: C.mudo, paddingBottom: 12, borderBottom: `1px solid ${C.regla}` }}>
                     <span>PROVEEDOR</span><span>ESTADO</span><span style={{ textAlign: "right" }}>COTIZACIÓN</span>
                   </div>
                   {filas.map(v => (
-                    <div key={v.name} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 12, alignItems: "center", padding: "11px 0", borderBottom: `1px solid ${C.regla}`, opacity: v.visible ? 1 : 0, transform: v.visible ? "translateY(0)" : "translateY(6px)", transition: "opacity .5s ease,transform .5s cubic-bezier(.22,1,.36,1)" }}>
+                    <div key={v.name} className="bl-tabla-fila" style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 12, alignItems: "center", padding: "11px 0", borderBottom: `1px solid ${C.regla}`, opacity: v.visible ? 1 : 0, transform: v.visible ? "translateY(0)" : "translateY(6px)", transition: "opacity .5s ease,transform .5s cubic-bezier(.22,1,.36,1)" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
                         <Inicial>{v.initial}</Inicial>
                         <span style={{ minWidth: 0 }}>
@@ -399,11 +405,11 @@ export default function LandingContent() {
                 badgeEstilo={{ border: `1px solid ${C.ambar}`, color: C.ambarOscuro, background: C.ambarTinte }}
               />
               <div style={{ padding: 18, display: "flex", flexDirection: "column" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 150px 74px", gap: 12, fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: C.mudo, padding: "0 10px 12px", borderBottom: `1px solid ${C.regla}` }}>
+                <div className="bl-tabla-cab" style={{ display: "grid", gridTemplateColumns: "1fr 150px 74px", gap: 12, fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: C.mudo, padding: "0 10px 12px", borderBottom: `1px solid ${C.regla}` }}>
                   <span>PROVEEDOR</span><span style={{ textAlign: "right" }}>ESTADO</span><span style={{ textAlign: "right" }}>PROMETIDO</span>
                 </div>
                 {ORDENES.map((o, i) => (
-                  <div key={o.name} style={{ display: "grid", gridTemplateColumns: "1fr 150px 74px", gap: 12, alignItems: "center", padding: "11px 10px", borderBottom: `1px solid ${C.regla}`, borderRadius: 10, background: i === foco ? "#fff" : "transparent", boxShadow: i === foco ? "0 6px 18px rgba(17,17,17,.10)" : "none", transition: "background .45s ease,box-shadow .45s ease" }}>
+                  <div key={o.name} className="bl-tabla-fila" style={{ display: "grid", gridTemplateColumns: "1fr 150px 74px", gap: 12, alignItems: "center", padding: "11px 10px", borderBottom: `1px solid ${C.regla}`, borderRadius: 10, background: i === foco ? "#fff" : "transparent", boxShadow: i === foco ? "0 6px 18px rgba(17,17,17,.10)" : "none", transition: "background .45s ease,box-shadow .45s ease" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
                       <Inicial>{o.initial}</Inicial>
                       <span style={{ minWidth: 0 }}>
