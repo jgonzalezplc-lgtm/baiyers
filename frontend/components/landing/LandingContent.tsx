@@ -606,11 +606,13 @@ export default function LandingContent() {
               {/* `bottom` va por clase y no inline: en el teléfono hay que
                   bajar la figura para que se apoye en las letras, y un estilo
                   inline le gana a cualquier media query. */}
-              <div className="bl-cierre-figura" style={{ position: "absolute", left: "50%", width: "clamp(200px,27vw,420px)", transform: "translateX(-12%) rotate(-9deg)", pointerEvents: "none", zIndex: 2 }}>
+              <div className="bl-cierre-figura" style={{ position: "absolute", left: "50%", transform: "translateX(-12%) rotate(-9deg)", pointerEvents: "none", zIndex: 2 }}>
                 <Image src={BASE + "body-lying.png"} alt="Baiyer recostado sobre el logotipo" width={900} height={900} sizes="(max-width: 900px) 60vw, 420px" style={{ width: "100%", height: "auto", display: "block" }} />
                 <Image src={BASE + "head-tired.png"} alt="" width={900} height={753} sizes="(max-width: 900px) 20vw, 140px" style={{ position: "absolute", left: "2%", top: "16%", width: "33%", height: "auto", display: "block", transform: "rotate(-6deg)" }} />
               </div>
-              <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: "clamp(110px,24vw,400px)", lineHeight: .86, letterSpacing: "-.01em", position: "relative", zIndex: 1, WebkitTextStroke: "2px currentColor", textAlign: "center" }}>BAiYER</div>
+              {/* `font-size` va por clase: el mínimo de 110px del clamp no cabe
+                  en un teléfono y desbordaba por la derecha. */}
+              <div className="bl-cierre-marca" style={{ fontFamily: DISPLAY, fontWeight: 700, lineHeight: .86, letterSpacing: "-.01em", position: "relative", zIndex: 1, WebkitTextStroke: "2px currentColor", textAlign: "center" }}>BAiYER</div>
             </div>
             {/* `justify-content` va por clase: inline le gana a la media query
                 que lo centra en el teléfono. */}
