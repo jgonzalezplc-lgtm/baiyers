@@ -612,7 +612,9 @@ export default function LandingContent() {
               </div>
               <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: "clamp(110px,24vw,400px)", lineHeight: .86, letterSpacing: "-.01em", position: "relative", zIndex: 1, WebkitTextStroke: "2px currentColor", textAlign: "center" }}>BAiYER</div>
             </div>
-            <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 30, flexWrap: "wrap", marginTop: 40, width: "100%" }}>
+            {/* `justify-content` va por clase: inline le gana a la media query
+                que lo centra en el teléfono. */}
+            <div className="bl-cierre-pie" style={{ display: "flex", alignItems: "flex-end", gap: 30, flexWrap: "wrap", marginTop: 40, width: "100%" }}>
               <p style={{ fontSize: 19, lineHeight: 1.5, maxWidth: 520, margin: 0, color: C.lavanda, textWrap: "pretty" }}>Comencemos a trabajar juntos hoy!</p>
               <CtaExplosiva
                 etiqueta="AGENDAR DEMO →"

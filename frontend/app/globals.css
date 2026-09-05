@@ -560,6 +560,8 @@ input, textarea, select, button { font-family: inherit; }
 /* Figura recostada del cierre. Se apoya sobre el logotipo gigante, así que su
    altura se mide contra la caja del texto y cambia con el breakpoint. */
 .bl-cierre-figura { bottom: 46%; }
+/* Fila de cierre: frase a la izquierda y CTA a la derecha. */
+.bl-cierre-pie { justify-content: space-between; }
 
 /* ── Hero en pantallas angostas ───────────────────────────────────────────
    En escritorio la figura va al costado del titular y ocupa media portada.
@@ -623,7 +625,11 @@ input, textarea, select, button { font-family: inherit; }
 
   /* El logotipo del cierre es mucho más bajo acá, así que el 46% de escritorio
      deja a la figura flotando en el aire. Se baja hasta apoyarla en las letras. */
-  .bl-cierre-figura { bottom: 0; }
+  .bl-cierre-figura { bottom: 5%; }
+
+  /* Apilados por el `flex-wrap`, el texto y el botón quedaban los dos pegados a
+     la izquierda; centrados acompañan al logotipo, que va centrado. */
+  .bl-cierre-pie { justify-content: center; text-align: center; }
 }
 
 /* En un teléfono la barra se reparte a lo alto del hero: el logotipo arriba y
