@@ -629,7 +629,7 @@ input, textarea, select, button { font-family: inherit; }
   /* En px y no en %: al achicar el logotipo su caja quedó tan baja (~67px) que
      un porcentaje se vuelve un ajuste de milímetros y la figura, que conserva
      su ancho, volvía a flotar. */
-  .bl-cierre-figura { bottom: -8px; width: 46vw; }
+  .bl-cierre-figura { bottom: 1px; width: 46vw; }
 
   /* 24vw de 375px son 90px, pero el mínimo del clamp lo empujaba a 110px y el
      logotipo se salía por la derecha. Acá manda el ancho disponible. */
