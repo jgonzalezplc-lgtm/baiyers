@@ -1,619 +1,628 @@
 "use client";
-/**
- * Landing pública — rediseño 2026-08-24.
- *
- * Traducción del handoff `design_handoff_baiyer_landing` (prototipo hecho con
- * un runtime propio, `<x-dc>`/`<sc-for>`) a React: se conservan estructura,
- * copy e interacciones.
- *
- * Mezcla deliberada de los dos sistemas: **tipografía Source Serif 4 del
- * handoff** (es lo que le da el aire editorial) sobre la **paleta de la app**
- * (azul petróleo y neutros cálidos) en vez del cian/magenta de Broadsheet, para
- * que landing y producto se reconozcan como lo mismo.
- *
- * **Siempre en claro** (`.tema-claro`): el diseño está pensado sobre papel y en
- * modo oscuro los wordmarks del titular no tenían solución limpia.
- *
- * No se porta el tratamiento CMYK de los titulares: es un efecto de registro de
- * imprenta que sin la paleta de Broadsheet no se lee como tal.
- */
-import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { DEMO_URL, FAQS, FEATURES, HERO_POSTER, HERO_VIDEO, INTEGRACIONES } from "./datos";
 
-/** Botón/enlace con el lenguaje de la app, en tamaño landing. */
-function CtaPrimary({ href, children, externo }: { href: string; children: React.ReactNode; externo?: boolean }) {
-  const estilo: React.CSSProperties = {
-    display: "inline-flex", alignItems: "center", justifyContent: "center",
-    background: "var(--brand)", color: "#fff", border: "none",
-    borderRadius: "var(--r-md)", padding: "12px 22px",
-    fontSize: 15, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap",
-  };
-  return externo
-    ? <a href={href} style={estilo}>{children}</a>
-    : <Link href={href} style={estilo}>{children}</Link>;
-}
+import { useState } from "react";
+import Image from "next/image";
+import Figura from "./Figura";
+import { useFrames, useFraseHero, useMirada, useTitulosTipeados } from "./hooks";
+import {
+  ACTORES, C, DEMO_URL, DISPLAY, ETAPAS, FAQS, FRASES, MONO, ORDENES, TITULOS,
+} from "./datos";
 
-function CtaSecondary({ href, children, externo }: { href: string; children: React.ReactNode; externo?: boolean }) {
-  const estilo: React.CSSProperties = {
-    display: "inline-flex", alignItems: "center", justifyContent: "center",
-    background: "var(--surface)", color: "var(--n-700)",
-    border: "1px solid var(--n-300)", borderRadius: "var(--r-md)", padding: "12px 22px",
-    fontSize: 15, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap",
-  };
-  return externo
-    ? <a href={href} style={estilo}>{children}</a>
-    : <Link href={href} style={estilo}>{children}</Link>;
-}
+const BASE = "/landing/baiyer/";
+const CONTENEDOR: React.CSSProperties = { maxWidth: 1180, margin: "0 auto", padding: "0 24px" };
+const GLOW = "0 0 22px rgba(16,0,255,.55),0 0 7px rgba(16,0,255,.45)";
 
-export default function LandingContent() {
-  const [logo, setLogo] = useState(0);
-  const [active, setActive] = useState(0);
-  const [anim, setAnim] = useState(true);
-  const [abierta, setAbierta] = useState<number>(0);
+/* ── Hilo del chat ──────────────────────────────────────────────────────────
+   Los tiempos son frames del reloj único (40ms). `SENT` es el instante en que
+   Camila manda el mensaje que menciona a Baiyer: todo lo del panel RFQ cuelga
+   de ahí, así que las dos tarjetas quedan sincronizadas sin coordinarse.      */
+const BORRADOR_PRE = "No sé, ";
+const BORRADOR_CHIP = "@Baiyer";
+const BORRADOR_POST = ", ¿cuál es la mejor opción considerando precio vs calidad?";
+const LARGO_BORRADOR = BORRADOR_PRE.length + BORRADOR_CHIP.length + BORRADOR_POST.length;
+const INICIO_TIPEO = 56;
+const SENT = INICIO_TIPEO + LARGO_BORRADOR + 14;
+const PANEL = SENT + 8;
+const SI_PORFA = SENT + 210;
+const TOTAL_FRAMES = 560;
 
-  const seccionRef = useRef<HTMLDivElement | null>(null);
-  const videoFeature = useRef<HTMLVideoElement | null>(null);
-  const videoHero = useRef<HTMLVideoElement | null>(null);
+type Msg = { quien: "camila" | "diego" | "baiyer"; at: number; time: string; pre: string; mention?: string; post?: string };
 
-  const activarFeature = useCallback((i: number) => {
-    setActive(prev => {
-      if (prev === i) return prev;
-      // Reinicia la transición de entrada del texto.
-      setAnim(false);
-      requestAnimationFrame(() => requestAnimationFrame(() => setAnim(true)));
-      return i;
-    });
-  }, []);
+const MENSAJES: Msg[] = [
+  { quien: "camila", at: 8, time: "9:38", pre: "Chicos, los nuevos ingenieros llegan el lunes! Necesitamos 5 computadores para ellos." },
+  { quien: "diego", at: 30, time: "9:38", pre: "¿Cuáles tienes pensados? ¿ThinkPad o MacBook?" },
+  { quien: "camila", at: SENT, time: "9:39", pre: BORRADOR_PRE, mention: BORRADOR_CHIP, post: BORRADOR_POST },
+  { quien: "baiyer", at: SENT + 172, time: "9:40", pre: "Ya tengo las cotizaciones: ThinkPad E14 a $450.000 y MacBook Air a $600.000. Mejor precio/calidad son los ThinkPad. ¿Les pido despacho para el viernes?" },
+  { quien: "camila", at: SI_PORFA, time: "9:41", pre: "Sí porfa!" },
+  { quien: "baiyer", at: SENT + 238, time: "9:41", pre: "Correos enviados! ", mention: "@Cami", post: " te dejé en copia para hacer seguimiento :)" },
+  { quien: "camila", at: SENT + 268, time: "9:42", pre: "Gracias Baiyer, eres un amor! <3" },
+];
 
-  // Los logos del titular alternan; sólo uno existe en el DOM a la vez.
-  useEffect(() => {
-    const t = setInterval(() => setLogo(l => (l === 0 ? 1 : 0)), 6500);
-    return () => clearInterval(t);
-  }, []);
+const PERSONAS = {
+  camila: { name: "Camila Rojas", emoji: "🌸", bg: C.panel },
+  diego: { name: "Diego Fuentes", emoji: "🐶", bg: C.panel },
+  baiyer: { name: "Baiyer", emoji: "", bg: "#1f8b3a" },
+} as const;
 
-  // `muted`/`loop` se asignan imperativamente: como atributos planos el
-  // navegador puede bloquear el autoplay.
-  const prepararVideo = useCallback((el: HTMLVideoElement | null) => {
-    if (!el) return;
-    el.muted = true;
-    el.loop = true;
-    void el.play().catch(() => {});
-  }, []);
+/** `[nombre, inicial, modelo, apareceEn, cotizaEn, precio, esThinkPadElegido]` */
+const PROVEEDORES: [string, string, string, number, number, string, boolean][] = [
+  ["MacOnline", "M", "MacBook Air M3", PANEL + 4, PANEL + 66, "$600.000", false],
+  ["Lenovo Chile", "L", "ThinkPad E14 Gen 5", PANEL + 12, PANEL + 86, "$450.000", true],
+  ["PC Factory", "P", "ThinkPad E14 Gen 5", PANEL + 20, PANEL + 106, "$468.900", true],
+  ["Tecnoglobal", "T", "MacBook Air M3", PANEL + 28, PANEL + 126, "$629.000", false],
+  ["Reifschneider", "R", "ThinkPad T14 Gen 4", PANEL + 36, PANEL + 148, "$512.400", true],
+];
 
-  useEffect(() => {
-    const el = videoHero.current;
-    if (!el) return;
-    el.src = HERO_VIDEO;
-    prepararVideo(el);
-  }, [prepararVideo]);
+/* ── Piezas chicas ───────────────────────────────────────────────────────── */
 
-  useEffect(() => {
-    const el = videoFeature.current;
-    if (!el) return;
-    el.src = FEATURES[active].video;
-    el.load();
-    prepararVideo(el);
-  }, [active, prepararVideo]);
-
-  // El índice activo se deriva de cuánto se avanzó dentro del bloque alto.
-  useEffect(() => {
-    let raf = 0;
-    const onScroll = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        const el = seccionRef.current;
-        if (!el) return;
-        const recorrido = el.offsetHeight - window.innerHeight;
-        if (recorrido <= 0) return;
-        const avanzado = Math.min(Math.max(-el.getBoundingClientRect().top, 0), recorrido);
-        const idx = Math.min(
-          FEATURES.length - 1,
-          Math.max(0, Math.floor((avanzado / recorrido) * FEATURES.length)),
-        );
-        activarFeature(idx);
-      });
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
-    onScroll();
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, [activarFeature]);
-
-  const irAIndice = (i: number) => {
-    // En móvil la sección deja de ser sticky para que su contenido no se
-    // recorte dentro del viewport. Los chips cambian la tarjeta directamente.
-    if (window.matchMedia("(max-width: 640px)").matches) {
-      activarFeature(i);
-      return;
-    }
-    const el = seccionRef.current;
-    if (!el) return;
-    const recorrido = el.offsetHeight - window.innerHeight;
-    const inicio = window.scrollY + el.getBoundingClientRect().top;
-    window.scrollTo({ top: inicio + ((i + 0.5) / FEATURES.length) * recorrido, behavior: "smooth" });
-  };
-
-  const f = FEATURES[active];
+function Titulo({ i, n, tamano = "clamp(34px,4.6vw,62px)" }: {
+  i: number; n: number; tamano?: string;
+}) {
+  const [ini, medio, fin] = TITULOS[i];
+  let resto = n;
+  const a = ini.slice(0, Math.min(resto, ini.length));
+  resto -= ini.length;
+  const b = resto > 0 ? medio.slice(0, resto) : "";
+  resto -= medio.length;
+  const c = resto > 0 ? fin.slice(0, resto) : "";
+  // El cursor se pega a la última palabra para que no quede huérfano al saltar
+  // de línea; por eso el tramo final se parte en "todo menos la última palabra".
+  const corte = c ? c.trimEnd().lastIndexOf(" ") : -1;
+  const cabeza = c && corte > 0 ? c.slice(0, corte + 1) : "";
+  const cola = c && corte > 0 ? c.slice(corte + 1) : c;
 
   return (
-    <div
-      className="tema-claro"
-      style={{
-        background: "var(--canvas)", color: "var(--n-900)",
-        // Source Serif 4 en toda la landing, como el diseño original. La app
-        // por dentro sigue en Inter.
-        fontFamily: "var(--font-serif), Georgia, serif",
-      }}
+    <h2
+      data-ttl={i}
+      style={{ fontFamily: DISPLAY, fontWeight: 500, fontSize: tamano, lineHeight: 1.06, letterSpacing: ".01em", margin: "0 0 18px" }}
     >
+      {/* El título se escribe recién en el cliente, así que sin esta copia el
+          encabezado viaja VACÍO en el HTML del servidor: un buscador que no
+          ejecuta JS ve una portada sin ningún <h2>, y un lector de pantalla
+          leería el texto a medio tipear. La copia animada queda como
+          decorativa para que no se anuncie dos veces. */}
+      <span className="bl-solo-lectores">{TITULOS[i].join("")}</span>
+      <span aria-hidden="true">
+        {a}
+        <span style={{ color: C.azul, textShadow: GLOW }}>{b}</span>
+        {cabeza}
+        <span style={{ whiteSpace: "nowrap" }}>
+          {cola}
+          <span className="bl-cursor" style={{ display: "inline-block", width: ".5em", height: ".72em", background: "currentColor", verticalAlign: "-.04em" }} />
+        </span>
+      </span>
+    </h2>
+  );
+}
 
-      {/* ── Barra de anuncio ── */}
-      <div style={{
-        background: "var(--n-900)", color: "var(--canvas)", fontSize: 13,
-        textAlign: "center", padding: "9px 20px",
-      }}>
-        Nuevo: agentes de correo que cotizan por ti, de semanas a minutos.{" "}
-        <a href={DEMO_URL} style={{ color: "var(--canvas)", textDecoration: "underline", textUnderlineOffset: 3 }}>
-          Agenda una demo →
-        </a>
+function Lead({ children, ancho = 620 }: { children: React.ReactNode; ancho?: number }) {
+  return (
+    <p style={{ fontSize: 17, lineHeight: 1.55, maxWidth: ancho, margin: "0 0 40px", color: C.cuerpo, textWrap: "pretty" }}>
+      {children}
+    </p>
+  );
+}
+
+/** Botón-píldora blanco sobre azul, con la explosión de recortes al pasar. */
+function CtaExplosiva({ etiqueta, poses, transformaciones }: {
+  etiqueta: string;
+  poses: { src: string; w: number; h: number; delay: string; dur: string }[];
+  transformaciones: { activo: string; reposo: string }[];
+}) {
+  const [on, setOn] = useState(false);
+  return (
+    <div style={{ position: "relative", zIndex: 5 }}>
+      <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 6 }}>
+        {poses.map((p, i) => (
+          <div
+            key={i}
+            style={{
+              position: "absolute", left: "50%", top: "50%", width: p.w, height: p.h,
+              transition: `transform ${p.dur} cubic-bezier(.22,1.25,.36,1),opacity .35s`,
+              transitionDelay: p.delay,
+              transform: on ? transformaciones[i].activo : transformaciones[i].reposo,
+              opacity: on ? 1 : 0,
+            }}
+          >
+            <Image src={BASE + p.src} alt="" width={700} height={900} sizes="110px"
+              style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "bottom center", display: "block" }} />
+          </div>
+        ))}
+      </div>
+      <a
+        href={DEMO_URL} target="_blank" rel="noopener"
+        onMouseEnter={() => setOn(true)} onMouseLeave={() => setOn(false)}
+        className="bl-cta"
+        style={{
+          position: "relative", zIndex: 1, display: "inline-block", fontFamily: MONO,
+          fontSize: 13, letterSpacing: ".14em", color: C.azul, background: "#fff",
+          border: "1px solid #fff", padding: "16px 32px", borderRadius: 999,
+        }}
+      >
+        {etiqueta}
+      </a>
+    </div>
+  );
+}
+
+/** Encabezado de las tarjetas-panel (título display + subtítulo mono + badge). */
+function CabezaPanel({ titulo, sub, badge, badgeEstilo }: {
+  titulo: string; sub?: string; badge: string; badgeEstilo?: React.CSSProperties;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, padding: "18px 18px 0" }}>
+      <div>
+        <div style={{ fontFamily: DISPLAY, fontSize: 21, lineHeight: 1.1 }}>{titulo}</div>
+        {sub !== undefined && (
+          <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: ".08em", color: C.mudo, marginTop: 6, minHeight: "1.2em" }}>{sub}</div>
+        )}
+      </div>
+      <span style={{
+        flex: "none", fontFamily: MONO, fontSize: 10, letterSpacing: ".12em",
+        border: `1px solid ${C.tinta}`, borderRadius: 999, padding: "7px 13px",
+        background: "#fff", whiteSpace: "nowrap", ...badgeEstilo,
+      }}>{badge}</span>
+    </div>
+  );
+}
+
+/** "$468.900" → 468900. Los precios de la maqueta son texto ya formateado. */
+function aPesos(precio: string) {
+  return Number(precio.replace(/\D/g, ""));
+}
+
+/** Cuadrito con la inicial del proveedor. */
+function Inicial({ children }: { children: React.ReactNode }) {
+  return (
+    <span style={{
+      width: 23, height: 23, flex: "none", border: `1px solid ${C.tinta}`, borderRadius: 8,
+      background: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+      fontFamily: MONO, fontSize: 11, fontWeight: 700,
+    }}>{children}</span>
+  );
+}
+
+/* ── Página ──────────────────────────────────────────────────────────────── */
+
+export default function LandingContent() {
+  const zona = useMirada();
+  const f = useFrames(TOTAL_FRAMES, 40);
+  const wf = useFrames(ETAPAS.length + 1, 1050);
+  const frase = useFraseHero();
+  const tipeado = useTitulosTipeados();
+  const [abierta, setAbierta] = useState<number | null>(null);
+
+  /* Composer: cuánto lleva escrito el mensaje 3 y si ya está listo para enviar. */
+  const escrito = f < INICIO_TIPEO || f >= SENT ? 0 : Math.min(LARGO_BORRADOR, f - INICIO_TIPEO);
+  const armado = escrito >= LARGO_BORRADOR;
+  const bPre = BORRADOR_PRE.slice(0, escrito);
+  const bChip = escrito > BORRADOR_PRE.length ? BORRADOR_CHIP.slice(0, escrito - BORRADOR_PRE.length) : "";
+  const bPost = escrito > BORRADOR_PRE.length + BORRADOR_CHIP.length
+    ? BORRADOR_POST.slice(0, escrito - BORRADOR_PRE.length - BORRADOR_CHIP.length) : "";
+
+  /* Filas de la RFQ: aparecen, cotizan y —tras el "Sí porfa!"— reciben correo. */
+  const filas = PROVEEDORES.map(([name, initial, model, apareceEn, cotizaEn, precio, elegido]) => {
+    const visible = f >= apareceEn;
+    const cotizado = f >= cotizaEn;
+    const conCorreo = elegido && cotizado && f >= SI_PORFA + 10;
+    return {
+      name, initial, model,
+      precio: cotizado ? precio : "—",
+      estado: conCorreo ? "Correo consulta despacho enviado" : cotizado ? "Precio obtenido" : "Buscando en web",
+      fg: cotizado ? C.tinta : C.mudo,
+      precioFg: cotizado ? C.tinta : C.apagado,
+      punto: conCorreo ? C.azul : cotizado ? C.verde : C.apagado,
+      visible, cotizado,
+    };
+  });
+  // Se compara el valor numérico, no el texto: ordenar "$450.000" como string
+  // sólo funciona mientras todos los precios tengan el mismo largo, y agregar
+  // uno de otra magnitud daría una "mejor oferta" equivocada sin avisar.
+  const cotizadas = filas.filter(v => v.cotizado);
+  const mejor = cotizadas.length
+    ? cotizadas.reduce((a, b) => (aPesos(a.precio) <= aPesos(b.precio) ? a : b)).precio
+    : "—";
+  const rfqEnCurso = f >= SENT;
+
+  /* Órdenes de compra: el foco rota y arrastra el borrador de correo. */
+  const foco = Math.floor(f / 70) % ORDENES.length;
+  const oc = ORDENES[foco];
+
+  return (
+    <div className="bl">
+      {/* ── Nav fija ── */}
+      <div style={{ position: "absolute", top: 0, left: 0, zIndex: 60, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 26, padding: "26px 34px 34px" }}>
+        <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 40, lineHeight: 1, color: "#fff", letterSpacing: ".01em", WebkitTextStroke: ".6px currentColor" }}>BAiYER</div>
+        <nav style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 20 }}>
+          {[["#producto", "EMPLEADO DIGITAL"], ["#proceso", "CÓMO FUNCIONA"], ["#nosotros", "FAQ"]].map(([href, txt]) => (
+            <a key={href} href={href} className="bl-navlink" style={{ fontFamily: MONO, fontSize: 12, letterSpacing: ".2em", color: "#fff" }}>{txt}</a>
+          ))}
+        </nav>
       </div>
 
-      {/* ── Nav ── */}
-      <nav style={{
-        maxWidth: 1180, margin: "0 auto", padding: "16px clamp(20px,5vw,64px)",
-        display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap",
-      }}>
-        <span style={{ fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em", marginRight: "auto" }}>
-          Baiyer
-        </span>
-        <a href="#features" style={{ fontSize: 14, color: "var(--n-600)", textDecoration: "none" }}>Producto</a>
-        <a href="#why" style={{ fontSize: 14, color: "var(--n-600)", textDecoration: "none" }}>Por qué</a>
-        <a href="#faq" style={{ fontSize: 14, color: "var(--n-600)", textDecoration: "none" }}>Preguntas</a>
-        <span style={{ display: "flex", gap: 10 }}>
-          <CtaSecondary href="/login">Iniciar sesión</CtaSecondary>
-          <CtaPrimary href={DEMO_URL} externo>Probar gratis</CtaPrimary>
-        </span>
-      </nav>
-
-      <main>
-      <div style={{ maxWidth: 1180, margin: "0 auto", padding: "0 clamp(20px,5vw,64px)" }}>
-
-        {/* ── Hero ── */}
-        <section style={{
-          display: "flex", flexDirection: "column", alignItems: "center",
-          gap: "clamp(36px,5vw,60px)", padding: "clamp(48px,7vw,88px) 0 clamp(40px,6vw,72px)",
-        }}>
-          <div style={{ textAlign: "center", width: "100%" }}>
-            <h1 style={{
-              fontWeight: 600, fontSize: "clamp(40px,5.4vw,66px)",
-              lineHeight: 0.98, letterSpacing: "-0.025em", margin: 0,
-            }}>
-              <span style={{ display: "block" }}>Tu proceso de compra</span>
-              <span style={{ display: "block" }}>completo desde</span>
-              <span style={{ position: "relative", display: "block", height: "1.42em", marginTop: "0.1em" }}>
-                <span
-                  key={logo}
-                  style={{
-                    position: "absolute", inset: 0, display: "flex",
-                    alignItems: "flex-end", justifyContent: "center", paddingBottom: "0.12em",
-                    animation: "landingLogoIn .45s ease-out both",
-                  }}
-                >
-                  {/* Los PNG del handoff traían fondo blanco opaco; se les quitó
-                      con `scripts/limpiar-logos.mjs`, así que van sueltos sobre el
-                      papel, sin chip ni `mix-blend-mode`. */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={logo === 0 ? "/landing/logo-claude-wordmark.png" : "/landing/logo-chatgpt-wordmark.png"}
-                    alt={logo === 0 ? "Claude" : "ChatGPT"}
-                    style={{ height: logo === 0 ? "1.2em" : "1.38em", width: "auto", display: "block" }}
-                  />
-                </span>
+      {/* ── 1. Hero ── */}
+      <header style={{ position: "relative", background: C.azul, color: "#fff", minHeight: "100vh", padding: "130px 24px 0", overflow: "hidden", display: "flex", alignItems: "center" }}>
+        <div className="bl-hero-figura">
+          <Figura cuerpo="body-headless.png" zona={zona} alt="Baiyer, el empleado digital de compras" proporcion={119.3} prioridad />
+        </div>
+        <div style={{ position: "relative", zIndex: 2, maxWidth: 1180, margin: "0 auto", width: "100%", display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 36, alignItems: "center" }}>
+          <div className="bl-hero-hueco" />
+          <div className="bl-hero-copy">
+            <h1 style={{ fontFamily: DISPLAY, fontSize: "clamp(40px,5.4vw,92px)", lineHeight: 1.02, margin: 0, letterSpacing: ".01em", minHeight: "4.2em" }}>
+              {/* El h1 cicla tres frases y se escribe en el cliente: sin esta
+                  copia la portada no tiene encabezado principal en el HTML.
+                  Se fija la primera frase —la que ve todo el mundo al cargar—
+                  para que el h1 sea uno solo y estable, no tres rotando. */}
+              <span className="bl-solo-lectores">{FRASES[0]}</span>
+              <span aria-hidden="true">
+                {frase}
+                <span className="bl-cursor" style={{ display: "inline-block", width: ".62em", height: ".78em", background: "#fff", marginLeft: ".12em", verticalAlign: "-.06em" }} />
               </span>
             </h1>
-
-            <p style={{
-              fontSize: 17, lineHeight: 1.6, maxWidth: "54ch", margin: "24px auto 0",
-              color: "var(--n-600)",
-            }}>
-              Baiyer hace el trabajo de cotización y compras por ti: conectas tu cuenta de correo y
-              tu IA preferida, y ella se encarga de qué cotizar. Un trabajo de semanas queda en unos
-              minutos.
-            </p>
-
-            <div style={{
-              display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center",
-              alignItems: "center", marginTop: 28,
-            }}>
-              <CtaPrimary href={DEMO_URL} externo>Agenda una demo</CtaPrimary>
-              <CtaSecondary href="/dashboard">Ver la plataforma →</CtaSecondary>
-            </div>
-          </div>
-
-          <div style={{
-            width: "100%", maxWidth: 1120, borderRadius: "var(--r-lg)", overflow: "hidden",
-            boxShadow: "var(--shadow-modal)", lineHeight: 0,
-          }}>
-            {/* `preload="none"` + poster: el mp4 pesa 3 MB y con `metadata`
-                el navegador igual abría la conexión antes de pintar nada. Así
-                lo primero que se ve es el poster (16 KB) y el video se pide
-                recién en el efecto de montaje. */}
-            <video
-              ref={videoHero}
-              poster={HERO_POSTER}
-              autoPlay loop muted playsInline preload="none"
-              style={{ display: "block", width: "100%", height: "auto" }}
-            />
-          </div>
-        </section>
-      </div>
-
-      {/* ── Features: panel pegado + scroll ── */}
-      <section
-        id="features"
-        ref={seccionRef}
-        aria-label="Qué hace Baiyer"
-        className="landing-features"
-      >
-        <div className="landing-features__panel">
-          <h2 style={{
-            fontSize: "clamp(26px,3.2vw,38px)", letterSpacing: "-0.02em", fontWeight: 600,
-            margin: "0 auto 12px", maxWidth: "22ch", textAlign: "center", lineHeight: 1.15,
-            padding: "0 20px",
-          }}>
-            Pensado para hacer tu empresa más eficiente
-          </h2>
-
-          <div style={{
-            display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8,
-            margin: "0 auto clamp(24px,4vh,44px)", padding: "0 20px", maxWidth: 1000,
-          }}>
-            {FEATURES.map((t, i) => (
-              <button
-                key={t.name}
-                type="button"
-                onClick={() => irAIndice(i)}
-                style={{
-                  cursor: "pointer", fontFamily: "inherit", fontSize: 13.5,
-                  fontWeight: i === active ? 600 : 500, whiteSpace: "nowrap",
-                  padding: "8px 16px", borderRadius: "var(--r-pill)",
-                  border: `1px solid ${i === active ? "var(--brand)" : "var(--n-200)"}`,
-                  background: i === active ? "var(--brand)" : "var(--surface)",
-                  color: i === active ? "#fff" : "var(--n-500)",
-                  transition: "background .2s ease, color .2s ease, border-color .2s ease",
-                }}
-              >
-                {t.name}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ maxWidth: 1120, width: "100%", margin: "0 auto", padding: "0 clamp(16px,4vw,32px)" }}>
-            <div style={{
-              position: "relative", background: "var(--surface)", border: "1px solid var(--n-200)",
-              borderRadius: "var(--r-xl)", boxShadow: "var(--shadow-modal)",
-              padding: "clamp(22px,3vw,40px)", display: "flex", flexWrap: "wrap",
-              alignItems: "center", gap: "clamp(24px,3vw,40px)",
-            }}>
-              <div style={{
-                flex: "1 1 240px", minWidth: 220,
-                opacity: anim ? 1 : 0,
-                transform: anim ? "translateY(0)" : "translateY(24px)",
-                transition: "opacity .4s ease, transform .4s cubic-bezier(0.22,1,0.36,1)",
-              }}>
-                <h3 style={{
-                  fontSize: "clamp(24px,2.6vw,32px)", lineHeight: 1.1, letterSpacing: "-0.015em",
-                  fontWeight: 600, margin: "0 0 16px",
-                }}>
-                  {f.title}
-                </h3>
-                <p style={{ fontSize: 16, lineHeight: 1.65, margin: "0 0 28px", maxWidth: "42ch", color: "var(--n-600)" }}>
-                  {f.desc}
-                </p>
-                <div style={{
-                  background: "var(--brand-50)", border: "1px solid var(--brand-100)",
-                  borderRadius: "var(--r-lg)", padding: "16px 20px",
-                }}>
-                  <div style={{ fontWeight: 600, fontSize: 15.5, lineHeight: 1.4, color: "var(--brand)" }}>
-                    {f.note}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ flex: "1.6 1 340px", minWidth: 260 }}>
-                <div style={{
-                  position: "relative", width: "100%", aspectRatio: "16/10", maxHeight: "42vh",
-                  borderRadius: "var(--r-lg)", overflow: "hidden", background: "var(--n-100)",
-                  border: "1px solid var(--n-200)", boxShadow: "var(--shadow-card)",
-                  opacity: anim ? 1 : 0, transition: "opacity .4s ease",
-                }}>
-                  <video
-                    ref={videoFeature}
-                    poster={f.poster}
-                    autoPlay loop muted playsInline preload="none"
-                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div style={{
-              textAlign: "center", marginTop: "clamp(20px,3vh,34px)", fontSize: 12.5,
-              color: "var(--n-500)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-            }}>
-              <span className="landing-features__desktop-hint">
-                <span aria-hidden="true">↕</span> Desplázate para cambiar de tarjeta
-              </span>
-              <span className="landing-features__mobile-hint">
-                Toca una opción para cambiar de tarjeta
-              </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", marginTop: 44 }}>
+              <CtaExplosiva
+                etiqueta="CONVERSEMOS! →"
+                poses={[
+                  { src: "crt-full.png", w: 96, h: 128, delay: "0s", dur: ".7s" },
+                  { src: "crt-full.png", w: 88, h: 118, delay: ".04s", dur: ".75s" },
+                  { src: "crt-full.png", w: 104, h: 136, delay: ".08s", dur: ".8s" },
+                  { src: "crt-full.png", w: 80, h: 110, delay: ".12s", dur: ".85s" },
+                ]}
+                transformaciones={[
+                  { activo: "translate(-190px,-180px) rotate(-14deg)", reposo: "translate(-48px,-64px) scale(.2)" },
+                  { activo: "translate(70px,-200px) rotate(-11deg) scaleX(-1)", reposo: "translate(-44px,-59px) scale(.2) scaleX(-1)" },
+                  { activo: "translate(-250px,-30px) rotate(7deg)", reposo: "translate(-52px,-68px) scale(.2)" },
+                  { activo: "translate(150px,-40px) rotate(9deg) scaleX(-1)", reposo: "translate(-40px,-55px) scale(.2) scaleX(-1)" },
+                ]}
+              />
             </div>
           </div>
         </div>
-      </section>
+      </header>
 
-      <div style={{ maxWidth: 1180, margin: "0 auto", padding: "0 clamp(20px,5vw,64px)" }}>
+      <main id="producto" style={{ ...CONTENEDOR, paddingTop: 110 }}>
 
-        {/* ── Bento ── */}
-        <section id="why" style={{ padding: "clamp(48px,6vw,80px) 0" }}>
-          <h2 style={{
-            textAlign: "center", fontSize: "clamp(28px,3.6vw,44px)", letterSpacing: "-0.02em",
-            fontWeight: 600, margin: "0 auto clamp(28px,4vw,44px)", maxWidth: "20ch", lineHeight: 1.15,
-          }}>
-            ¿Por qué Baiyer es la mejor opción?
-          </h2>
+        {/* ── 2. Hilo + RFQ en vivo ── */}
+        <section style={{ marginBottom: 110 }}>
+          <Titulo i={0} n={tipeado[0]} />
+          <Lead>Solo un mensaje por Teams, correo o WhatsApp basta para que empiece a trabajar. Mientras conversamos, ya estoy buscando el mejor precio con los mejores proveedores.</Lead>
 
-          <div className="landing-bento">
-            {/* Proceso + mock de Gmail */}
-            <div style={{
-              gridArea: "left", background: "var(--surface)", border: "1px solid var(--n-200)",
-              borderRadius: "var(--r-xl)", padding: "clamp(24px,2.4vw,34px)",
-              display: "flex", flexDirection: "column",
-            }}>
-              <h3 style={{ fontSize: "clamp(22px,2.2vw,28px)", lineHeight: 1.15, letterSpacing: "-0.015em", fontWeight: 600, margin: "0 0 14px" }}>
-                Nos adaptamos a tu proceso de compra
-              </h3>
-              <p style={{ fontSize: 15, lineHeight: 1.6, margin: "0 0 24px", color: "var(--n-600)" }}>
-                Entendemos tu proceso de compras y autorizaciones, y nuestros agentes de correo hacen
-                la comunicación por ti.
-              </p>
-
-              {/* Mock de hilo de Gmail — usa Roboto a propósito, para que se lea como Gmail. */}
-              <div style={{
-                marginTop: "auto", background: "#fff", border: "1px solid var(--n-200)",
-                borderRadius: "var(--r-md)", boxShadow: "var(--shadow-card)", overflow: "hidden",
-                fontFamily: "var(--font-roboto), Roboto, system-ui, sans-serif", color: "#201e1d",
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: "1px solid #e6e3dc" }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/landing/logos/gmail.png" alt="" aria-hidden="true" style={{ width: 22, height: 18, objectFit: "contain", flex: "none" }} />
-                  <span style={{ fontSize: 13.5, fontWeight: 500, flex: 1, minWidth: 0 }}>Cotización · 20 sacos de cemento</span>
-                  <span aria-hidden="true" style={{ color: "#f4b400", fontSize: 15 }}>★</span>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 26 }}>
+            {/* Hilo estilo Slack */}
+            <div style={{ position: "relative", zIndex: 2, flex: "1 1 460px", minWidth: 300, maxWidth: 500, border: `1px solid ${C.tinta}`, borderRadius: 20, background: "#fff", boxShadow: "0 26px 60px rgba(17,17,17,.10)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, borderBottom: `1px solid ${C.tinta}`, padding: "14px 18px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: MONO, fontSize: 11, letterSpacing: ".14em" }}>
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: C.verde, display: "inline-block" }} />
+                  <span>HILO EN # abastecimiento-ti</span>
                 </div>
-                <div style={{ padding: "6px 0" }}>
-                  {[
-                    { ini: "B", bg: "#1a73e8", nombre: "Agente Baiyer", hora: "10:02", para: "para Proveedor", texto: "Hola, necesitamos cotización por 20 sacos de cemento, entrega en Santiago. ¿Precio y plazo?" },
-                    { ini: "P", bg: "#188038", nombre: "Proveedor", hora: "10:41", para: "para mí", texto: "$4.290 c/u, despacho en 48 h. Adjunto cotización formal." },
-                  ].map((m, i) => (
-                    <div key={m.ini} style={{ display: "flex", gap: 11, padding: "11px 14px", borderTop: i ? "1px solid #f1efea" : "none" }}>
-                      <span aria-hidden="true" style={{
-                        flex: "none", width: 30, height: 30, borderRadius: "50%", background: m.bg, color: "#fff",
-                        display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 500, fontSize: 13,
-                      }}>{m.ini}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 2 }}>
-                          <span style={{ fontSize: 12.5, fontWeight: 600 }}>{m.nombre}</span>
-                          <span style={{ fontSize: 11, color: "#8a8478", marginLeft: "auto" }}>{m.hora}</span>
+                <span style={{ fontFamily: MONO, fontSize: 13, color: C.mudo, letterSpacing: ".1em" }}>···</span>
+              </div>
+
+              <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 13 }}>
+                {MENSAJES.map((m, i) => {
+                  const p = PERSONAS[m.quien];
+                  const visible = f >= m.at;
+                  return (
+                    <div key={i} style={{ display: "flex", gap: 12, opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(8px)", transition: "opacity .5s ease,transform .5s cubic-bezier(.22,1,.36,1)" }}>
+                      <div style={{ width: 30, height: 30, flex: "none", border: `1px solid ${C.tinta}`, borderRadius: 10, background: p.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, overflow: "hidden" }}>
+                        {m.quien === "baiyer"
+                          ? <Image src={BASE + "av-baiyer.jpeg"} alt="" width={60} height={60} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                          : p.emoji}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</span>
+                          <span style={{ fontFamily: MONO, fontSize: 10, color: C.mudo }}>{m.time}</span>
                         </div>
-                        <div style={{ fontSize: 10.5, color: "#8a8478", marginBottom: 5 }}>{m.para}</div>
-                        <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5, color: "#45403a" }}>{m.texto}</p>
+                        <div style={{ fontSize: 13.5, lineHeight: 1.45, marginTop: 3, color: C.tinta, textWrap: "pretty" }}>
+                          {m.pre}
+                          {m.mention && <span style={{ color: C.azul, fontWeight: 600, background: C.azulTinte, borderRadius: 4, padding: "0 3px" }}>{m.mention}</span>}
+                          {m.post}
+                        </div>
                       </div>
                     </div>
+                  );
+                })}
+              </div>
+
+              {/* Composer: el mensaje 3 se escribe acá antes de saltar al hilo */}
+              <div style={{ padding: "0 16px 14px" }}>
+                <div style={{ border: `1px solid ${C.tinta}`, borderRadius: 16, overflow: "hidden", background: "#FBFAF8" }}>
+                  <div style={{ padding: "11px 13px", minHeight: 46, fontSize: 13.5, lineHeight: 1.45, color: C.tinta }}>
+                    {bPre}
+                    {bChip && <span style={{ color: C.azul, fontWeight: 600, background: C.azulTinte, borderRadius: 5, padding: "1px 5px" }}>{bChip}</span>}
+                    {bPost}
+                    <span className="bl-cursor" style={{ display: "inline-block", width: 2, height: "1em", background: C.tinta, verticalAlign: "-.14em", marginLeft: 2, opacity: escrito > 0 ? 1 : 0 }} />
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, borderTop: `1px solid ${C.reglaSuave}`, padding: "9px 12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16, fontFamily: MONO, fontSize: 13, color: C.mudo }}>
+                      <span>+</span><span>Aa</span><span>@</span>
+                    </div>
+                    <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: ".1em", background: armado ? C.azul : "#fff", color: armado ? "#fff" : C.mudo, border: `1px solid ${C.tinta}`, borderRadius: 999, padding: "8px 16px", transition: "background .3s,color .3s" }}>ENVIAR ↵</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Panel RFQ */}
+            <div style={{ position: "relative", flex: "1 1 440px", minWidth: 300, maxWidth: 520, marginTop: 44, paddingRight: "clamp(0px,6vw,74px)" }}>
+              <div className="bl-figura-rfq">
+                <Figura cuerpo="body-point-left.png" zona={zona} alt="Baiyer señalando la tabla de cotizaciones" proporcion={100} espejada chica />
+              </div>
+              <div style={{ position: "relative", zIndex: 1, border: `1px solid ${C.tinta}`, borderRadius: 20, background: C.panel }}>
+                <CabezaPanel
+                  titulo={rfqEnCurso ? "RFQ: MacBook vs ThinkPad (5)" : "Nueva cotización"}
+                  sub={rfqEnCurso ? "EVENTO DE ABASTECIMIENTO · EQUIPAMIENTO TI" : ""}
+                  badge={rfqEnCurso ? "RFQ EN CURSO" : "EN ESPERA"}
+                />
+                <div style={{ padding: "18px 18px 16px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 14, fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: C.mudo, paddingBottom: 12, borderBottom: `1px solid ${C.regla}` }}>
+                    <span>PROVEEDOR</span><span>ESTADO</span><span style={{ textAlign: "right" }}>COTIZACIÓN</span>
+                  </div>
+                  {filas.map(v => (
+                    <div key={v.name} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 12, alignItems: "center", padding: "11px 0", borderBottom: `1px solid ${C.regla}`, opacity: v.visible ? 1 : 0, transform: v.visible ? "translateY(0)" : "translateY(6px)", transition: "opacity .5s ease,transform .5s cubic-bezier(.22,1,.36,1)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                        <Inicial>{v.initial}</Inicial>
+                        <span style={{ minWidth: 0 }}>
+                          <span style={{ display: "block", fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{v.name}</span>
+                          <span style={{ display: "block", fontFamily: MONO, fontSize: 10, color: C.mudo, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{v.model}</span>
+                        </span>
+                      </div>
+                      <span style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: MONO, fontSize: 10, letterSpacing: ".04em", lineHeight: 1.3, maxWidth: 170, color: v.fg }}>
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: v.punto, display: "inline-block", flex: "none" }} />
+                        {v.estado}
+                      </span>
+                      <span style={{ fontFamily: MONO, fontSize: 14, textAlign: "right", minWidth: 84, color: v.precioFg }}>{v.precio}</span>
+                    </div>
                   ))}
-                </div>
-                <div style={{
-                  display: "flex", alignItems: "center", gap: 10, margin: "0 14px 14px",
-                  background: "var(--brand-50)", border: "1px solid var(--brand-100)",
-                  borderRadius: "var(--r-sm)", padding: "9px 12px",
-                }}>
-                  <span aria-hidden="true" style={{ color: "var(--brand)", fontSize: 14 }}>✓</span>
-                  <span style={{ fontSize: 12, lineHeight: 1.4, color: "var(--brand)" }}>
-                    Autorización aprobada por <strong>Gerencia</strong> · orden de compra generada
-                  </span>
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, paddingTop: 14 }}>
+                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: C.mudo }}>MEJOR OFERTA</span>
+                    <span style={{ fontFamily: MONO, fontSize: 19, fontWeight: 700, color: cotizadas.length ? C.azul : C.apagado }}>{mejor}</span>
+                  </div>
                 </div>
               </div>
             </div>
+          </div>
+        </section>
 
-            {/* Integraciones */}
-            <div style={{
-              gridArea: "black", background: "var(--n-900)", color: "var(--canvas)",
-              borderRadius: "var(--r-xl)", padding: "clamp(22px,2.2vw,30px)",
-              display: "flex", flexDirection: "column",
-            }}>
-              <h3 style={{ fontSize: "clamp(20px,1.9vw,25px)", lineHeight: 1.2, letterSpacing: "-0.015em", fontWeight: 600, margin: "0 0 10px" }}>
-                Conecta todo en un solo lugar
-              </h3>
-              <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: "0 0 22px", opacity: 0.72 }}>
-                Tus herramientas de IA y correo, integradas de una vez.
-              </p>
-              <div style={{ marginTop: "auto", display: "flex", flexWrap: "wrap", gap: 12 }}>
-                {INTEGRACIONES.map(l => (
-                  <span key={l.nombre} title={l.nombre} style={{
-                    display: "inline-flex", alignItems: "center", justifyContent: "center",
-                    width: 52, height: 52, borderRadius: "var(--r-md)", overflow: "hidden",
-                    background: l.bg, boxShadow: "var(--shadow-card)",
-                  }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={l.src} alt={l.nombre} style={{
-                      width: "100%", height: "100%", objectFit: "contain",
-                      padding: l.padding, boxSizing: "border-box",
-                    }} />
-                  </span>
+        {/* ── 3. Órdenes de compra + borrador de correo ── */}
+        <section style={{ marginBottom: 110 }}>
+          <Titulo i={1} n={tipeado[1]} />
+          <Lead ancho={760}>
+            Me contacto con proveedores, cotizo con ellos por correo, busco por internet, selecciono la mejor oferta, solicito autorización interna configurable por ti, hago revisión documental para homologación (creando un perfil de riesgo por proveedor), genero órdenes de compra, hago seguimiento hasta el despacho, reviso las facturas con las OC, y además puedo ejecutar pagos desde tarjetas de débito virtuales.
+          </Lead>
+
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 26 }}>
+            <div style={{ flex: "1 1 440px", minWidth: 300, maxWidth: 520, border: `1px solid ${C.tinta}`, borderRadius: 20, background: C.panel, display: "flex", flexDirection: "column" }}>
+              <CabezaPanel
+                titulo="Órdenes de compra abiertas" sub="DESPACHOS · PLANTA QUILICURA" badge="1 ATRASADA"
+                badgeEstilo={{ border: `1px solid ${C.ambar}`, color: C.ambarOscuro, background: C.ambarTinte }}
+              />
+              <div style={{ padding: 18, display: "flex", flexDirection: "column" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 150px 74px", gap: 12, fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: C.mudo, padding: "0 10px 12px", borderBottom: `1px solid ${C.regla}` }}>
+                  <span>PROVEEDOR</span><span style={{ textAlign: "right" }}>ESTADO</span><span style={{ textAlign: "right" }}>PROMETIDO</span>
+                </div>
+                {ORDENES.map((o, i) => (
+                  <div key={o.name} style={{ display: "grid", gridTemplateColumns: "1fr 150px 74px", gap: 12, alignItems: "center", padding: "11px 10px", borderBottom: `1px solid ${C.regla}`, borderRadius: 10, background: i === foco ? "#fff" : "transparent", boxShadow: i === foco ? "0 6px 18px rgba(17,17,17,.10)" : "none", transition: "background .45s ease,box-shadow .45s ease" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                      <Inicial>{o.initial}</Inicial>
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: "block", fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.name}</span>
+                        <span style={{ display: "block", fontFamily: MONO, fontSize: 10, color: C.mudo, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.meta}</span>
+                      </span>
+                    </div>
+                    <span style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 7, fontFamily: MONO, fontSize: 10, letterSpacing: ".04em", textAlign: "right", color: o.fg }}>
+                      <span style={{ width: 7, height: 7, borderRadius: "50%", flex: "none", background: o.fg, display: "inline-block" }} />
+                      {o.status}
+                    </span>
+                    <span style={{ fontFamily: MONO, fontSize: 13, textAlign: "right", color: o.late ? C.ambar : C.tinta }}>{o.date}</span>
+                  </div>
                 ))}
               </div>
             </div>
 
-            {/* Homologación */}
-            <div style={{
-              gridArea: "green", background: "var(--st-cotizando-bg)",
-              border: "1px solid rgba(124,92,18,.25)", borderRadius: "var(--r-xl)",
-              padding: "clamp(22px,2.2vw,30px)", display: "flex", flexDirection: "column",
-            }}>
-              <span aria-hidden="true" style={{
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                width: 38, height: 38, borderRadius: "var(--r-sm)", background: "#fff",
-                boxShadow: "var(--shadow-card)", color: "var(--st-cotizando-fg)", fontSize: 19, marginBottom: 14,
-              }}>⚖</span>
-              <h3 style={{ fontSize: "clamp(19px,1.8vw,24px)", lineHeight: 1.2, letterSpacing: "-0.015em", fontWeight: 600, margin: 0, color: "var(--st-cotizando-fg)" }}>
-                Homologación y análisis de riesgo inteligente
-              </h3>
-              <p style={{ fontSize: 13, lineHeight: 1.55, margin: "12px 0 0", color: "var(--st-cotizando-fg)", opacity: 0.85 }}>
-                Validamos y calificamos a cada proveedor antes de comprar.
-              </p>
-            </div>
-
-            {/* Plataforma / inventario */}
-            <div style={{
-              gridArea: "blue", background: "var(--brand-50)", border: "1px solid var(--brand-100)",
-              borderRadius: "var(--r-xl)", padding: "clamp(22px,2.4vw,32px)",
-              display: "flex", alignItems: "center", gap: "clamp(20px,3vw,40px)", flexWrap: "wrap",
-            }}>
-              <div style={{ flex: "1 1 300px", minWidth: 260 }}>
-                <h3 style={{ fontSize: "clamp(20px,2vw,27px)", lineHeight: 1.2, letterSpacing: "-0.015em", fontWeight: 600, margin: 0, color: "var(--brand)" }}>
-                  Una plataforma automatizada con toda la información de tu inventario y proveedores
-                </h3>
-                <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: "14px 0 0", color: "var(--n-600)" }}>
-                  Inventario, historial y proveedores, todo consultable en un mismo panel.
-                </p>
+            <div style={{ position: "relative", zIndex: 2, flex: "1 1 440px", minWidth: 300, maxWidth: 520, border: `1px solid ${C.tinta}`, borderRadius: 20, background: "#fff", boxShadow: "0 26px 60px rgba(17,17,17,.10)", padding: 16, display: "flex", flexDirection: "column" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ width: 30, height: 30, flex: "none", border: `1px solid ${C.tinta}`, borderRadius: 10, overflow: "hidden", background: "#1f8b3a" }}>
+                  <Image src={BASE + "av-baiyer.jpeg"} alt="" width={60} height={60} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>Baiyer</span>
+                <span style={{ fontFamily: MONO, fontSize: 10, color: C.mudo }}>ahora</span>
+                <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 9, letterSpacing: ".12em", border: `1px solid ${C.tinta}`, borderRadius: 999, padding: "4px 9px" }}>{oc.stage}</span>
               </div>
-              <div style={{
-                flex: "1 1 240px", minWidth: 220, background: "var(--surface)",
-                border: "1px solid var(--n-200)", borderRadius: "var(--r-md)",
-                boxShadow: "var(--shadow-card)", padding: "14px 16px",
-              }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--brand)", marginBottom: 8 }}>
-                  Panel · Inventario
-                </div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.45, marginTop: 10, minHeight: 60, textWrap: "pretty" }}>{oc.note}</div>
+              <div style={{ marginTop: 12, border: `1px solid ${C.tinta}`, borderRadius: 14, overflow: "hidden", background: "#FBFAF8" }}>
+                {[["PARA", oc.to, false], ["ASUNTO", oc.subject, true]].map(([k, v, fuerte]) => (
+                  <div key={k as string} style={{ display: "flex", gap: 14, padding: "10px 13px", borderBottom: `1px solid ${C.reglaSuave}` }}>
+                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: ".12em", color: C.mudo, width: 64, flex: "none" }}>{k as string}</span>
+                    <span style={{ fontSize: 13, fontWeight: fuerte ? 600 : 400 }}>{v as string}</span>
+                  </div>
+                ))}
+                <div style={{ padding: "12px 13px", fontSize: 13, lineHeight: 1.5, minHeight: 76, color: C.cuerpo, textWrap: "pretty" }}>{oc.body}</div>
+              </div>
+              <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                <div className="bl-pill-azul" style={{ fontFamily: MONO, fontSize: 11, letterSpacing: ".1em", background: C.azul, color: "#fff", border: `1px solid ${C.azul}`, padding: "11px 20px", borderRadius: 999, cursor: "pointer" }}>{oc.cta}</div>
+                <div className="bl-pill-linea" style={{ fontFamily: MONO, fontSize: 11, letterSpacing: ".1em", border: `1px solid ${C.tinta}`, padding: "11px 20px", borderRadius: 999, cursor: "pointer" }}>EDITAR BORRADOR</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── 4. Se adapta al proceso + grafo del ciclo de compra ── */}
+        <section id="proceso" style={{ marginBottom: 110, scrollMarginTop: 24 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 44, alignItems: "center" }}>
+            <div>
+              <Titulo i={3} n={tipeado[3]} />
+              <p style={{ fontSize: 17, lineHeight: 1.55, maxWidth: 520, margin: 0, color: C.cuerpo, textWrap: "pretty" }}>
+                Solo necesitas contarme con tus palabras cómo es el proceso interno de cotizaciones, autorizaciones y compras, y yo me encargo de la comunicación interna con colegas y jefaturas, y externa con proveedores.
+              </p>
+              <div style={{ position: "relative", width: "min(100%,340px)", margin: "72px auto 0", pointerEvents: "none" }}>
+                <Image src={BASE + "body-sitting.png"} alt="Baiyer sentado" width={900} height={601} sizes="340px" style={{ width: "100%", height: "auto", display: "block" }} />
+                <Image src={BASE + "head-smile.png"} alt="" width={900} height={753} sizes="125px" style={{ position: "absolute", left: "32%", top: "-22%", width: "36%", height: "auto", display: "block" }} />
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: "clamp(28px,5vw,56px)", marginTop: 56 }}>
                 {[
-                  ["Proveedores activos", "128"],
-                  ["SKU en catálogo", "3.410"],
-                  ["Cotizaciones este mes", "42"],
-                ].map(([k, v]) => (
-                  <div key={k} style={{
-                    display: "flex", justifyContent: "space-between", fontSize: 12.5,
-                    padding: "7px 0", borderTop: "1px solid var(--n-100)",
-                  }}>
-                    <span style={{ color: "var(--n-600)" }}>{k}</span>
-                    <span className="mono" style={{ fontWeight: 600 }}>{v}</span>
-                  </div>
+                  ["logo-gmail.png", "Gmail", 38, 0],
+                  ["logo-outlook.webp", "Outlook", 38, 0],
+                  ["logo-slack.png", "Slack", 36, 0],
+                  ["logo-claude.webp", "Claude", 36, 8],
+                  ["logo-openai-dark.webp", "OpenAI", 36, 8],
+                ].map(([src, alt, h, r]) => (
+                  <Image key={src as string} src={BASE + (src as string)} alt={alt as string} width={200} height={200} sizes="80px"
+                    style={{ height: h as number, width: "auto", display: "block", borderRadius: r as number }} />
                 ))}
+              </div>
+              <p style={{ textAlign: "center", fontFamily: MONO, fontSize: 12, letterSpacing: ".1em", color: C.mudo, margin: "18px 0 0" }}>
+                ME INTEGRO A LAS PLATAFORMAS QUE TÚ YA USAS
+              </p>
+            </div>
+
+            {/* Grafo serpenteante: 3 columnas, con las flechas entre celdas */}
+            <div>
+              <div style={{ border: `1px solid ${C.tinta}`, borderRadius: 22, overflow: "hidden", background: "#fff" }}>
+                <div className="bl-grafo" style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 12, background: C.panel }}>
+                  {ETAPAS.map((e, i) => {
+                    const activo = wf === i, hecho = wf > i;
+                    const a = ACTORES[e.actor];
+                    const fila = Math.floor(i / 3);
+                    const izqDer = fila % 2 === 0;
+                    return (
+                      <div key={e.label} className="bl-grafo-nodo" style={{
+                        gridColumn: izqDer ? (i % 3) + 1 : 3 - (i % 3),
+                        gridRow: fila + 1,
+                        position: "relative", border: `1px solid ${C.tinta}`, borderRadius: 12,
+                        background: activo ? C.azul : "#fff", color: activo ? "#fff" : C.tinta,
+                        boxShadow: activo ? "0 12px 26px rgba(16,0,255,.3)" : hecho ? "0 3px 10px rgba(17,17,17,.06)" : "none",
+                        padding: "10px 11px",
+                        transition: "background .45s cubic-bezier(.22,1,.36,1),color .45s,box-shadow .45s",
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: "50%", flex: "none", background: activo ? "#fff" : hecho ? C.verde : C.apagado }} />
+                          <span style={{
+                            marginLeft: "auto", minWidth: 0, overflowWrap: "anywhere", fontFamily: MONO,
+                            fontSize: 8, letterSpacing: ".1em", borderRadius: 999, padding: "2px 7px",
+                            border: `1px solid ${activo ? "rgba(255,255,255,.5)" : a.bd}`,
+                            color: activo ? "#fff" : a.fg,
+                            background: activo ? "rgba(255,255,255,.16)" : a.bg,
+                          }}>{a.t}</span>
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2, marginTop: 6, textWrap: "pretty" }}>{e.label}</div>
+                        <div style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: ".02em", opacity: .62, marginTop: 5, lineHeight: 1.35 }}>{e.role}</div>
+                        {e.person && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, fontFamily: MONO, fontSize: 9, letterSpacing: ".04em", opacity: .85 }}>
+                            <span style={{ width: 14, height: 14, flex: "none", border: "1px solid currentColor", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7 }}>◍</span>
+                            {e.person}
+                          </div>
+                        )}
+                        {e.edgeLabel && (
+                          <div style={{ marginTop: 7, display: "inline-block", fontFamily: MONO, fontSize: 8, letterSpacing: ".1em", border: `1px solid ${e.edgeColor || C.tinta}`, color: e.edgeColor || C.tinta, background: "#fff", borderRadius: 999, padding: "2px 7px" }}>{e.edgeLabel}</div>
+                        )}
+                        {i < ETAPAS.length - 1 && (i % 3 === 2
+                          ? <span style={{ position: "absolute", bottom: -10, left: "50%", transform: "translateX(-50%)", fontFamily: MONO, fontSize: 12, color: C.mudo, background: C.panel, lineHeight: 1, padding: "0 1px" }}>↓</span>
+                          : izqDer
+                            ? <span className="bl-flecha-h" style={{ position: "absolute", top: "50%", right: -11, transform: "translateY(-50%)", fontFamily: MONO, fontSize: 12, color: C.mudo, background: C.panel, lineHeight: 1, padding: "0 1px" }}>→</span>
+                            : <span className="bl-flecha-h" style={{ position: "absolute", top: "50%", left: -11, transform: "translateY(-50%)", fontFamily: MONO, fontSize: 12, color: C.mudo, background: C.panel, lineHeight: 1, padding: "0 1px" }}>←</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* ── CTA final ── */}
-        <section style={{ textAlign: "center", padding: "clamp(56px,7vw,96px) 0" }}>
-          <h2 style={{
-            fontWeight: 600, fontSize: "clamp(32px,4.4vw,52px)", lineHeight: 1.05,
-            letterSpacing: "-0.02em", margin: 0,
-          }}>
-            De semanas a minutos,<br />al mejor precio.
-          </h2>
-          <p style={{ fontSize: 16, lineHeight: 1.6, maxWidth: "44ch", margin: "22px auto 0", color: "var(--n-600)" }}>
-            Deja que los agentes de correo hagan el ida y vuelta con tus proveedores. Tú apruebas.
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "center", marginTop: 28 }}>
-            <CtaPrimary href={DEMO_URL} externo>Comienza a cotizar</CtaPrimary>
-            <CtaSecondary href="/register">Probar en el navegador</CtaSecondary>
-          </div>
-        </section>
-
-        {/* ── FAQ ── */}
-        <section id="faq" style={{ padding: "clamp(48px,6vw,80px) 0" }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--brand)", marginBottom: 10 }}>
-            Preguntas frecuentes
-          </div>
-          <h2 style={{ fontSize: "clamp(28px,3.4vw,40px)", letterSpacing: "-0.02em", fontWeight: 600, margin: "0 0 24px" }}>
-            Lo que suelen preguntar
-          </h2>
-          <div style={{ maxWidth: 820 }}>
-            {FAQS.map((item, i) => {
-              const open = abierta === i;
-              return (
-                <div key={item.q} style={{ borderTop: "1px solid var(--n-200)" }}>
-                  <button
-                    type="button"
-                    onClick={() => setAbierta(open ? -1 : i)}
-                    aria-expanded={open}
-                    style={{
-                      width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
-                      gap: 16, background: "none", border: 0, padding: "18px 0", cursor: "pointer",
-                      textAlign: "left", fontFamily: "inherit", fontWeight: 600, fontSize: 18,
-                      color: open ? "var(--brand)" : "var(--n-900)",
-                    }}
-                  >
-                    <span>{item.q}</span>
-                    <span aria-hidden="true" style={{
-                      flex: "none", fontSize: 24, lineHeight: 1, color: "var(--brand)",
-                      transition: "transform .3s ease", transform: `rotate(${open ? 45 : 0}deg)`,
-                    }}>+</span>
-                  </button>
-                  <div style={{
-                    overflow: "hidden", transition: "max-height .35s ease, opacity .3s ease",
-                    maxHeight: open ? 320 : 0, opacity: open ? 1 : 0,
-                  }}>
-                    <p style={{ margin: "0 0 18px", fontSize: 15, lineHeight: 1.65, maxWidth: "68ch", color: "var(--n-600)" }}>
-                      {item.a}
-                    </p>
-                  </div>
+        {/* ── 5. Conciliación a tres bandas ── */}
+        <section style={{ marginBottom: 110 }}>
+          <Titulo i={2} n={tipeado[2]} />
+          <Lead>Reviso las facturas, órdenes de compra y recepción, chequeo que todo esté en orden y te aviso si algo no cuadra.</Lead>
+          <div style={{ border: `1px solid ${C.tinta}`, borderRadius: 22, overflow: "hidden", background: "#fff" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))" }}>
+              <div style={{ padding: 20, borderRight: `1px solid ${C.reglaSuave}` }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: C.mudo }}>FACTURA</div>
+                <div style={{ fontSize: 26, fontWeight: 700, fontFamily: MONO, marginTop: 10 }}>$389.500</div>
+                <div style={{ fontSize: 14, color: C.cuerpo, marginTop: 12, lineHeight: 1.7 }}>40 servidores<br />40 kits de rieles<br />1 instalación</div>
+              </div>
+              <div style={{ padding: 20, borderRight: `1px solid ${C.reglaSuave}` }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: C.mudo }}>ORDEN DE COMPRA</div>
+                <div style={{ fontSize: 26, fontWeight: 700, fontFamily: MONO, marginTop: 10 }}>$389.500</div>
+                <div style={{ fontSize: 14, color: C.cuerpo, marginTop: 12, lineHeight: 1.7 }}>40 servidores<br />40 kits de rieles<br />1 instalación</div>
+              </div>
+              <div style={{ padding: 20, background: "#FFFBEB" }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: C.ambarOscuro }}>RECEPCIÓN DE BIENES</div>
+                <div style={{ fontSize: 26, fontWeight: 700, fontFamily: MONO, marginTop: 10, color: C.ambarOscuro }}>$363.280</div>
+                <div style={{ fontSize: 14, color: C.cuerpo, marginTop: 12, lineHeight: 1.7 }}>
+                  <strong style={{ color: C.ambarOscuro }}>37 servidores</strong><br />40 kits de rieles<br />1 instalación
                 </div>
-              );
-            })}
+              </div>
+            </div>
+            <div style={{ borderTop: `1px solid ${C.tinta}`, padding: "18px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", background: C.ambarTinte }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span className="bl-alerta" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: ".1em", padding: "6px 12px", borderRadius: 999, border: `1px solid ${C.ambar}`, background: "#fff", color: C.ambarOscuro }}>ALERTA</span>
+                <span style={{ fontSize: 15, color: C.cuerpo }}>Faltan 3 unidades respecto a la OC, diferencia de <strong>$26.220</strong>.</span>
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <div className="bl-pill-azul" style={{ fontFamily: MONO, fontSize: 11, letterSpacing: ".1em", background: C.azul, color: "#fff", padding: "12px 22px", borderRadius: 999, cursor: "pointer" }}>PAGAR $363.280</div>
+                <div className="bl-pill-linea" style={{ fontFamily: MONO, fontSize: 11, letterSpacing: ".1em", border: `1px solid ${C.tinta}`, background: "#fff", padding: "12px 22px", borderRadius: 999, cursor: "pointer" }}>CONSULTAR A PROVEEDOR</div>
+              </div>
+            </div>
           </div>
         </section>
-      </div>
       </main>
 
-      {/* ── Footer ── */}
-      <footer style={{ borderTop: "1px solid var(--n-200)" }}>
-        <div style={{
-          maxWidth: 1180, margin: "0 auto", padding: "40px clamp(20px,5vw,64px)",
-          display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 28,
-        }}>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em", marginBottom: 8 }}>Baiyer</div>
-            <p style={{ fontSize: 13, lineHeight: 1.5, margin: 0, color: "var(--n-500)" }}>
-              Agentic procurement para Chile. Compras y proveedores, automatizados con IA.
-            </p>
-          </div>
-          {[
-            { titulo: "Producto", links: [["Cómo funciona", "#features"], ["Por qué Baiyer", "#why"], ["Preguntas", "#faq"]] },
-            { titulo: "Empresa", links: [["Iniciar sesión", "/login"], ["Contacto", "mailto:j.gonzalez.plc@gmail.com"], ["Agenda una demo", DEMO_URL]] },
-            // El handoff trae una columna "Legal" con Privacidad y Términos, pero
-            // esas páginas no existen: enlazarlas daría 404. Se reponen cuando se
-            // escriban — los pilotos empresa las van a pedir.
-          ].map(col => (
-            <div key={col.titulo}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--n-500)", marginBottom: 12 }}>{col.titulo}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13.5 }}>
-                {col.links.map(([txt, href]) => (
-                  <a key={txt} href={href} style={{ color: "var(--n-700)", textDecoration: "none" }}>{txt}</a>
-                ))}
-              </div>
+      {/* ── 6. FAQ ── */}
+      <section id="nosotros" style={{ ...CONTENEDOR, paddingTop: 90, scrollMarginTop: 24 }}>
+        <Titulo i={4} n={tipeado[4]} tamano="clamp(32px,4.2vw,56px)" />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(330px,1fr))", gap: "0 48px", borderTop: `1px solid ${C.tinta}`, marginTop: 34 }}>
+          {FAQS.map((faq, i) => (
+            <div key={faq.q} style={{ borderBottom: `1px solid ${C.tinta}`, padding: "22px 0" }}>
+              <button
+                onClick={() => setAbierta(abierta === i ? null : i)}
+                aria-expanded={abierta === i}
+                style={{ all: "unset", cursor: "pointer", display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 16, width: "100%" }}
+              >
+                <span style={{ fontSize: 17, fontWeight: 600, textWrap: "pretty" }}>{faq.q}</span>
+                <span style={{ fontFamily: MONO, fontSize: 18, color: C.azul }}>{abierta === i ? "−" : "+"}</span>
+              </button>
+              {abierta === i && (
+                <p className="bl-faq-abierta" style={{ fontSize: 15, lineHeight: 1.6, color: C.cuerpo, margin: "12px 0 0", maxWidth: "52ch" }}>{faq.a}</p>
+              )}
             </div>
           ))}
         </div>
-        <div style={{
-          maxWidth: 1180, margin: "0 auto", padding: "16px clamp(20px,5vw,64px) 40px",
-          fontSize: 12, color: "var(--n-500)",
-        }}>
-          © 2026 Baiyer · Santiago de Chile
+      </section>
+
+      {/* ── 7. Cierre ── */}
+      <footer style={{ background: C.azul, color: "#fff", marginTop: 100, padding: "150px 0 28px", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+        <div style={{ maxWidth: 1180, width: "100%", margin: "0 auto", padding: "15vh 24px 0", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+          <div style={{ width: "fit-content", maxWidth: "100%", margin: "0 auto" }}>
+            <div style={{ position: "relative" }}>
+              <div style={{ position: "absolute", left: "50%", bottom: "46%", width: "clamp(200px,27vw,420px)", transform: "translateX(-12%) rotate(-9deg)", pointerEvents: "none", zIndex: 2 }}>
+                <Image src={BASE + "body-lying.png"} alt="Baiyer recostado sobre el logotipo" width={900} height={900} sizes="(max-width: 900px) 60vw, 420px" style={{ width: "100%", height: "auto", display: "block" }} />
+                <Image src={BASE + "head-tired.png"} alt="" width={900} height={753} sizes="(max-width: 900px) 20vw, 140px" style={{ position: "absolute", left: "2%", top: "16%", width: "33%", height: "auto", display: "block", transform: "rotate(-6deg)" }} />
+              </div>
+              <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: "clamp(110px,24vw,400px)", lineHeight: .86, letterSpacing: "-.01em", position: "relative", zIndex: 1, WebkitTextStroke: "2px currentColor", textAlign: "center" }}>BAiYER</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 30, flexWrap: "wrap", marginTop: 40, width: "100%" }}>
+              <p style={{ fontSize: 19, lineHeight: 1.5, maxWidth: 520, margin: 0, color: C.lavanda, textWrap: "pretty" }}>Comencemos a trabajar juntos hoy!</p>
+              <CtaExplosiva
+                etiqueta="AGENDAR DEMO →"
+                poses={[
+                  { src: "pose-1.png", w: 104, h: 150, delay: "0s", dur: ".7s" },
+                  { src: "pose-2.png", w: 96, h: 140, delay: ".05s", dur: ".78s" },
+                  { src: "pose-3.png", w: 100, h: 146, delay: ".1s", dur: ".84s" },
+                ]}
+                transformaciones={[
+                  { activo: "translate(-330px,-120px) rotate(-11deg)", reposo: "translate(-52px,-75px) scale(.2)" },
+                  { activo: "translate(-190px,-215px) rotate(8deg)", reposo: "translate(-48px,-70px) scale(.2)" },
+                  { activo: "translate(-40px,-235px) rotate(-6deg) scaleX(-1)", reposo: "translate(-50px,-73px) scale(.2) scaleX(-1)" },
+                ]}
+              />
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginTop: "auto", padding: "18px 0 0", borderTop: "1px solid rgba(255,255,255,.28)", fontFamily: MONO, fontSize: 11, letterSpacing: ".14em", color: C.lavandaMuda }}>
+            <span>© 2026 BAIYER SPA</span><span>HECHO CON CARIÑO :)</span>
+          </div>
         </div>
       </footer>
     </div>
