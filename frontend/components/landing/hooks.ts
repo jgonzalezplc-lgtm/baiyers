@@ -135,7 +135,10 @@ export function useTitulosTipeados() {
 export function useMirada(): Zona {
   const [zona, setZona] = useState<Zona>("right");
   useEffect(() => {
-    if (window.matchMedia("(pointer: coarse)").matches) { setZona("front"); return; }
+    // Sin puntero (táctil) la mirada no puede seguir a nadie, así que queda fija
+    // de lado: mirando al frente la cabeza queda cabizbaja por el recorte del
+    // PNG y en el teléfono, con la figura al pie, se lee como desganada.
+    if (window.matchMedia("(pointer: coarse)").matches) { setZona("right"); return; }
     const mover = (e: MouseEvent) => {
       const fx = e.clientX / window.innerWidth;
       const fy = e.clientY / window.innerHeight;
