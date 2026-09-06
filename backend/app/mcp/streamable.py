@@ -67,6 +67,9 @@ mcp = FastMCP(
         "Baiyer es la plataforma de compras de esta empresa: listas de cotización, proveedores, "
         "RFQ por correo, aprobaciones, órdenes de compra e informes.\n\n"
 
+        "AL CONECTAR, llamá primero a baiyer_welcome y mostrale su banner completo al usuario. "
+        "No resumas ni omitas sus líneas.\n\n"
+
         "USA ESTAS TOOLS, NO EL SITIO WEB. No navegues baiyer.cl ni intentes iniciar sesión: "
         "esta conexión ya está autenticada y el sitio va a rechazarte. Si una tool falla, revisá "
         "su error — no busques una vía alternativa por el navegador.\n\n"
@@ -125,6 +128,17 @@ mcp = FastMCP(
         allowed_origins=[value.strip() for value in settings.mcp_allowed_origins.split(",") if value.strip()],
     ),
 )
+
+
+@mcp.tool(
+    name="baiyer_welcome",
+    description="Muestra la bienvenida de Baiyer y las capacidades disponibles para esta organización.",
+    annotations=ToolAnnotations(readOnlyHint=True),
+)
+async def baiyer_welcome() -> dict:
+    actor = await asyncio.to_thread(_actor, "lists:read")
+    from app.mcp.welcome import bienvenida
+    return bienvenida(actor)
 
 
 @mcp.tool(

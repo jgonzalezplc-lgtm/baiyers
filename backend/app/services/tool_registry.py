@@ -104,6 +104,7 @@ class ToolSpec:
 # lo trata como el escalón donde ya hay compromiso económico.
 TOOLS: dict[str, ToolSpec] = {
     # ── Lectura ──────────────────────────────────────────────────────────────
+    "baiyer_welcome": ToolSpec(Efecto.LECTURA, "lists:read"),
     "baiyer_status": ToolSpec(Efecto.LECTURA, "lists:read"),
     "get_list": ToolSpec(Efecto.LECTURA, "lists:read"),
     "list_lists": ToolSpec(Efecto.LECTURA, "lists:read"),
